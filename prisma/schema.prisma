@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int               @id @default(autoincrement())
+  name               String
+  email              String            @unique
+  password_hash      String
+  phone              String?
+  role               String            @default("user")
+  points             Int               @default(0)
+  birthdate          String?
+  age                Int?
+  instagram_username String?
+  created_at         DateTime          @default(now())
+  orders             Order[]
+  resell_requests    ResellRequest[]
+  points_history     PointsHistory[]
+  pre_registrations  PreRegistration[]
+  notifications      Notification[]
+  organized_events   Event[]
+}
+
+model Event {
+  id                Int               @id @default(autoincrement())
+  title             String
+  description       String?
+  date              DateTime
+  event_date        String?
+  event_time        String?
+  location          String?
+  venue             String?
+  company_name      String?
+  rules             String?
+  google_maps_url   String?
+  show_qr_codes     Boolean           @default(false)
+  image_url         String?
+  is_published      Boolean           @default(false)
+  government        String            @default("Other")
+  require_approval  Boolean           @default(false)
+  qr_enabled_manual Boolean           @default(false)
+  status            String?
+  organizer_id      Int?
+  organizer         User?             @relation(fields: [organizer_id], references: [id])
+  created_at        DateTime          @default(now())
+  ticket_types      TicketType[]
+  orders            Order[]
+  invitations       Invitation[]
+  pre_registrations PreRegistration[]
+}
+
+model TicketType {
+  id             Int             @id @default(autoincrement())
+  event_id       Int
+  event          Event           @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  price          Float
+  quantity_total Int
+  quantity_sold  Int             @default(0)
+  resale_queue   Int             @default(0)
+  sale_start     DateTime?
+  sale_end       DateTime?
+  order_tickets   OrderTicket[]
+  resell_requests ResellRequest[]
+  invitations     Invitation[]
+
+  @@index([event_id])
+}
+
+model Voucher {
+  id               Int      @id @default(autoincrement())
+  code             String   @unique
+  discount_percent Int
+  max_uses         Int
+  current_uses     Int      @default(0)
+  expiration_date  DateTime
+  name             String?
+  created_by_type  String?
+  created_by_id    Int?
+  created_at       DateTime @default(now())
+  orders           Order[]
+}
+
+model Order {
+  id                     Int             @id @default(autoincrement())
+  user_id                Int
+  user                   User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  event_id               Int
+  event                  Event           @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  total_price            Float
+  order_status           String          @default("pending")
+  payment_method         String?
+  is_paid                Boolean         @default(false)
+  paid_at                DateTime?
+  payment_deadline       DateTime?
+  kashier_transaction_id String?         @unique
+  qr_code_token          String?
+  processing_payment     Boolean         @default(false)
+  points_awarded         Boolean         @default(false)
+  instagram_username     String?
+  phone                  String?
+  age                    Int?
+  voucher_id             Int?
+  voucher                Voucher?        @relation(fields: [voucher_id], references: [id], onDelete: SetNull)
+  created_at             DateTime        @default(now())
+  order_tickets          OrderTicket[]
+  resell_requests        ResellRequest[]
+  points_history         PointsHistory[]
+
+  @@index([user_id])
+  @@index([event_id])
+}
+
+model OrderTicket {
+  id                Int        @id @default(autoincrement())
+  order_id          Int
+  order             Order      @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  ticket_type_id    Int
+  ticket_type       TicketType @relation(fields: [ticket_type_id], references: [id], onDelete: Cascade)
+  quantity          Int        @default(1)
+  qty_original      Int?
+  qty_resale        Int?
+  price_at_purchase Float?
+  price_each        Float?
+  holder_name       String?
+  scanned_count     Int        @default(0)
+  is_used           Boolean    @default(false)
+  status            String?
+}
+
+model ResellRequest {
+  id             Int        @id @default(autoincrement())
+  order_id       Int
+  order          Order      @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  order_ticket_id Int?
+  ticket_type_id Int?
+  ticket_type    TicketType? @relation(fields: [ticket_type_id], references: [id], onDelete: Cascade)
+  user_id        Int
+  user           User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  status         String     @default("pending")
+  reason         String?
+  price          Float?
+  paid_at        DateTime?
+  created_at     DateTime   @default(now())
+
+  @@index([status])
+}
+
+model PointsHistory {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  order_id    Int?
+  order       Order?   @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  points      Int
+  type        String
+  description String?
+  created_at  DateTime @default(now())
+}
+
+model Invitation {
+  id             Int        @id @default(autoincrement())
+  event_id       Int
+  event          Event      @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  ticket_type_id Int
+  ticket_type    TicketType @relation(fields: [ticket_type_id], references: [id], onDelete: Cascade)
+  email          String
+  status         String     @default("pending")
+  invited_by     String?
+  created_at     DateTime   @default(now())
+}
+
+model PreRegistration {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  event_id   Int
+  event      Event    @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  created_at DateTime @default(now())
+}
+
+model Notification {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  title      String
+  message    String?
+  type       String?
+  link       String?
+  read       Boolean  @default(false)
+  created_at DateTime @default(now())
+}
+
+model Setting {
+  id                  Int @id @default(autoincrement())
+  service_fee_percent Int @default(10)
+}

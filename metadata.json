@@ -1,0 +1,5 @@
+{
+  "name": "TicketsHub",
+  "description": "A comprehensive event ticketing platform with pre-registration, resale, and admin management.",
+  "requestFramePermissions": ["camera"]
+}
