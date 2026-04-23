@@ -101,6 +101,7 @@ model Order {
   paid_at                DateTime?
   payment_deadline       DateTime?
   kashier_transaction_id String?         @unique
+  kashier_order_id       String?         @unique
   qr_code_token          String?
   processing_payment     Boolean         @default(false)
   points_awarded         Boolean         @default(false)

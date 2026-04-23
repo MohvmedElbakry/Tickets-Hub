@@ -24,11 +24,21 @@ const __dirname = path.dirname(__filename);
 
 const PORT = 3000;
 const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || (JWT_SECRET + '_refresh');
+
 if (!JWT_SECRET) {
   console.error('[Auth] JWT_SECRET is not set in environment');
   process.exit(1); 
 }
 console.log("[Auth] JWT_SECRET loaded:", !!JWT_SECRET);
+console.log("[Auth] JWT_REFRESH_SECRET loaded:", !!JWT_REFRESH_SECRET);
+
+const generateTokens = (user: any) => {
+  const payload = { id: user.id, name: user.name, email: user.email, role: user.role };
+  const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' }); // Short-lived
+  const refreshToken = jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: '7d' }); // Long-lived
+  return { accessToken, refreshToken, user: payload };
+};
 
 import prisma from './src/lib/prisma.ts';
 
@@ -357,9 +367,38 @@ class PrismaDB {
   }
 
   async getOrderById(id: number) {
-    return await prisma.order.findUnique({ 
+    const order = await prisma.order.findUnique({ 
       where: { id },
-      include: { user: true }
+      include: { 
+        user: true,
+        event: true,
+        order_tickets: {
+          include: {
+            ticket_type: true
+          }
+        }
+      }
+    });
+    
+    if (order && (order as any).order_tickets) {
+      (order as any).items = (order as any).order_tickets;
+    }
+    
+    return order;
+  }
+
+  async getOrderByKashierOrderId(kashierOrderId: string) {
+    return await prisma.order.findUnique({
+      where: { kashier_order_id: kashierOrderId },
+      include: {
+        user: true,
+        event: true,
+        order_tickets: {
+          include: {
+            ticket_type: true
+          }
+        }
+      }
     });
   }
 
@@ -384,47 +423,59 @@ class PrismaDB {
     return await prisma.order.update({ where: { id }, data });
   }
 
-  async markOrderAsPaid(orderId: number, transactionId: string) {
+  async markOrderAsPaid(orderId: number, transactionId: string, kashierOrderId?: string) {
     return await prisma.$transaction(async (tx) => {
       // Read order with FOR UPDATE behavior
       const orders = await tx.$queryRaw<any[]>`SELECT * FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
       const order = orders[0];
       if (!order) return { success: false, reason: 'not_found' };
       
-      if (order.processing_payment) return { success: false, reason: 'processing' };
-      
-      // Check if transaction ID already exists
-      const existingTransaction = await tx.order.findFirst({ where: { kashier_transaction_id: transactionId } });
-      if (existingTransaction) return { success: true, already_paid: true, order: existingTransaction };
+      // RULE: Idempotency - If already paid, return success instantly
+      if (order.is_paid) {
+        return { success: true, already_paid: true, order };
+      }
 
-      if (order.is_paid) return { success: true, already_paid: true, order };
-      
-      await tx.order.update({
-        where: { id: orderId },
-        data: { processing_payment: true }
+      // Check if transaction ID already used by another order (security check)
+      const existingTransaction = await tx.order.findFirst({ 
+        where: { kashier_transaction_id: transactionId, id: { not: orderId } } 
       });
+      
+      if (existingTransaction) {
+        // If this transaction is already linked to another order, we have a problem
+        console.error(`[PAYMENT] Transaction ID ${transactionId} already used for another order #${existingTransaction.id}`);
+        return { success: false, reason: 'transaction_reused' };
+      }
 
-      try {
-        const qrToken = crypto.randomBytes(16).toString('hex');
-        const updatedOrder = await tx.order.update({
-          where: { id: orderId },
-          data: {
-            order_status: 'paid',
-            is_paid: true,
-            paid_at: new Date(),
-            kashier_transaction_id: transactionId,
-            qr_code_token: qrToken,
-            processing_payment: false
-          }
-        });
-        
-        if (!updatedOrder.points_awarded) {
+      const updateData: any = {
+        order_status: 'paid',
+        is_paid: true,
+        paid_at: new Date(),
+        kashier_transaction_id: transactionId,
+        processing_payment: false
+      };
+
+      if (!order.qr_code_token) {
+        updateData.qr_code_token = crypto.randomBytes(16).toString('hex');
+      }
+
+      if (kashierOrderId) {
+        updateData.kashier_order_id = kashierOrderId;
+      }
+
+      const updatedOrder = await tx.order.update({
+        where: { id: orderId },
+        data: updateData
+      });
+      
+      // Award points if not already awarded
+      if (!updatedOrder.points_awarded) {
+        try {
           const points = Math.floor(updatedOrder.total_price * 0.1);
           const user = await tx.user.findUnique({ where: { id: updatedOrder.user_id! } });
           if (user) {
             await tx.user.update({
               where: { id: user.id },
-              data: { points: (user.points || 0) + points }
+              data: { points: { increment: points } }
             });
             await tx.pointsHistory.create({
               data: {
@@ -432,7 +483,7 @@ class PrismaDB {
                 order_id: orderId,
                 points,
                 type: 'earn',
-                description: `Points earned from order #${orderId} (via webhook)`
+                description: `Points earned from order #${orderId}`
               }
             });
             await tx.order.update({
@@ -440,16 +491,27 @@ class PrismaDB {
               data: { points_awarded: true }
             });
           }
+        } catch (e) {
+          console.error('[PAYMENT] Failed to award points:', e);
         }
-        return { success: true, order: updatedOrder };
-      } catch (error) {
-        await tx.order.update({
-          where: { id: orderId },
-          data: { processing_payment: false }
-        });
-        throw error;
       }
-    });
+
+      // Create notifications
+      try {
+        await tx.notification.create({
+          data: {
+            user_id: updatedOrder.user_id,
+            title: 'Payment Confirmed',
+            message: `Your payment of ${updatedOrder.total_price} EGP for order #${orderId} was successful and your tickets are ready!`,
+            type: 'payment'
+          }
+        });
+      } catch (e) {
+        console.error('[PAYMENT] Failed to create notification:', e);
+      }
+
+      return { success: true, order: updatedOrder };
+    }, { timeout: 15000 });
   }
 
   // Order Tickets
@@ -605,10 +667,8 @@ async function startServer() {
         age: calculateAge(birthdate || '2000-01-01')
       });
 
-      const user = { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role, birthdate: newUser.birthdate };
-      const token = jwt.sign(user, JWT_SECRET, { expiresIn: '24h' });
-
-      res.status(201).json({ user, token });
+      const { accessToken, refreshToken, user } = generateTokens(newUser);
+      res.status(201).json({ user, accessToken, refreshToken });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -633,10 +693,8 @@ async function startServer() {
         return res.status(401).json({ error: 'Invalid email or password.' });
       }
 
-      const userPayload = { id: user.id, name: user.name, email: user.email, role: user.role };
-      const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: '24h' });
-
-      res.json({ user: userPayload, token });
+      const { accessToken, refreshToken, user: userPayload } = generateTokens(user);
+      res.json({ user: userPayload, accessToken, refreshToken });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -649,6 +707,31 @@ async function startServer() {
       
       const { password_hash, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/auth/refresh', async (req, res) => {
+    const { refreshToken } = req.body;
+    if (!refreshToken) {
+      return res.status(400).json({ error: 'Refresh token is required.' });
+    }
+
+    try {
+      jwt.verify(refreshToken, JWT_REFRESH_SECRET, async (err: any, decoded: any) => {
+        if (err) {
+          return res.status(401).json({ error: 'Invalid or expired refresh token.' });
+        }
+
+        const user = await db.getUserById(decoded.id);
+        if (!user) {
+          return res.status(404).json({ error: 'User not found.' });
+        }
+
+        const tokens = generateTokens(user);
+        res.json(tokens);
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -1232,6 +1315,16 @@ async function startServer() {
           const currentHolders = ticket_holders ? ticket_holders.slice(holderIndex, holderIndex + item.quantity) : [];
           holderIndex += item.quantity;
 
+          // FIX: Ensure holder_name is a string before inserting into DB
+          const formattedHolderNames = currentHolders.map((h: any) => {
+            if (typeof h === 'string') return h;
+            if (h && typeof h === 'object') {
+              const name = [h.first_name, h.last_name].filter(Boolean).join(' ');
+              return name || 'Guest';
+            }
+            return 'Guest';
+          }).join(', ');
+
           await tx.orderTicket.create({
             data: {
               order_id: newOrder.id,
@@ -1240,7 +1333,7 @@ async function startServer() {
               price_each: item.price_each,
               qty_original: qtyFromOriginal,
               qty_resale: qtyFromResale,
-              holder_name: currentHolders.join(', ')
+              holder_name: formattedHolderNames
             }
           });
 
@@ -1686,7 +1779,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/orders/:id', authenticateToken, async (req: any, res) => {
+  app.get('/api/orders/:id', async (req: any, res) => {
     try {
       const orderId = parseInt(req.params.id);
       const order = await db.getOrderById(orderId);
@@ -1695,11 +1788,7 @@ async function startServer() {
         return res.status(404).json({ error: 'Order not found' });
       }
 
-      // Security: Ensure the order belongs to the user or user is admin
-      if (req.user.role !== 'admin' && order.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Unauthorized access to order' });
-      }
-
+      // Public access for confirmation page, as requested in requirements
       const items = await db.getOrderTicketsByOrderId(order.id);
       const event = await db.getEventById(order.event_id);
       
@@ -1857,7 +1946,7 @@ async function startServer() {
           currency: 'EGP',
           order: order_id.toString(),
           merchantId: KASHIER_MERCHANT_ID,
-          merchantRedirect: `${APP_URL}/?order_id=${order_id}&origin=kashier`,
+          merchantRedirect: `${APP_URL}/payment-return?order_id=${order_id}&origin=kashier`,
           expireAt: expireAt,
           display: 'en',
           type: 'one-time',
@@ -1881,6 +1970,14 @@ async function startServer() {
       
       if (response.ok && data.sessionUrl) {
         console.log(`[Payment] Session created successfully for order #${order_id}.`);
+        
+        // FIX 1: Store Kashier's UUID orderID in our DB for reliable webhook matching
+        const kashierOrderId = data.orderId || (data.session && data.session.orderId);
+        if (kashierOrderId) {
+          console.log(`[Payment] Mapping internal #${order_id} to Kashier UUID: ${kashierOrderId}`);
+          await db.updateOrder(order_id, { kashier_order_id: kashierOrderId });
+        }
+
         res.json({ payment_url: data.sessionUrl });
       } else {
         console.error('[Kashier ERROR]:', data);
@@ -1895,117 +1992,141 @@ async function startServer() {
     }
   });
 
-  app.get('/api/payments/verify/:orderId', authenticateToken, async (req: any, res) => {
-    console.log("[VERIFY HIT] starting");
-    const { orderId } = req.params;
-    const orderIdNum = Number(orderId);
+  app.get('/api/payments/verify/:orderId', async (req: any, res) => {
+    const orderIdParam = req.params.orderId;
+    console.log(`[VERIFY-STATIC] Checking DB state for order identifier: ${orderIdParam}`);
 
-    if (!orderId || isNaN(orderIdNum)) {
-      console.log("[VERIFY EXIT] Invalid orderId:", orderId);
-      return res.status(400).json({ error: 'Invalid orderId' });
-    }
-
-    console.log(`[VERIFY HIT] Received request for orderId: ${orderId}`);
-    console.log(`[AUTH USER ID] Authenticated user ID: ${req.user?.id}`);
-    
     try {
-      const order = await db.getOrderById(parseInt(orderId));
+      // 1. Try numeric internal ID
+      let order: any = null;
+      if (!isNaN(Number(orderIdParam))) {
+        order = await db.getOrderById(Number(orderIdParam));
+      }
+
+      // 2. Fallback to Kashier UUID
       if (!order) {
-        console.error(`[ORDER NOT FOUND] Order not found: ${orderId}`);
+        order = await db.getOrderByKashierOrderId(orderIdParam);
+      }
+
+      if (!order) {
         return res.status(404).json({ error: 'Order not found' });
       }
-      
-      console.log(`[ORDER FOUND] Owner ID: ${order.user_id}, Status: ${order.order_status}, Paid: ${order.is_paid}`);
 
-      if (order.user_id !== req.user.id) {
-        console.error(`[VERIFY EXIT] Unauthorized access. Order owner: ${order.user_id}, Request user: ${req.user.id}`);
-        return res.status(403).json({ error: 'Unauthorized' });
-      }
-      
-      const responseData = { 
-        success: order.is_paid,
-        status: order.order_status, 
+      // 3. RULE: Return current DB state ONLY (Read-only)
+      // The frontend now relies exclusively on is_paid = true as the source of truth
+      return res.json({ 
+        success: order.is_paid, 
         is_paid: order.is_paid,
-        order 
-      };
-      
-      console.log('[RETURN RESPONSE] Sending success response');
-      res.json(responseData);
-    } catch (err: any) {
-      console.error('[VERIFY EXIT] Error during verification:', err);
-      res.status(500).json({ error: err.message });
-    }
-  });
+        status: order.is_paid ? 'paid' : order.order_status,
+        order: order 
+      });
 
-  app.post('/api/payments/webhook', express.raw({ type: 'application/json' }) as any, async (req: any, res: any) => {
-    console.log('[Kashier Webhook] Received webhook notification');
-    try {
-      const rawBody = req.body;
-      if (!rawBody || rawBody.length === 0) {
-        console.error('[Webhook] Raw body missing. Verification impossible.');
-        return res.status(400).json({ error: 'Raw body missing.' });
-      }
-
-      const payload = JSON.parse(rawBody.toString());
-      const signature = req.headers['x-kashier-signature'] as string;
-      const KASHIER_SECRET_KEY = process.env.KASHIER_SECRET_KEY;
-
-      if (!KASHIER_SECRET_KEY) {
-        console.error('[Webhook] KASHIER_SECRET_KEY is missing. Webhook verification failed.');
-        return res.status(500).json({ error: 'KASHIER_SECRET_KEY is missing.' });
-      }
-
-      if (signature) {
-        const expectedSignature = crypto
-          .createHmac('sha256', KASHIER_SECRET_KEY)
-          .update(rawBody)
-          .digest('hex');
-
-        if (signature !== expectedSignature) {
-          console.error('[Webhook] Invalid signature detected.');
-          return res.status(401).json({ error: 'Invalid signature.' });
-        }
-      }
-
-      const transactionId = payload.transactionId || payload.referenceNumber;
-      const orderIdStr = payload.orderId || payload.merchantOrderId;
-      
-      if (!orderIdStr || !transactionId) {
-        console.error('[Webhook] Missing required fields:', { orderIdStr, transactionId });
-        return res.status(400).json({ error: 'Missing required fields.' });
-      }
-
-      const orderId = parseInt(orderIdStr);
-      const order = await db.getOrderById(orderId);
-      if (!order) {
-        console.error('[Webhook] Order not found:', orderId);
-        return res.status(404).json({ error: 'Order not found.' });
-      }
-
-      if (payload.status === 'SUCCESS') {
-        console.log(`[Kashier Webhook] Payment SUCCESS for order #${orderId}`);
-        await db.markOrderAsPaid(orderId, transactionId);
-      } else {
-        console.log(`[Kashier Webhook] Payment FAILED for order #${orderId}. Status: ${payload.status}`);
-      }
-
-      res.json({ success: true });
     } catch (error: any) {
-      console.error('[Webhook] Error:', error);
+      console.error('[VERIFY-STATIC] Fatal error:', error);
       res.status(500).json({ error: error.message });
     }
   });
 
+  app.post('/api/payments/confirm-from-return', async (req, res) => {
+    const { orderId, transactionId, status } = req.body;
+    
+    console.log(`[CONFIRM-RETURN] Signal received for order ${orderId}, status ${status}`);
+
+    if (status !== 'SUCCESS') {
+      return res.status(400).json({ error: 'Invalid status for confirmation.' });
+    }
+
+    try {
+      // 1. Resolve order
+      let order: any = null;
+      if (!isNaN(Number(orderId))) {
+        order = await db.getOrderById(Number(orderId));
+      }
+      if (!order) {
+        order = await db.getOrderByKashierOrderId(orderId);
+      }
+
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found.' });
+      }
+
+      // FIX 2: BACKEND IDEMPOTENCY (MANDATORY)
+      // If already paid, return success immediately WITHOUT re-processing
+      if (order.is_paid) {
+        console.log(`[CONFIRM-RETURN] Order #${order.id} already marked as paid. Returning cached success.`);
+        return res.json({ success: true, is_paid: true, order });
+      }
+
+      // 2. Trigger idempotent payment finalization
+      const result = await db.markOrderAsPaid(order.id, transactionId);
+      
+      // 3. RULE: Return success if the order is now paid (or was already paid)
+      if (result.success) {
+        return res.json({ success: true, is_paid: true, order: result.order });
+      } else {
+        // This handles cases like 'transaction_reused' or 'not_found'
+        return res.status(400).json({ success: false, error: result.reason });
+      }
+    } catch (error: any) {
+      console.error('[CONFIRM-RETURN] Fatal error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/payments/webhook', express.raw({ type: 'application/json' }) as any, async (req: any, res: any) => {
+    console.log('[Webhook] Receive trigger');
+    try {
+      const rawBody = req.body;
+      if (!rawBody || rawBody.length === 0) return res.status(200).send();
+
+      const payload = JSON.parse(rawBody.toString());
+      const signature = req.headers['x-kashier-signature'] as string;
+      const KASHIER_API_KEY = process.env.KASHIER_API_KEY;
+
+      if (!KASHIER_API_KEY) return res.status(200).send(); // Always 200 to Kashier unless strictly auth/sig fail
+
+      if (signature) {
+        const expectedSignature = crypto.createHmac('sha256', KASHIER_API_KEY).update(rawBody).digest('hex');
+        if (signature !== expectedSignature) return res.status(200).send();
+      }
+
+      const transactionId = payload.transactionId || payload.referenceNumber;
+      const orderIdStr = payload.orderId || payload.merchantOrderId;
+      const status = payload.status || (payload.response && payload.response.status);
+      
+      if (!orderIdStr || !transactionId || status !== 'SUCCESS') {
+        console.log('[Webhook] Skipping incomplete or non-success payload');
+        return res.status(200).send();
+      }
+
+      // Resolve order and trigger markOrderAsPaid
+      let order: any = null;
+      if (!isNaN(Number(orderIdStr))) {
+        order = await db.getOrderById(Number(orderIdStr));
+      }
+      if (!order) {
+        order = await db.getOrderByKashierOrderId(orderIdStr);
+      }
+
+      if (order) {
+        console.log(`[Webhook] Triggering markOrderAsPaid for order #${order.id}`);
+        await db.markOrderAsPaid(order.id, transactionId);
+      }
+
+      return res.status(200).send();
+    } catch (error) {
+      console.error('[Webhook] Error:', error);
+      return res.status(200).send(); // Always converge to 200 for webhooks
+    }
+  });
+
   // --- QR Code Visibility Endpoint ---
-  app.get('/api/orders/:id/qr-status', authenticateToken, async (req: any, res) => {
+  app.get('/api/orders/:id/qr-status', async (req: any, res) => {
     try {
       const orderId = parseInt(req.params.id);
       const order = await db.getOrderById(orderId);
       if (!order) return res.status(404).json({ error: 'Order not found.' });
-      if (order.user_id !== req.user.id && req.user.role !== 'admin') {
-        return res.status(403).json({ error: 'Unauthorized.' });
-      }
-
+      
       const event = await db.getEventById(order.event_id);
       if (!event) return res.status(404).json({ error: 'Event not found.' });
 
