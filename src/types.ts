@@ -9,6 +9,7 @@ export interface UserProfile {
   email: string;
   phone?: string;
   role: 'user' | 'organizer' | 'admin';
+  gender?: 'Male' | 'Female' | 'Prefer not to say' | string;
   created_at: string;
   age?: number;
   birthdate?: string;
@@ -43,6 +44,7 @@ export interface Order {
   age?: number;
   birthdate?: string;
   payment_deadline?: string;
+  reserved_at?: string;
   qr_code_token?: string | null;
   is_paid?: boolean;
 }
@@ -72,7 +74,6 @@ export interface Event {
   status: 'draft' | 'published' | 'upcoming' | 'live' | 'closed';
   created_at?: string;
   ticket_types?: TicketType[];
-  show_qr_codes?: boolean;
   pre_registration_count?: number;
   // For backward compatibility with mock data and UI
   date?: string;

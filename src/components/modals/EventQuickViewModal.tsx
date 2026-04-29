@@ -3,6 +3,7 @@ import { X, Calendar, MapPin, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui/Button';
 import { Event } from '../../types';
+import { formatEventTime } from '../../lib/utils';
 
 interface EventQuickViewModalProps {
   event: Event | null;
@@ -47,7 +48,7 @@ export const EventQuickViewModal = ({ event, onClose, onBook }: EventQuickViewMo
                 <h2 className="text-3xl font-bold mb-2">{event.title}</h2>
                 <div className="flex flex-wrap gap-4 text-text-secondary text-sm">
                   <div className="flex items-center gap-2"><Calendar className="text-accent" size={16} /> {event.event_date || event.date}</div>
-                  <div className="flex items-center gap-2"><Clock className="text-accent" size={16} /> {event.event_time || event.time}</div>
+                  <div className="flex items-center gap-2"><Clock className="text-accent" size={16} /> {formatEventTime(event.event_date || event.date, event.event_time || event.time)}</div>
                   <div className="flex items-center gap-2"><MapPin className="text-accent" size={16} /> {event.location}</div>
                 </div>
               </div>

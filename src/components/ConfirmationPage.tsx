@@ -16,6 +16,10 @@ import { Order } from '../types';
 import { orderService } from '../services/orderService';
 import { useUI } from '../context/UIContext';
 import { handleDownloadPDF } from '../lib/ticketUtils';
+import { useQRStatus } from '../hooks/useQRStatus';
+import { useOrder } from '../hooks/useOrder';
+import { updateOrderCache, getOrderCached } from '../lib/orderCache';
+import { formatEventTime } from '../lib/utils';
 
 export const ConfirmationPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -28,65 +32,40 @@ export const ConfirmationPage = () => {
   const initialOrder = (location.state as any)?.order || 
     (lastOrder && id && lastOrder.id.toString() === id ? lastOrder : null);
 
-  const [order, setOrder] = useState<Order | null>(initialOrder);
-  
-  const [qrStatus, setQrStatus] = useState<{ visible: boolean, qr_data?: string, reason?: string } | null>(null);
-  const [loadingQr, setLoadingQr] = useState(false);
-  const [loadingOrder, setLoadingOrder] = useState(() => !order);
-  
-  // STEP 1: Initial fetch ONLY if absolutely necessary
+  // Pre-fill cache if we already have valid data to avoid unnecessary network calls
   useEffect(() => {
-    if (!id) return;
-
-    // 1. Priority check for UIContext data
-    if (
-      lastOrder && 
-      lastOrder.id.toString() === id && 
-      (lastOrder.is_paid || lastOrder.order_status === 'paid')
-    ) {
-      if (order !== lastOrder) setOrder(lastOrder);
-      setLoadingOrder(false);
-      return;
-    }
-
-    // 2. Strict guard: only fetch if missing or mismatched
-    if (order && order.id.toString() === id) {
-      setLoadingOrder(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    const fetchOrder = async () => {
-      setLoadingOrder(true);
-      try {
-        const fetched = await orderService.getOrder(id);
-        if (!cancelled && fetched) {
-          setOrder(fetched);
-          setLastOrder(fetched);
-        }
-      } finally {
-        if (!cancelled) setLoadingOrder(false);
+    if (initialOrder && id && initialOrder.id.toString() === id) {
+      const hasValidEventData = initialOrder.event && 
+        (initialOrder.event.event_date || initialOrder.event.date) && 
+        (initialOrder.event.event_time || initialOrder.event.time);
+      
+      if (hasValidEventData) {
+        updateOrderCache(initialOrder);
       }
-    };
+    }
+  }, [initialOrder, id]);
 
-    fetchOrder();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [id, order, lastOrder, setLastOrder]);
-
+  const { order: hookOrder, loading: hookLoading } = useOrder(id);
+  
+  // Prefer hookOrder (cached or fetched), fallback to initialOrder for immediate UI
+  const order = hookOrder || initialOrder;
   const isPaid = order?.is_paid === true || order?.order_status === 'paid';
-
+  
+  const { qrStatus, loading: loadingQr } = useQRStatus(id, isPaid);
+  const loadingOrder = hookLoading && !initialOrder;
+  
+  // Sync state between hook and context
   useEffect(() => {
-    if (!id || !isPaid) return;
+    if (hookOrder) {
+      setLastOrder(hookOrder);
+    }
+  }, [hookOrder, setLastOrder]);
 
-    setLoadingQr(true);
-    orderService.getOrderQRStatus(id)
-      .then(setQrStatus)
-      .finally(() => setLoadingQr(false));
-  }, [id, isPaid]);
+  const isQRVisible = qrStatus?.visible;
+
+  const confirmationMessage = isQRVisible
+    ? "Your booking is confirmed. Your QR code is ready for entry."
+    : "Your booking is confirmed. Your ticket will be sent to you as soon as we get close to the event.";
 
   // FIX 2 & 3: Success condition must run BEFORE any loading logic
   if (order?.is_paid || order?.order_status === 'paid') {
@@ -103,10 +82,11 @@ export const ConfirmationPage = () => {
   const isProcessing = !isPaid;
   
   const refreshOrderStatus = async () => {
+    if (!id) return;
     try {
-      const resp = await orderService.getOrder(order.id);
+      // Use getOrderCached with forceRefresh: true to ensure we hit the network
+      const resp = await getOrderCached(Number(id), true);
       if (resp) {
-        setOrder(resp);
         setLastOrder(resp);
       }
     } catch (err) {
@@ -130,9 +110,16 @@ export const ConfirmationPage = () => {
       
       <p className="text-text-secondary text-lg mb-12">
         {isPaid ? (
-          <>Your booking for <span className="text-white font-bold">{order.event?.title}</span> is confirmed. Your tickets are ready below.</>
+          <>{confirmationMessage} Order for <span className="text-white font-bold">{order.event?.title}</span>.</>
         ) : (
-          <>We are waiting for Kashier to confirm your payment for <span className="text-white font-bold">{order.event?.title}</span>. This usually takes a few seconds.</>
+          <>
+            <p className="mb-2">We are waiting for Kashier to confirm your payment for <span className="text-white font-bold">{order.event?.title}</span>.</p>
+            {order.order_status === 'pending' && (
+              <p className="text-sm text-yellow-500/80 bg-yellow-500/5 py-3 px-4 rounded-2xl border border-yellow-500/10 inline-flex items-center gap-2 mx-auto">
+                <Clock size={14} /> Your reservation will expire in 1 hour if payment is not completed.
+              </p>
+            )}
+          </>
         )}
         <br />
         Order ID: #{order.id}
@@ -158,7 +145,7 @@ export const ConfirmationPage = () => {
               <div className="w-full h-full flex flex-col items-center justify-center text-primary-bg text-center p-2">
                 <Lock size={32} className="mb-2" />
                 <p className="text-[10px] font-bold uppercase">QR Code Locked</p>
-                <p className="text-[8px]">{qrStatus?.reason || 'Waiting for payment confirmation'}</p>
+                <p className="text-[8px]">{qrStatus?.reason || 'Waiting for entry window'}</p>
               </div>
             )}
           </div>
@@ -172,7 +159,7 @@ export const ConfirmationPage = () => {
             <div className="space-y-2 text-text-secondary">
               <p className="flex items-center gap-2">
                 <Calendar size={16} /> 
-                {order.event?.event_date || (order.event?.date ? new Date(order.event.date).toLocaleDateString() : 'Date TBD')} at {order.event?.event_time || order.event?.time || 'Time TBD'}
+                {order.event?.event_date || (order.event?.date ? new Date(order.event.date).toLocaleDateString() : 'Date TBD')} at {formatEventTime(order.event?.event_date || order.event?.date, order.event?.event_time || order.event?.time)}
               </p>
               <p className="flex items-center gap-2"><MapPin size={16} /> {order.event?.location || 'Location TBD'}</p>
               <div className="mt-4 pt-4 border-t border-white/5">

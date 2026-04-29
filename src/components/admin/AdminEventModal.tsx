@@ -31,7 +31,7 @@ export const AdminEventModal: React.FC = () => {
     rules: '',
     googleMapsUrl: '',
     status: 'draft' as const,
-    showQRCodes: false,
+    qr_enabled_manual: false,
     government: 'Cairo',
     require_approval: false,
     ticketTypes: [] as any[]
@@ -71,7 +71,7 @@ export const AdminEventModal: React.FC = () => {
           rules: editingEvent.rules || '',
           googleMapsUrl: editingEvent.google_maps_url || '',
           status: editingEvent.status || 'draft',
-          showQRCodes: editingEvent.show_qr_codes || false,
+          qr_enabled_manual: editingEvent.qr_enabled_manual || false,
           government: editingEvent.government || 'Cairo',
           require_approval: editingEvent.require_approval || false,
           ticketTypes: editingEvent.ticket_types || []
@@ -89,7 +89,7 @@ export const AdminEventModal: React.FC = () => {
           rules: '',
           googleMapsUrl: '',
           status: 'draft',
-          showQRCodes: false,
+          qr_enabled_manual: false,
           government: 'Cairo',
           require_approval: false,
           ticketTypes: [{ 
@@ -149,7 +149,7 @@ export const AdminEventModal: React.FC = () => {
       rules: formData.rules,
       google_maps_url: formData.googleMapsUrl,
       status: formData.status,
-      show_qr_codes: formData.showQRCodes,
+      qr_enabled_manual: formData.qr_enabled_manual,
       government: formData.government,
       require_approval: formData.require_approval,
       ticket_types: formData.ticketTypes
@@ -338,12 +338,12 @@ export const AdminEventModal: React.FC = () => {
                     <div className="flex items-center gap-3 bg-white/5 p-4 rounded-xl border border-white/5">
                       <input 
                         type="checkbox" 
-                        id="show_qr_codes" 
-                        checked={formData.showQRCodes} 
-                        onChange={e => updateField('showQRCodes', e.target.checked)}
+                        id="qr_enabled_manual" 
+                        checked={formData.qr_enabled_manual} 
+                        onChange={e => updateField('qr_enabled_manual', e.target.checked)}
                         className="w-5 h-5 accent-accent"
                       />
-                      <label htmlFor="show_qr_codes" className="text-sm font-medium cursor-pointer">
+                      <label htmlFor="qr_enabled_manual" className="text-sm font-medium cursor-pointer">
                         Enable QR Codes Manually (Override)
                         <p className="text-xs text-text-secondary font-normal">If enabled, QR codes will be visible to users even before the 1-hour window.</p>
                       </label>

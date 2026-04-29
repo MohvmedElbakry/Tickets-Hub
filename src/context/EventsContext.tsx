@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Event } from '../types';
 import { eventService } from '../services/eventService';
 import { orderService } from '../services/orderService';
@@ -32,34 +32,67 @@ const EventsContext = createContext<EventsContextType | undefined>(undefined);
 export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(false);
+  const eventsTimestampRef = useRef<number>(0);
+  const EVENTS_TTL_MS = 60000; // 60 seconds
+  const eventsInFlightRef = useRef<Promise<void> | null>(null);
+
   const [settings, setSettings] = useState({ service_fee_percent: 10 });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string>('All');
   const [maxPrice, setMaxPrice] = useState<number>(50000);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
-  const hasFetchedEventsRef = useRef(false);
-  const hasFetchedSettingsRef = useRef(false);
 
   const { accessToken } = useAuth();
-  const { setIsLoginModalOpen, setBookingData, setIsBookingModalOpen } = useUI();
+  const { setIsLoginModalOpen, setBookingData, setIsBookingModalOpen, paymentFlowActive, setPaymentFlowActive } = useUI();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const refreshEvents = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await eventService.getEvents();
-      if (data && Array.isArray(data)) {
-        setEvents(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch events in EventsContext', err);
-    } finally {
-      setLoading(false);
+  const isPaymentFlowRoute =
+    location.pathname.startsWith('/payment-return') ||
+    (location.pathname.startsWith('/confirmation') && paymentFlowActive);
+
+  const hasFetchedSettingsRef = useRef(false);
+
+  const refreshEvents = useCallback(async (force = false) => {
+    if (isPaymentFlowRoute || paymentFlowActive) {
+      console.log("🚫 [EventsContext] Blocked refreshEvents during payment flow");
+      return;
     }
-  }, []);
+
+    const now = Date.now();
+    if (!force && eventsTimestampRef.current && (now - eventsTimestampRef.current < EVENTS_TTL_MS)) {
+      return;
+    }
+
+    if (eventsInFlightRef.current) {
+      return eventsInFlightRef.current;
+    }
+
+    const fetchTask = (async () => {
+      // Only show loading if we don't have events yet
+      if (events.length === 0) setLoading(true);
+      
+      try {
+        const data = await eventService.getEvents();
+        if (data && Array.isArray(data)) {
+          setEvents(data);
+          eventsTimestampRef.current = Date.now();
+        }
+      } catch (err) {
+        console.error('Failed to fetch events in EventsContext', err);
+      } finally {
+        setLoading(false);
+        eventsInFlightRef.current = null;
+      }
+    })();
+
+    eventsInFlightRef.current = fetchTask;
+    return fetchTask;
+  }, [events.length, isPaymentFlowRoute, paymentFlowActive]);
 
   const fetchSettings = useCallback(async () => {
+    if (isPaymentFlowRoute || paymentFlowActive) return;
     if (hasFetchedSettingsRef.current) return;
     hasFetchedSettingsRef.current = true;
     try {
@@ -69,7 +102,7 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.error('Failed to fetch settings in EventsContext', err);
       hasFetchedSettingsRef.current = false;
     }
-  }, []);
+  }, [isPaymentFlowRoute, paymentFlowActive]);
 
   const handlePreRegister = useCallback(async (eventId: string | number) => {
     try {
@@ -119,6 +152,7 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             localStorage.removeItem('last_payment_order_id');
             localStorage.setItem('last_payment_order_id', order.id);
             if (session && session.payment_url) {
+              setPaymentFlowActive(true); // START PAYMENT FLOW FLAG
               window.location.href = session.payment_url;
             } else {
               navigate(`/checkout/${order.id}`);
@@ -143,25 +177,35 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } finally {
       setPurchaseLoading(false);
     }
-  }, [accessToken, navigate, setIsLoginModalOpen, setBookingData, setIsBookingModalOpen]);
+  }, [accessToken, navigate, setIsLoginModalOpen, setBookingData, setIsBookingModalOpen, setPaymentFlowActive]);
 
   const filteredEvents = useMemo(() => {
     return events.filter(event => {
       const matchesSearch = event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           event.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesLocation = selectedLocation === 'All' || event.location === selectedLocation;
-      const matchesPrice = event.ticket_types?.some(tt => tt.price <= maxPrice) || false;
+      // We check for ticket_types to be existing and filter properly
+      const matchesPrice = event.ticket_types && event.ticket_types.length > 0
+                           ? event.ticket_types.some(tt => tt.price <= maxPrice)
+                           : true; // Or handle as you wish for events with no explicit price in filter
       return matchesSearch && matchesLocation && matchesPrice && event.status !== 'draft';
     });
   }, [events, searchQuery, selectedLocation, maxPrice]);
 
   useEffect(() => {
-    if (!hasFetchedEventsRef.current) {
-      hasFetchedEventsRef.current = true;
-      refreshEvents();
+    // Only fetch on specific routes or when cache is empty
+    const shouldFetch = location.pathname === '/' || location.pathname === '/events' || events.length === 0;
+    
+    if (shouldFetch && !isPaymentFlowRoute && !paymentFlowActive) {
+      const now = Date.now();
+      const isStale = eventsTimestampRef.current && (now - eventsTimestampRef.current >= EVENTS_TTL_MS);
+      
+      if (!eventsTimestampRef.current || isStale) {
+        refreshEvents();
+      }
     }
     fetchSettings();
-  }, [refreshEvents, fetchSettings]);
+  }, [location.pathname, isPaymentFlowRoute, paymentFlowActive, refreshEvents, events.length, fetchSettings]);
 
   return (
     <EventsContext.Provider value={{ 

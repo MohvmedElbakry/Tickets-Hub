@@ -25,6 +25,8 @@ interface UIContextType {
   setIsNotificationsOpen: (open: boolean) => void;
   isHandlingPayment: boolean;
   setIsHandlingPayment: (loading: boolean) => void;
+  paymentFlowActive: boolean;
+  setPaymentFlowActive: (active: boolean) => void;
   verificationStarted: boolean;
   setVerificationStarted: (started: boolean) => void;
   handleEventClick: (event: Event) => void;
@@ -46,15 +48,37 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isHandlingPayment, setIsHandlingPayment] = useState(false);
+  const [paymentFlowActive, setPaymentFlowActive] = useState(false);
   const [verificationStarted, setVerificationStarted] = useState(false);
 
-  // Handle unauthorized API calls globally
+  // Handle unauthorized API calls and global logout
   useEffect(() => {
     const handleOpenLogin = () => {
       setIsLoginModalOpen(true);
     };
+    
+    const handleLogoutReset = () => {
+      setSelectedEvent(null);
+      setLastOrder(null);
+      setIsLoginModalOpen(false);
+      setIsSignupModalOpen(false);
+      setIsEventModalOpen(false);
+      setIsBookingModalOpen(false);
+      setBookingData(null);
+      setEditingEvent(null);
+      setIsNotificationsOpen(false);
+      setIsHandlingPayment(false);
+      setPaymentFlowActive(false);
+      setVerificationStarted(false);
+    };
+
     window.addEventListener('open-login-modal', handleOpenLogin);
-    return () => window.removeEventListener('open-login-modal', handleOpenLogin);
+    window.addEventListener('app-logout', handleLogoutReset);
+    
+    return () => {
+      window.removeEventListener('open-login-modal', handleOpenLogin);
+      window.removeEventListener('app-logout', handleLogoutReset);
+    };
   }, []);
 
   return (
@@ -69,6 +93,7 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       editingEvent, setEditingEvent,
       isNotificationsOpen, setIsNotificationsOpen,
       isHandlingPayment, setIsHandlingPayment,
+      paymentFlowActive, setPaymentFlowActive,
       verificationStarted, setVerificationStarted,
       handleEventClick: (event: Event) => {
         setSelectedEvent(event);

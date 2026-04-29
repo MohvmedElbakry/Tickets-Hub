@@ -4,6 +4,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { orderService } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
+import { invalidateOrder } from '../lib/orderCache';
+import { clearQRStatusCache } from '../lib/qrStatusCache';
 
 /**
  * useKashierReturn - Refactored to prioritize backend as the Source of Truth.
@@ -21,6 +23,7 @@ export const useKashierReturn = () => {
     setLastOrder, 
     setSelectedEvent, 
     setIsHandlingPayment: setIsHandlingPaymentGlobal,
+    setPaymentFlowActive,
     setVerificationStarted,
     isHandlingPayment: isVerifyingGlobal
   } = useUI();
@@ -39,6 +42,7 @@ export const useKashierReturn = () => {
 
   const [isRecovering, setIsRecovering] = useState(false);
   const isPaidRef = useRef(false);
+  const isConfirmingRef = useRef(false);
   const attemptRef = useRef(0);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -50,7 +54,8 @@ export const useKashierReturn = () => {
     if (!isAuthReady) return;
 
     // 0. STRICT EXECUTION LOCK (Prevents duplicate execution across remounts)
-    if (isOrderProcessed(orderId)) return;
+    if (isOrderProcessed(orderId) || isConfirmingRef.current) return;
+    isConfirmingRef.current = true;
     markOrderProcessed(orderId);
 
     const startVerification = async () => {
@@ -74,18 +79,22 @@ export const useKashierReturn = () => {
              console.log("✅ [PaymentReturn] Confirmation succeeded. Skipping polling.");
              isPaidRef.current = true;
              
+             // Invalidate caches
+             invalidateOrder(Number(orderId));
+             clearQRStatusCache(orderId);
+             
              // IMMEDIATELY set state before navigation
              setLastOrder({ 
                id: Number(orderId), 
                is_paid: true, 
-               order_status: 'paid',
-               ...(confirmRes.order || {}) 
+               order_status: 'paid'
              } as any);
              
              if (confirmRes.order?.event) setSelectedEvent(confirmRes.order.event);
              
              // Reset global handler BEFORE navigation to prevent blocking
              setIsHandlingPaymentGlobal(false);
+             setPaymentFlowActive(false);
              setVerificationStarted(false);
              
              navigate(`/confirmation/${orderId}`, { 
@@ -94,8 +103,7 @@ export const useKashierReturn = () => {
                  order: {
                    id: Number(orderId),
                    is_paid: true,
-                   order_status: 'paid',
-                   ...(confirmRes.order || {}) 
+                   order_status: 'paid'
                  }
                }
              });
@@ -120,18 +128,22 @@ export const useKashierReturn = () => {
             console.log("✅ [PaymentReturn] SUCCESS detected via is_paid flag.");
             isPaidRef.current = true; // STOP LOOP
             
+            // Invalidate caches
+            invalidateOrder(Number(orderId));
+            clearQRStatusCache(orderId);
+            
             // IMMEDIATELY set state before navigation
             setLastOrder({ 
               id: Number(orderId), 
               is_paid: true, 
-              order_status: 'paid',
-              ...(res.order || {})
+              order_status: 'paid'
             } as any);
             
             if (res.order?.event) setSelectedEvent(res.order.event);
 
             // Reset global handler BEFORE navigation to prevent blocking
             setIsHandlingPaymentGlobal(false);
+            setPaymentFlowActive(false);
             setVerificationStarted(false);
 
             navigate(`/confirmation/${orderId}`, { 
@@ -140,8 +152,7 @@ export const useKashierReturn = () => {
                 order: {
                   id: Number(orderId), 
                   is_paid: true, 
-                  order_status: 'paid',
-                  ...(res.order || {})
+                  order_status: 'paid'
                 }
               }
             });
@@ -151,6 +162,7 @@ export const useKashierReturn = () => {
           if (res?.status === "failed" || res?.order_status === "cancelled") {
             console.log("❌ [PaymentReturn] FAILURE detected.");
             setIsHandlingPaymentGlobal(false);
+            setPaymentFlowActive(false);
             setVerificationStarted(false);
             navigate(`/payment-failure/${orderId}`, { replace: true });
             return; // STOP
@@ -167,6 +179,7 @@ export const useKashierReturn = () => {
              }
           } else {
              setIsHandlingPaymentGlobal(false);
+             setPaymentFlowActive(false);
              setVerificationStarted(false);
              navigate(`/dashboard`, { replace: true });
           }

@@ -15,6 +15,7 @@ import { useAuth } from '../context/AuthContext';
 import { useEvents } from '../context/EventsContext';
 import { useUI } from '../context/UIContext';
 import { eventService } from '../services/eventService';
+import { formatEventTime } from '../lib/utils';
 
 export const EventDetailsPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -141,7 +142,7 @@ export const EventDetailsPage = () => {
             </button>
             <h1 className="text-4xl md:text-6xl font-bold mb-6">{selectedEvent.title}</h1>
             <div className="flex flex-wrap gap-6 text-lg">
-              <div className="flex items-center gap-2"><Calendar className="text-accent" size={20} /> {selectedEvent.event_date || selectedEvent.date} at {selectedEvent.event_time || selectedEvent.time}</div>
+              <div className="flex items-center gap-2"><Calendar className="text-accent" size={20} /> {selectedEvent.event_date || selectedEvent.date} at {formatEventTime(selectedEvent.event_date || selectedEvent.date, selectedEvent.event_time || selectedEvent.time)}</div>
               <div className="flex items-center gap-2"><MapPin className="text-accent" size={20} /> {selectedEvent.location}</div>
             </div>
           </div>

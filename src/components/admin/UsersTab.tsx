@@ -31,6 +31,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
             <tr className="border-b border-white/5">
               <th className="px-6 py-4 text-sm font-bold text-text-secondary">User</th>
               <th className="px-6 py-4 text-sm font-bold text-text-secondary">Email</th>
+              <th className="px-6 py-4 text-sm font-bold text-text-secondary">Gender</th>
               <th className="px-6 py-4 text-sm font-bold text-text-secondary">Role</th>
               <th className="px-6 py-4 text-sm font-bold text-text-secondary">Joined</th>
               <th className="px-6 py-4 text-sm font-bold text-text-secondary">Action</th>
@@ -41,6 +42,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
               <tr key={u.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
                 <td className="px-6 py-4 font-medium">{u.name}</td>
                 <td className="px-6 py-4 text-sm text-text-secondary">{u.email}</td>
+                <td className="px-6 py-4 text-sm text-text-secondary">{u.gender || '-'}</td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${u.role === 'admin' ? 'bg-purple-400/10 text-purple-400' : 'bg-blue-400/10 text-blue-400'}`}>
                     {u.role}
@@ -61,7 +63,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
               </tr>
             )) : (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-text-secondary italic">No users found.</td>
+                <td colSpan={6} className="px-6 py-12 text-center text-text-secondary italic">No users found.</td>
               </tr>
             )}
           </tbody>

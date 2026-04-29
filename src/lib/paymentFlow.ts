@@ -7,7 +7,7 @@ export const isPaymentFlow = (): boolean => {
   
   // It returns TRUE when:
   // 1. pathname starts with /payment-return
-  // 2. OR pathname starts with /confirmation AND URL contains payment timestamp param (t=)
+  // 2. OR pathname starts with /confirmation
   return pathname.startsWith('/payment-return') || 
-         (pathname.startsWith('/confirmation') && search.includes('t='));
+         pathname.startsWith('/confirmation');
 };

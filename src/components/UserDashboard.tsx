@@ -29,6 +29,9 @@ import { eventService } from '../services/eventService';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { handleDownloadPDF } from '../lib/ticketUtils';
+import { useQRStatus } from '../hooks/useQRStatus';
+import { useOrder } from '../hooks/useOrder';
+import { formatEventTime } from '../lib/utils';
 
 export const UserDashboard = () => {
   const navigate = useNavigate();
@@ -45,26 +48,17 @@ export const UserDashboard = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'tickets' | 'rewards' | 'profile' | 'payments' | 'pre-registrations'>('dashboard');
   const [ticketFilter, setTicketFilter] = useState<'all' | 'pre_registered' | 'pending' | 'paid' | 'invited'>('all');
   const [viewingTicket, setViewingTicket] = useState<Order | null>(null);
-  const [viewingTicketQrStatus, setViewingTicketQrStatus] = useState<{ visible: boolean, qr_data?: string, reason?: string } | null>(null);
-  const [loadingViewingQr, setLoadingViewingQr] = useState(false);
+  
+  // Phase 3.2.4: Use single source of truth for the viewing ticket
+  const { order: freshOrder, loading: loadingFullOrder } = useOrder(viewingTicket?.id);
 
-  useEffect(() => {
-    if (viewingTicket && viewingTicket.is_paid) {
-      setLoadingViewingQr(true);
-      orderService.getOrderQRStatus(viewingTicket.id)
-      .then(data => {
-        if (data) setViewingTicketQrStatus(data);
-      })
-      .catch(err => {
-        if (err.status !== 401) {
-          console.error('Failed to fetch QR status', err);
-        }
-      })
-      .finally(() => setLoadingViewingQr(false));
-    } else {
-      setViewingTicketQrStatus(null);
-    }
-  }, [viewingTicket]);
+  const { 
+    qrStatus: viewingTicketQrStatus, 
+    loading: loadingViewingQr 
+  } = useQRStatus(
+    viewingTicket?.id?.toString(), 
+    viewingTicket?.is_paid === true
+  );
 
   useEffect(() => {
     const fetchData = async () => {
@@ -230,7 +224,10 @@ export const UserDashboard = () => {
                           </div>
                           <div className="p-6 flex-1">
                             <h4 className="font-bold mb-1 line-clamp-1">{order.event?.title}</h4>
-                            <p className="text-xs text-text-secondary mb-2">{order.event?.event_date}</p>
+                            <p className="text-xs text-text-secondary mb-1">{order.event?.event_date}</p>
+                            <p className="text-[10px] text-text-secondary mb-2 uppercase tracking-wider font-medium">
+                              {formatEventTime(order.event?.event_date || order.event?.date, order.event?.event_time || order.event?.time)}
+                            </p>
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                               order.order_status === 'paid' ? 'bg-green-400/10 text-green-400' : 'bg-yellow-400/10 text-yellow-400'
                             }`}>
@@ -299,7 +296,10 @@ export const UserDashboard = () => {
                         </div>
                         <div className="p-6 flex-1">
                           <h4 className="font-bold mb-1 line-clamp-1">{item.event?.title}</h4>
-                          <p className="text-xs text-text-secondary mb-2">{item.event?.event_date}</p>
+                          <p className="text-xs text-text-secondary mb-1">{item.event?.event_date}</p>
+                          <p className="text-[10px] text-text-secondary mb-2 uppercase tracking-wider font-medium">
+                            {formatEventTime(item.event?.event_date || item.event?.date, item.event?.event_time || item.event?.time)}
+                          </p>
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                             item.displayStatus === 'paid' ? 'bg-green-400/10 text-green-400' : 
                             item.displayStatus === 'approved' ? 'bg-blue-400/10 text-blue-400' :
@@ -380,7 +380,15 @@ export const UserDashboard = () => {
                                   </Button>
                                 </div>
                               )}
-                              {(item.order_status === 'pending' || item.order_status === 'requested') && (
+                              {item.order_status === 'pending' && (
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className="text-[10px] text-yellow-500 font-bold uppercase tracking-wider">Awaiting approval</span>
+                                  <span className="text-[8px] text-text-secondary flex items-center gap-1 uppercase tracking-widest leading-none">
+                                    <Clock size={8} /> 1hr Reservation
+                                  </span>
+                                </div>
+                              )}
+                              {item.order_status === 'requested' && (
                                 <span className="text-[10px] text-yellow-500 font-bold">Waiting for approval</span>
                               )}
                             </>
@@ -538,6 +546,10 @@ export const UserDashboard = () => {
                     <p className="font-bold">{user?.phone || 'Not provided'}</p>
                   </div>
                   <div>
+                    <label className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-2 block">Gender</label>
+                    <p className="font-bold">{user?.gender || 'Not specified'}</p>
+                  </div>
+                  <div>
                     <label className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-2 block">Member Since</label>
                     <p className="font-bold">{user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}</p>
                   </div>
@@ -606,7 +618,7 @@ export const UserDashboard = () => {
                 {/* Premium Ticket Header */}
                 <div className="relative h-32 w-full overflow-hidden">
                   <img 
-                    src={viewingTicket.event?.image_url || 'https://picsum.photos/seed/event/800/400'} 
+                    src={(freshOrder || viewingTicket).event?.image_url || 'https://picsum.photos/seed/event/800/400'} 
                     alt="Event" 
                     className="w-full h-full object-cover brightness-50"
                     referrerPolicy="no-referrer"
@@ -623,30 +635,32 @@ export const UserDashboard = () => {
                   </button>
                   <div className="absolute bottom-4 left-6 right-6 z-10">
                     <span className="px-2 py-0.5 bg-accent/20 text-accent rounded-full text-[9px] font-black uppercase tracking-widest border border-accent/30 mb-1 inline-block">
-                      {viewingTicket.items?.[0]?.name || 'Standard Entry'}
+                      {(freshOrder || viewingTicket).items?.[0]?.name || 'Standard Entry'}
                     </span>
-                    <h2 className="text-xl font-black text-white leading-tight line-clamp-1">{viewingTicket.event?.title}</h2>
+                    <h2 className="text-xl font-black text-white leading-tight line-clamp-1">{(freshOrder || viewingTicket).event?.title}</h2>
                   </div>
                 </div>
 
-                <div id={`ticket-card-${viewingTicket.id}`} className="p-6 space-y-6">
+                <div id={`ticket-card-${(freshOrder || viewingTicket).id}`} className="p-6 space-y-6">
                   {/* Event Details Grid */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-0.5">
                       <p className="text-[9px] text-text-secondary font-black uppercase tracking-widest">Date & Time</p>
                       <p className="text-xs font-bold text-white flex items-center gap-1.5">
                         <Calendar size={12} className="text-accent" />
-                        {viewingTicket.event?.event_date}
+                        {(freshOrder || viewingTicket).event?.event_date}
                       </p>
-                      <p className="text-[10px] text-text-secondary pl-4">{viewingTicket.event?.event_time}</p>
+                      <p className="text-[10px] text-text-secondary pl-4">
+                        {formatEventTime((freshOrder || viewingTicket).event?.event_date || (freshOrder || viewingTicket).event?.date, (freshOrder || viewingTicket).event?.event_time || (freshOrder || viewingTicket).event?.time)}
+                      </p>
                     </div>
                     <div className="space-y-0.5">
                       <p className="text-[9px] text-text-secondary font-black uppercase tracking-widest">Location</p>
                       <p className="text-xs font-bold text-white flex items-center gap-1.5">
                         <MapPin size={12} className="text-accent" />
-                        {viewingTicket.event?.location}
+                        {(freshOrder || viewingTicket).event?.location}
                       </p>
-                      <p className="text-[10px] text-text-secondary pl-4 line-clamp-1">{viewingTicket.event?.venue}</p>
+                      <p className="text-[10px] text-text-secondary pl-4 line-clamp-1">{(freshOrder || viewingTicket).event?.venue}</p>
                     </div>
                   </div>
 
@@ -654,7 +668,11 @@ export const UserDashboard = () => {
                   <div className="space-y-3">
                     <p className="text-[9px] text-text-secondary font-black uppercase tracking-widest">Ticket Holders</p>
                     <div className="space-y-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
-                      {viewingTicket.items?.map((item, idx) => (
+                      {loadingFullOrder && !(freshOrder || viewingTicket).items ? (
+                        <div className="flex justify-center py-4">
+                          <RefreshCw className="animate-spin text-accent" size={24} />
+                        </div>
+                      ) : (freshOrder || viewingTicket).items?.map((item, idx) => (
                         <div key={item.id || idx} className="flex justify-between items-center p-3 bg-primary-bg rounded-2xl border border-white/5">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center text-accent text-[10px] font-bold">
@@ -676,15 +694,15 @@ export const UserDashboard = () => {
                   {/* QR Code Section */}
                   <div className="flex flex-col items-center justify-center py-4 border-t border-dashed border-white/10">
                     {(() => {
-                      if (!viewingTicket.is_paid) {
+                      if (!(freshOrder || viewingTicket).is_paid) {
                         return (
                           <div className="text-center p-6 bg-yellow-500/5 rounded-3xl border border-yellow-500/10 w-full">
                             <Clock size={24} className="mx-auto text-yellow-500 mb-2" />
                             <p className="text-sm font-bold text-yellow-500">
-                              {viewingTicket.displayStatus === 'approved' ? 'Payment Required' : 'Pending Approval'}
+                              {(freshOrder || viewingTicket).displayStatus === 'approved' ? 'Payment Required' : 'Pending Approval'}
                             </p>
                             <p className="text-xs text-text-secondary mt-1">
-                              {viewingTicket.displayStatus === 'approved' ? 'Complete payment to see QR' : 'Waiting for admin to approve'}
+                              {(freshOrder || viewingTicket).displayStatus === 'approved' ? 'Complete payment to see QR' : 'Approval pending. Reservation expires in 1 hour if not paid/approved.'}
                             </p>
                           </div>
                         );
@@ -710,7 +728,7 @@ export const UserDashboard = () => {
                             </div>
                             <div className="text-center">
                               <p className="text-[10px] text-text-secondary font-black uppercase tracking-widest mb-1">Scan for Entry</p>
-                              <p className="text-xs font-bold text-accent">Order ID: #{viewingTicket.id}</p>
+                              <p className="text-xs font-bold text-accent">Order ID: #{(freshOrder || viewingTicket).id}</p>
                             </div>
                           </div>
                         );
@@ -731,17 +749,17 @@ export const UserDashboard = () => {
                     <Button 
                       variant="outline" 
                       className="flex-1 py-4 rounded-2xl text-xs gap-2 border-white/10 hover:bg-white/5" 
-                      onClick={() => handleDownloadPDF(viewingTicket)}
+                      onClick={() => handleDownloadPDF(freshOrder || viewingTicket)}
                     >
                       <Download size={14} /> Download PDF
                     </Button>
                     
-                    {viewingTicket.is_paid && (
+                    {(freshOrder || viewingTicket).is_paid && (
                       <Button 
                         variant="secondary" 
                         className="flex-1 py-4 rounded-2xl text-xs bg-red-500/10 text-red-500 hover:bg-red-500/20 border-none" 
                         onClick={() => {
-                          const ticketToResell = viewingTicket.items && viewingTicket.items.length > 0 ? viewingTicket.items[0] : null;
+                          const ticketToResell = (freshOrder || viewingTicket).items && (freshOrder || viewingTicket).items.length > 0 ? (freshOrder || viewingTicket).items[0] : null;
                           if (ticketToResell) {
                             setSelectedTicket(ticketToResell);
                             setIsResaleModalOpen(true);
@@ -753,13 +771,13 @@ export const UserDashboard = () => {
                       </Button>
                     )}
 
-                    {!viewingTicket.is_paid && viewingTicket.displayStatus === 'approved' && (
+                    {!(freshOrder || viewingTicket).is_paid && (freshOrder || viewingTicket).displayStatus === 'approved' && (
                       <Button 
                         variant="primary" 
                         className="flex-1 py-4 rounded-2xl text-xs shadow-lg shadow-accent/30" 
                         onClick={() => {
                           if (confirm('Proceed to payment? (Simulated)')) {
-                            orderService.payOrder(viewingTicket.id).then(data => data && window.location.reload());
+                            orderService.payOrder((freshOrder || viewingTicket).id).then(data => data && window.location.reload());
                           }
                         }}
                       >

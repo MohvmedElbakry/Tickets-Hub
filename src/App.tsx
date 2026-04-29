@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 
 import { useAuth } from './context/AuthContext';
 import { useEvents } from './context/EventsContext';
+import { useUI } from './context/UIContext';
 
 // Import refactored components
 import { AdminDashboard } from './components/admin/AdminDashboard';
@@ -31,14 +32,50 @@ import {
 } from './components/PaymentPages';
 import { PaymentReturnPage } from './components/PaymentReturnPage';
 import { useKashierReturn } from './hooks/useKashierReturn';
-import { isPaymentFlow } from './lib/paymentFlow';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { AdminRoute } from './components/AdminRoute';
 
 export default function App() {
+  const [appKey, setAppKey] = useState(0);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleLogout = () => {
+      console.log('🔄 [App] Global logout detected, forcing app remount');
+      setAppKey(prev => prev + 1);
+      navigate('/');
+    };
+    window.addEventListener("app-logout", handleLogout);
+    return () => window.removeEventListener("app-logout", handleLogout);
+  }, [navigate]);
+
+  return <AppContent key={appKey} location={location} />;
+}
+
+function AppContent({ location }: { location: any; key?: React.Key }) {
   const { accessToken, isLoading } = useAuth();
   const { refreshEvents } = useEvents();
-  const location = useLocation();
+  const { setPaymentFlowActive, setIsLoginModalOpen } = useUI();
   const initializedRef = useRef(false);
   
+  // Handle auto-login trigger from ProtectedRoute
+  useEffect(() => {
+    if (location.state?.openLogin) {
+      setIsLoginModalOpen(true);
+      // Clear state so it doesn't keep popping up
+      window.history.replaceState({}, document.title);
+    }
+  }, [location, setIsLoginModalOpen]);
+
+  // PHASE 3.2.5: CLEAR payment flow flag definitively when landing on confirmation page
+  useEffect(() => {
+    if (location.pathname.startsWith('/confirmation')) {
+      console.log("✅ [AppContent] Navigation to confirmation detected. Clearing payment flow flag.");
+      setPaymentFlowActive(false);
+    }
+  }, [location.pathname, setPaymentFlowActive]);
+
   // Initialize global payment return handler
   const { isHandlingPayment: isPaymentRecoveryActive } = useKashierReturn();
 
@@ -46,10 +83,7 @@ export default function App() {
     if (initializedRef.current) return;
     initializedRef.current = true;
 
-    console.log("🚀 APP START");
-    console.log("📍 FULL URL:", window.location.href);
-    console.log("🔍 QUERY PARAMS:", window.location.search);
-    console.log("🧭 PATHNAME:", window.location.pathname);
+    console.log("🚀 APP CONTENT START");
   }, []);
   
   useEffect(() => {
@@ -58,16 +92,17 @@ export default function App() {
       params: Object.fromEntries(new URLSearchParams(window.location.search))
     });
 
-    // 🚫 [PHASE 3] Supressing non-essential background activity during payment flow
-    if (isPaymentFlow()) {
-      console.log("💳 [App] Payment Mode Active: Suppressing background event refresh");
-      return;
-    }
+    // 🚫 [PHASE 3.2] HARD BLOCK global activity during ANY payment/confirmation flow
+    const isPaymentFlowMode = 
+      location.pathname.startsWith('/payment-return') || 
+      location.pathname.startsWith('/confirmation');
+
+    if (isPaymentFlowMode) return;
 
     if (!accessToken) return;
 
     refreshEvents();
-  }, [accessToken, location.pathname]); // Added location.pathname to re-evaluate when route changes
+  }, [accessToken, location.pathname, refreshEvents]); // Added refreshEvents
 
   // Scroll to top on route change
   useEffect(() => {
@@ -124,14 +159,14 @@ export default function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/events" element={<EventsListingPage />} />
               <Route path="/events/:id" element={<EventDetailsPage />} />
-              <Route path="/checkout/:id" element={<CheckoutPage />} />
-              <Route path="/confirmation/:id" element={<ConfirmationPage />} />
-              <Route path="/payment-failure/:id" element={<PaymentFailurePage />} />
-              <Route path="/payment-failure" element={<PaymentFailurePage />} />
-              <Route path="/payment-return" element={<PaymentReturnPage />} />
-              <Route path="/payment/pending" element={<PaymentPendingPage />} />
-              <Route path="/dashboard" element={<UserDashboard />} />
-              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/checkout/:id" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
+              <Route path="/confirmation/:id" element={<ProtectedRoute><ConfirmationPage /></ProtectedRoute>} />
+              <Route path="/payment-failure/:id" element={<ProtectedRoute><PaymentFailurePage /></ProtectedRoute>} />
+              <Route path="/payment-failure" element={<ProtectedRoute><PaymentFailurePage /></ProtectedRoute>} />
+              <Route path="/payment-return" element={<ProtectedRoute><PaymentReturnPage /></ProtectedRoute>} />
+              <Route path="/payment/pending" element={<ProtectedRoute><PaymentPendingPage /></ProtectedRoute>} />
+              <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
+              <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
             </Routes>
           </motion.div>
         </AnimatePresence>

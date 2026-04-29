@@ -4,7 +4,6 @@ import { UserProfile, Notification as AppNotification, PreRegistration } from '.
 import { authService } from '../services/authService';
 import { notificationService } from '../services/notificationService';
 import { eventService } from '../services/eventService';
-import { isPaymentFlow } from '../lib/paymentFlow';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -49,6 +48,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAccessToken(data.accessToken);
     setRefreshToken(data.refreshToken);
     setUser(data.user);
+    // Dispatch global event for login
+    window.dispatchEvent(new CustomEvent('app-login'));
   }, []);
 
   const logout = useCallback(() => {
@@ -61,6 +62,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setNotifications([]);
     setPreRegistrations([]);
     hasFetchedInitialDataRef.current = false;
+    // Dispatch global event for full app reset
+    window.dispatchEvent(new CustomEvent('app-logout'));
+  }, []);
+
+  useEffect(() => {
+    const handleLogoutSync = () => {
+      // If logout event came from elsewhere, ensure state is reset
+      // but avoid infinite loop if possible (though dispatching same event is usually fine in most listeners)
+      setAccessToken(null);
+      setRefreshToken(null);
+      setUser(null);
+      setNotifications([]);
+      setPreRegistrations([]);
+      hasFetchedInitialDataRef.current = false;
+    };
+    window.addEventListener('app-logout', handleLogoutSync);
+    return () => window.removeEventListener('app-logout', handleLogoutSync);
   }, []);
 
   useEffect(() => {
@@ -96,6 +114,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         } catch (err: any) {
           console.warn('[AuthContext] Background session validation failed:', err);
+          if (err.status === 401) {
+            console.log('[AuthContext] 401 detected during validation, triggering logout');
+            logout();
+          }
         }
       }
     };
@@ -141,11 +163,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!accessToken || hasFetchedInitialDataRef.current) return;
     
-    // 🚫 [PHASE 3] Supressing non-essential background activity during payment flow
-    if (isPaymentFlow()) {
-      console.log("💳 [AuthContext] Payment Mode Active: Suppressing background notification/pre-reg fetches");
-      return;
-    }
+    // 🚫 [PHASE 3.2] HARD BLOCK global activity during ANY payment/confirmation flow
+    const isPaymentFlowMode = 
+      window.location.pathname.startsWith('/payment-return') || 
+      window.location.pathname.startsWith('/confirmation');
+
+    if (isPaymentFlowMode) return;
 
     hasFetchedInitialDataRef.current = true;
 

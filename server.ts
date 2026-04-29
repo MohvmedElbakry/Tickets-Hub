@@ -34,7 +34,7 @@ console.log("[Auth] JWT_SECRET loaded:", !!JWT_SECRET);
 console.log("[Auth] JWT_REFRESH_SECRET loaded:", !!JWT_REFRESH_SECRET);
 
 const generateTokens = (user: any) => {
-  const payload = { id: user.id, name: user.name, email: user.email, role: user.role };
+  const payload = { id: user.id, name: user.name, email: user.email, role: user.role, gender: user.gender };
   const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' }); // Short-lived
   const refreshToken = jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: '7d' }); // Long-lived
   return { accessToken, refreshToken, user: payload };
@@ -131,7 +131,7 @@ class PrismaDB {
         date: parsedDate!,
         government: data.government || 'Other',
         require_approval: data.require_approval || false,
-        qr_enabled_manual: false
+        qr_enabled_manual: data.qr_enabled_manual ?? false
       }
     });
   }
@@ -423,6 +423,58 @@ class PrismaDB {
     return await prisma.order.update({ where: { id }, data });
   }
 
+  async cleanupExpiredReservations() {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    
+    // Find expired pending orders
+    const expiredOrders = await prisma.order.findMany({
+      where: {
+        order_status: 'pending',
+        reserved_at: { lt: oneHourAgo },
+        is_paid: false
+      },
+      include: {
+        order_tickets: true
+      }
+    });
+
+    if (expiredOrders.length === 0) return;
+
+    for (const order of expiredOrders) {
+      try {
+        await prisma.$transaction(async (tx) => {
+          // Double check status inside transaction
+          const currentOrder = await tx.order.findUnique({ where: { id: order.id } });
+          if (!currentOrder || currentOrder.order_status !== 'pending' || currentOrder.is_paid) return;
+
+          // Mark as cancelled (effectively cancelling the reservation)
+          await tx.order.update({
+            where: { id: order.id },
+            data: { order_status: 'cancelled' }
+          });
+
+          // Revert quantities on TicketTypes
+          for (const item of order.order_tickets) {
+            if (item.qty_original) {
+              await tx.ticketType.update({
+                where: { id: item.ticket_type_id },
+                data: { quantity_sold: { decrement: item.qty_original } }
+              });
+            }
+            if (item.qty_resale) {
+              await tx.ticketType.update({
+                where: { id: item.ticket_type_id },
+                data: { resale_queue: { increment: item.qty_resale } }
+              });
+            }
+          }
+        });
+      } catch (err) {
+        console.error(`[Cleanup] Failed to expire reservation #${order.id}:`, err);
+      }
+    }
+  }
+
   async markOrderAsPaid(orderId: number, transactionId: string, kashierOrderId?: string) {
     return await prisma.$transaction(async (tx) => {
       // Read order with FOR UPDATE behavior
@@ -556,6 +608,15 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(cors());
 
+  try {
+    console.log('[Prisma] Connecting to database...');
+    await prisma.$connect();
+    console.log('[Prisma] Database connection established.');
+  } catch (error) {
+    console.error('[Prisma] Failed to connect to database:', error);
+    // Continue starting to allow health check to report error if needed
+  }
+
   await db.init();
 
   // Seed test admin user
@@ -629,7 +690,7 @@ async function startServer() {
   app.post('/api/auth/signup', async (req, res) => {
     console.log('[API] Signup request received:', req.body.email);
     try {
-      const { name, email, password, phone, role, birthdate } = req.body;
+      const { name, email, password, phone, role, birthdate, gender } = req.body;
 
       if (!name || !email || !password) {
         return res.status(400).json({ error: 'Name, email, and password are required.' });
@@ -664,7 +725,8 @@ async function startServer() {
         phone,
         role: userRole,
         birthdate: birthdate || '2000-01-01',
-        age: calculateAge(birthdate || '2000-01-01')
+        age: calculateAge(birthdate || '2000-01-01'),
+        gender
       });
 
       const { accessToken, refreshToken, user } = generateTokens(newUser);
@@ -861,6 +923,7 @@ async function startServer() {
 
   app.get('/api/events/:id', async (req, res) => {
     try {
+      await db.cleanupExpiredReservations();
       const event = await db.getEventById(parseInt(req.params.id));
       if (!event) return res.status(404).json({ error: 'Event not found.' });
       const ticketTypes = await db.getTicketTypesByEventId(event.id);
@@ -873,7 +936,7 @@ async function startServer() {
 
   app.post('/api/events', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
     try {
-      const { title, description, location, venue, event_date, event_time, image_url, status, ticket_types, company_name, rules, google_maps_url, government, require_approval } = req.body;
+      const { title, description, location, venue, event_date, event_time, image_url, status, ticket_types, company_name, rules, google_maps_url, government, require_approval, qr_enabled_manual } = req.body;
       
       if (!title || !event_date || !event_time) {
         return res.status(400).json({ error: 'Title, date, and time are required.' });
@@ -897,7 +960,7 @@ async function startServer() {
         status: status || 'draft',
         government: government || 'Other',
         require_approval: require_approval || false,
-        qr_enabled_manual: false
+        qr_enabled_manual: qr_enabled_manual ?? false
       });
 
       if (ticket_types && Array.isArray(ticket_types)) {
@@ -933,7 +996,7 @@ async function startServer() {
       
       if (!event) return res.status(404).json({ error: 'Event not found.' });
       
-      const { title, description, location, venue, event_date, event_time, image_url, status, ticket_types, company_name, rules, google_maps_url, show_qr_codes, government, require_approval } = req.body;
+      const { title, description, location, venue, event_date, event_time, image_url, status, ticket_types, company_name, rules, google_maps_url, qr_enabled_manual, government, require_approval } = req.body;
       
       const oldStatus = event.status;
       const updates: any = {};
@@ -951,7 +1014,7 @@ async function startServer() {
       if (company_name !== undefined) updates.company_name = company_name;
       if (rules !== undefined) updates.rules = rules;
       if (google_maps_url !== undefined) updates.google_maps_url = google_maps_url;
-      if (show_qr_codes !== undefined) updates.show_qr_codes = show_qr_codes;
+      if (qr_enabled_manual !== undefined) updates.qr_enabled_manual = qr_enabled_manual;
       if (government !== undefined) updates.government = government;
       if (require_approval !== undefined) updates.require_approval = require_approval;
 
@@ -1180,6 +1243,7 @@ async function startServer() {
   // --- Order Management API ---
   app.post('/api/orders', authenticateToken, async (req: any, res) => {
     try {
+      await db.cleanupExpiredReservations();
       const { event_id, tickets, instagram_username, phone, age, voucher_code, ticket_holders } = req.body; // tickets: [{ ticket_type_id, quantity }]
       
       if (!event_id || !tickets || !Array.isArray(tickets) || tickets.length === 0) {
@@ -1275,13 +1339,13 @@ async function startServer() {
         }
 
         // Create order
-        const initialStatus = event.require_approval ? 'pending_approval' : 'approved';
         const newOrder = await tx.order.create({
           data: {
             user_id: req.user.id,
             event_id: event.id,
             total_price: totalPrice,
-            order_status: initialStatus,
+            order_status: 'pending',
+            reserved_at: new Date(),
             instagram_username,
             phone,
             age: age !== undefined ? parseInt(age) : 0,
@@ -1894,10 +1958,15 @@ async function startServer() {
         return res.status(403).json({ error: 'Unauthorized access to order' });
       }
 
-      // Business Logic: Only approved orders can proceed to payment
-      if (order.order_status !== 'approved') {
+      // Business Logic: Only approved orders (or pending if no approval required) can proceed to payment
+      const event = await db.getEventById(order.event_id);
+      const isAllowedToPay = order.order_status === 'approved' || (order.order_status === 'pending' && !event?.require_approval);
+
+      if (!isAllowedToPay) {
         return res.status(400).json({ 
-          error: `Payment not allowed for status: ${order.order_status}. Order must be 'approved' first.` 
+          error: order.order_status === 'pending' 
+            ? `Your booking for ${event?.title} is pending admin approval.` 
+            : `Payment not allowed for status: ${order.order_status}.`
         });
       }
 
@@ -2134,26 +2203,30 @@ async function startServer() {
         return res.json({ visible: false, reason: 'Payment not confirmed' });
       }
 
-      // Visibility Rules:
-      // 1. Admin manually enabled
-      // 2. 1 hour before event
-      const eventTime = event.date.getTime();
-      const oneHourBefore = eventTime - (60 * 60 * 1000);
-      const currentTime = Date.now();
-
-      const isVisible = event.qr_enabled_manual || currentTime >= oneHourBefore;
-
-      if (isVisible) {
+      // 🔥 HARD OVERRIDE FIRST
+      if (event.qr_enabled_manual === true) {
         return res.json({ 
           visible: true, 
           qr_data: `TicketsHub-Order-${order.qr_code_token}` 
         });
-      } else {
+      }
+
+      // ⏳ TIME WINDOW SECOND
+      const eventTime = new Date(event.date).getTime();
+      const oneHourBefore = eventTime - (60 * 60 * 1000);
+      const currentTime = Date.now();
+
+      if (currentTime >= oneHourBefore) {
         return res.json({ 
-          visible: false, 
-          reason: 'QR code will be available 1 hour before the event.' 
+          visible: true, 
+          qr_data: `TicketsHub-Order-${order.qr_code_token}` 
         });
       }
+
+      return res.json({ 
+        visible: false, 
+        reason: 'QR code will be available 1 hour before the event.' 
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

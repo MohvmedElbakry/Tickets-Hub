@@ -22,6 +22,7 @@ export const SignupModal = () => {
     countryCode: '+20',
     birthdate: '',
     instagram: '',
+    gender: '',
     role: 'user' as 'user' | 'organizer'
   });
 
@@ -160,6 +161,28 @@ export const SignupModal = () => {
                     onChange={(e) => setSignupForm({ ...signupForm, birthdate: e.target.value })}
                     className="w-full bg-primary-bg border border-white/10 rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:border-accent transition-colors"
                   />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-text-secondary ml-1">Gender (Optional)</label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+                  <select 
+                    value={signupForm.gender || ''}
+                    onChange={(e) => setSignupForm({ ...signupForm, gender: e.target.value })}
+                    className="w-full bg-primary-bg border border-white/10 rounded-2xl py-4 pl-12 pr-10 focus:outline-none focus:border-accent transition-colors appearance-none"
+                  >
+                    <option value="" disabled className="bg-secondary-bg">Select Gender</option>
+                    <option value="Male" className="bg-secondary-bg">Male</option>
+                    <option value="Female" className="bg-secondary-bg">Female</option>
+                    <option value="Prefer not to say" className="bg-secondary-bg">Prefer not to say</option>
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-text-secondary">
+                    <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M1 1L6 6L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
                 </div>
               </div>
 

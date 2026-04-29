@@ -1,7 +1,8 @@
 import React from 'react';
-import { Calendar, MapPin, Ticket, ChevronRight } from 'lucide-react';
+import { Calendar, MapPin, Ticket, ChevronRight, Clock } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Event } from '../types';
+import { formatEventTime } from '../lib/utils';
 
 interface EventCardProps {
   event: Event;
@@ -41,6 +42,14 @@ export const EventCard: React.FC<EventCardProps> = React.memo(({ event, onClick 
             </div>
             <span>{event.event_date || event.date}</span>
           </div>
+          {(event.event_time || event.time) && (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-accent">
+                <Clock size={16} />
+              </div>
+              <span>{formatEventTime(event.event_date || event.date, event.event_time || event.time)}</span>
+            </div>
+          )}
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-accent">
               <MapPin size={16} />

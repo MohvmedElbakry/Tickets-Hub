@@ -63,7 +63,7 @@ export const fetchWithAuth = async (endpoint: string, options: RequestInit = {})
     if (res.status === 401 && !url.includes('/api/auth/refresh')) {
       const refreshToken = localStorage.getItem('refreshToken');
       
-      if (refreshToken) {
+      if (refreshToken && !options.headers?.hasOwnProperty('X-Retry-Attempt')) {
         if (!isRefreshing) {
           isRefreshing = true;
           try {
@@ -79,16 +79,24 @@ export const fetchWithAuth = async (endpoint: string, options: RequestInit = {})
             localStorage.removeItem('accessToken');
             localStorage.removeItem('refreshToken');
             window.dispatchEvent(new CustomEvent('api-unauthorized'));
+            window.dispatchEvent(new CustomEvent('app-logout'));
             throw refreshErr;
           }
         }
 
         // Wait for refresh to complete then retry once
         const newToken: string = await new Promise(resolve => subscribeTokenRefresh(resolve));
-        requestHeaders.set('Authorization', `Bearer ${newToken}`);
-        const retryRes = await fetch(url, { ...options, headers: requestHeaders });
+        const newHeaders = new Headers(requestHeaders);
+        newHeaders.set('Authorization', `Bearer ${newToken}`);
+        newHeaders.set('X-Retry-Attempt', '1');
+        
+        const retryRes = await fetch(url, { ...options, headers: newHeaders });
         
         if (!retryRes.ok) {
+          if (retryRes.status === 401) {
+            window.dispatchEvent(new CustomEvent('api-unauthorized'));
+            window.dispatchEvent(new CustomEvent('app-logout'));
+          }
           const errorData = await retryRes.json().catch(() => ({ error: retryRes.statusText }));
           const error: ApiError = new Error(JSON.stringify(errorData));
           error.status = retryRes.status;
@@ -98,10 +106,9 @@ export const fetchWithAuth = async (endpoint: string, options: RequestInit = {})
         
         return await (retryRes.headers.get('content-type')?.includes('application/json') ? retryRes.json() : retryRes.text());
       } else {
-        // No refresh token available
-        if (url.includes('/api/auth/me')) {
-          window.dispatchEvent(new CustomEvent('api-unauthorized'));
-        }
+        // No refresh token available or retry already attempted
+        window.dispatchEvent(new CustomEvent('api-unauthorized'));
+        window.dispatchEvent(new CustomEvent('app-logout'));
       }
     }
 
