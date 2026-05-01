@@ -12,58 +12,47 @@ interface EventCardProps {
 export const EventCard: React.FC<EventCardProps> = React.memo(({ event, onClick }) => {
   return (
     <motion.div 
-      whileHover={{ y: -8, scale: 1.02 }}
-      className="bg-secondary-bg rounded-[2.5rem] border border-white/5 overflow-hidden group cursor-pointer shadow-xl hover:shadow-accent/10 transition-all duration-500 flex flex-col h-full"
+      whileHover={{ y: -10, scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      className="bg-bg-card rounded-card-xl border border-bg-border overflow-hidden group cursor-pointer shadow-card hover:bg-bg-elevated hover:border-teal-border-mid hover:shadow-card-glow transition-all duration-base ease-out flex flex-col h-full ring-offset-bg-page focus-within:ring-2 focus-within:ring-teal"
       onClick={onClick}
     >
       <div className="relative h-64 overflow-hidden">
         <img 
-          src={event.image_url || event.image || 'https://picsum.photos/seed/event/800/600'} 
+          src={event.image_url} 
           alt={event.title} 
-          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+          className="w-full h-full object-cover transition-transform duration-slow group-hover:scale-105"
           referrerPolicy="no-referrer"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/event/800/600';
-          }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-secondary-bg via-secondary-bg/20 to-transparent opacity-60 group-hover:opacity-40 transition-opacity"></div>
-        <div className="absolute top-6 right-6">
-          <div className="bg-white/10 backdrop-blur-xl px-4 py-2 rounded-2xl border border-white/20 text-white text-xs font-bold shadow-2xl">
-            {event.status === 'upcoming' ? 'Coming Soon' : (event.price || (event.ticket_types?.[0]?.price)) + ' EGP'}
+        <div className="absolute inset-0 bg-gradient-to-t from-bg-card via-transparent to-transparent opacity-60"></div>
+        <div className="absolute top-4 right-4">
+          <div className="bg-bg-card/60 backdrop-blur-md px-3 py-1.5 rounded-tag border border-teal-border-faint text-teal text-label font-bold shadow-card">
+            {event.status === 'upcoming' ? 'Soon' : event.price + ' EGP'}
           </div>
         </div>
       </div>
-      <div className="p-8 flex-1 flex flex-col">
-        <h3 className="text-2xl font-bold mb-4 group-hover:text-accent transition-colors line-clamp-1">{event.title}</h3>
-        <div className="space-y-3 text-text-secondary text-sm mb-8">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-accent">
-              <Calendar size={16} />
-            </div>
-            <span>{event.event_date || event.date}</span>
-          </div>
-          {(event.event_time || event.time) && (
+      <div className="p-6 flex-1 flex flex-col content-stack gap-6">
+        <div className="content-stack gap-3">
+          <h3 className="text-h4 group-hover:text-teal transition-colors line-clamp-1">{event.title}</h3>
+          <div className="space-y-2 text-text-muted">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-accent">
-                <Clock size={16} />
-              </div>
-              <span>{formatEventTime(event.event_date || event.date, event.event_time || event.time)}</span>
+              <Calendar size={14} className="text-teal" />
+              <span className="text-body-xs font-medium font-mono uppercase tracking-wider">{event.event_date}</span>
             </div>
-          )}
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-accent">
-              <MapPin size={16} />
+            <div className="flex items-center gap-3">
+              <MapPin size={14} className="text-teal" />
+              <span className="text-body-sm line-clamp-1">{event.location}</span>
             </div>
-            <span className="line-clamp-1">{event.location}</span>
           </div>
         </div>
-        <div className="mt-auto pt-6 border-t border-white/5 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-bold text-accent uppercase tracking-widest">
-            <Ticket size={14} />
+        
+        <div className="mt-auto pt-4 border-t border-bg-border flex items-center justify-between">
+          <div className="flex items-center gap-2 text-label font-bold text-teal">
+            <Ticket size={12} />
             <span>{event.status}</span>
           </div>
-          <div className="w-10 h-10 rounded-full bg-accent/10 text-accent flex items-center justify-center group-hover:bg-accent group-hover:text-white transition-all duration-500">
-            <ChevronRight size={20} />
+          <div className="w-8 h-8 rounded-pill bg-bg-elevated border border-bg-border text-text-muted flex items-center justify-center group-hover:bg-teal group-hover:text-onteal group-hover:border-teal transition-all duration-base">
+            <ChevronRight size={16} />
           </div>
         </div>
       </div>

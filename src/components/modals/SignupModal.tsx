@@ -62,123 +62,145 @@ export const SignupModal = () => {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-primary-bg/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-bg-page/80 backdrop-blur-md">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="bg-secondary-bg w-full max-w-md rounded-[2.5rem] p-8 border border-white/5 shadow-2xl relative overflow-hidden max-h-[90vh] overflow-y-auto custom-scrollbar"
+            className="bg-bg-card w-full max-w-md rounded-card-2xl p-8 border border-bg-border shadow-2xl relative overflow-hidden max-h-[90vh] overflow-y-auto custom-scrollbar"
           >
-            <div className="absolute top-0 left-0 w-full h-2 bg-accent"></div>
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-3xl font-bold">Create <span className="text-accent">Account</span></h2>
-              <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-colors">
-                <X size={24} />
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-teal shadow-teal/20 shadow-lg"></div>
+
+            <div className="flex justify-between items-center mb-10">
+              <div className="content-stack gap-1">
+                <h2 className="text-h2">Create <span className="text-teal">Account</span></h2>
+                <p className="text-label text-text-muted font-bold tracking-widest uppercase">Join the event revolution</p>
+              </div>
+              <button 
+                onClick={onClose} 
+                className="w-10 h-10 flex items-center justify-center bg-bg-elevated/50 hover:bg-bg-elevated rounded-card transition-all duration-base group"
+              >
+                <X size={20} className="text-text-muted group-hover:text-text-primary transition-colors" />
               </button>
             </div>
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/20 text-red-500 p-4 rounded-2xl mb-6 flex items-center gap-3 text-sm">
-                <AlertCircle size={18} /> {error}
+              <div className="bg-status-error/10 border border-status-error/20 text-status-error p-4 rounded-card mb-8 flex items-center gap-3 text-body-sm font-medium">
+                <div className="w-6 h-6 rounded-full bg-status-error/20 flex items-center justify-center shrink-0">
+                  <AlertCircle size={14} />
+                </div>
+                {error}
               </div>
             )}
 
-            <form onSubmit={handleSignup} className="space-y-5">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-text-secondary ml-1">Full Name</label>
-                <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+            <form onSubmit={handleSignup} className="content-stack gap-5">
+              <div className="content-stack gap-2">
+                <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Full Name</label>
+                <div className="relative group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-card flex items-center justify-center text-text-muted group-focus-within:text-teal group-focus-within:bg-teal/10 transition-all duration-base">
+                    <User size={16} />
+                  </div>
                   <input 
                     type="text" 
                     required
                     value={signupForm.name}
                     onChange={(e) => setSignupForm({ ...signupForm, name: e.target.value })}
                     placeholder="John Doe"
-                    className="w-full bg-primary-bg border border-white/10 rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:border-accent transition-colors"
+                    className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-text-secondary ml-1">Email Address</label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+              <div className="content-stack gap-2">
+                <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Email Address</label>
+                <div className="relative group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-card flex items-center justify-center text-text-muted group-focus-within:text-teal group-focus-within:bg-teal/10 transition-all duration-base">
+                    <Mail size={16} />
+                  </div>
                   <input 
                     type="email" 
                     required
                     value={signupForm.email}
                     onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
                     placeholder="name@example.com"
-                    className="w-full bg-primary-bg border border-white/10 rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:border-accent transition-colors"
+                    className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-text-secondary ml-1">Instagram Username</label>
-                <div className="relative">
-                  <Instagram className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+              <div className="content-stack gap-2">
+                <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Instagram Username</label>
+                <div className="relative group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-card flex items-center justify-center text-text-muted group-focus-within:text-teal group-focus-within:bg-teal/10 transition-all duration-base">
+                    <Instagram size={16} />
+                  </div>
                   <input 
                     type="text" 
                     required
                     value={signupForm.instagram}
                     onChange={(e) => setSignupForm({ ...signupForm, instagram: e.target.value })}
                     placeholder="@username"
-                    className="w-full bg-primary-bg border border-white/10 rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:border-accent transition-colors"
+                    className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-text-secondary ml-1">Phone Number</label>
+              <div className="content-stack gap-2">
+                <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Phone Number</label>
                 <div className="flex gap-2">
                   <CountryCodeSelector 
                     value={signupForm.countryCode}
                     onChange={(code) => setSignupForm({ ...signupForm, countryCode: code })}
                   />
-                  <div className="relative flex-1">
-                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+                  <div className="relative flex-1 group">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-card flex items-center justify-center text-text-muted group-focus-within:text-teal group-focus-within:bg-teal/10 transition-all duration-base">
+                      <Phone size={16} />
+                    </div>
                     <input 
                       type="tel" 
                       required
                       value={signupForm.phone}
                       onChange={(e) => setSignupForm({ ...signupForm, phone: e.target.value })}
                       placeholder="01xxxxxxxxx"
-                      className="w-full bg-primary-bg border border-white/10 rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:border-accent transition-colors"
+                      className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-text-secondary ml-1">Birthdate</label>
-                <div className="relative">
-                  <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+              <div className="content-stack gap-2">
+                <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Birthdate</label>
+                <div className="relative group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-card flex items-center justify-center text-text-muted group-focus-within:text-teal group-focus-within:bg-teal/10 transition-all duration-base">
+                    <Calendar size={16} />
+                  </div>
                   <input 
                     type="date" 
                     required
                     value={signupForm.birthdate}
                     onChange={(e) => setSignupForm({ ...signupForm, birthdate: e.target.value })}
-                    className="w-full bg-primary-bg border border-white/10 rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:border-accent transition-colors"
+                    className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all [color-scheme:dark]"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-text-secondary ml-1">Gender (Optional)</label>
-                <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+              <div className="content-stack gap-2">
+                <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Gender (Optional)</label>
+                <div className="relative group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-card flex items-center justify-center text-text-muted group-focus-within:text-teal group-focus-within:bg-teal/10 transition-all duration-base">
+                    <User size={16} />
+                  </div>
                   <select 
                     value={signupForm.gender || ''}
                     onChange={(e) => setSignupForm({ ...signupForm, gender: e.target.value })}
-                    className="w-full bg-primary-bg border border-white/10 rounded-2xl py-4 pl-12 pr-10 focus:outline-none focus:border-accent transition-colors appearance-none"
+                    className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-10 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all appearance-none"
                   >
-                    <option value="" disabled className="bg-secondary-bg">Select Gender</option>
-                    <option value="Male" className="bg-secondary-bg">Male</option>
-                    <option value="Female" className="bg-secondary-bg">Female</option>
-                    <option value="Prefer not to say" className="bg-secondary-bg">Prefer not to say</option>
+                    <option value="" disabled className="bg-bg-card">Select Gender</option>
+                    <option value="Male" className="bg-bg-card">Male</option>
+                    <option value="Female" className="bg-bg-card">Female</option>
+                    <option value="Prefer not to say" className="bg-bg-card">Prefer not to say</option>
                   </select>
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-text-secondary">
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-text-muted group-focus-within:text-teal transition-colors">
                     <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M1 1L6 6L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
@@ -186,34 +208,41 @@ export const SignupModal = () => {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-text-secondary ml-1">Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+              <div className="content-stack gap-2">
+                <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Password</label>
+                <div className="relative group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-card flex items-center justify-center text-text-muted group-focus-within:text-teal group-focus-within:bg-teal/10 transition-all duration-base">
+                    <Lock size={16} />
+                  </div>
                   <input 
                     type="password" 
                     required
                     value={signupForm.password}
                     onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
                     placeholder="••••••••"
-                    className="w-full bg-primary-bg border border-white/10 rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:border-accent transition-colors"
+                    className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                   />
                 </div>
               </div>
 
-              <Button type="submit" className="w-full py-4 text-lg mt-4" disabled={loading}>
-                {loading ? 'Creating Account...' : 'Sign Up'}
+              <Button 
+                type="submit" 
+                variant="accent"
+                className="w-full py-4 text-button font-black uppercase tracking-widest mt-6" 
+                disabled={loading}
+              >
+                {loading ? 'Creating Experience...' : 'Join TicketsHub'}
               </Button>
             </form>
 
-            <div className="mt-8 pt-8 border-t border-white/5 text-center">
-              <p className="text-text-secondary">
+            <div className="mt-10 pt-10 border-t border-bg-border text-center">
+              <p className="text-body-sm text-text-muted">
                 Already have an account? 
                 <button 
                   onClick={() => { onClose(); onOpenLogin(); }}
-                  className="text-accent font-bold ml-2 hover:underline"
+                  className="text-teal font-black uppercase tracking-widest text-label ml-3 hover:text-teal-light transition-colors"
                 >
-                  Login
+                  Login Instead
                 </button>
               </p>
             </div>

@@ -34,6 +34,8 @@ import { PaymentReturnPage } from './components/PaymentReturnPage';
 import { useKashierReturn } from './hooks/useKashierReturn';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AdminRoute } from './components/AdminRoute';
+import { NotFoundPage } from './components/NotFoundPage';
+import PageContainer from './components/layout/PageContainer';
 
 export default function App() {
   const [appKey, setAppKey] = useState(0);
@@ -111,18 +113,18 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
 
   if (isPaymentRecoveryActive) {
     return (
-      <div className="min-h-screen bg-primary-bg flex flex-col items-center justify-center">
-        <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="text-text-secondary">Processing payment...</p>
+      <div className="min-h-screen bg-bg-page flex flex-col items-center justify-center">
+        <div className="w-12 h-12 border-4 border-teal border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-text-muted">Processing payment...</p>
       </div>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-primary-bg flex flex-col items-center justify-center">
-        <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="text-text-secondary">Initializing secure session...</p>
+      <div className="min-h-screen bg-bg-page flex flex-col items-center justify-center">
+        <div className="w-12 h-12 border-4 border-teal border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-text-muted">Initializing secure session...</p>
       </div>
     );
   }
@@ -150,24 +152,28 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
       <main className="flex-grow">
         <AnimatePresence mode="wait">
           <motion.div
+            key={location.pathname}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
           >
-            <Routes location={location}>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/events" element={<EventsListingPage />} />
-              <Route path="/events/:id" element={<EventDetailsPage />} />
-              <Route path="/checkout/:id" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
-              <Route path="/confirmation/:id" element={<ProtectedRoute><ConfirmationPage /></ProtectedRoute>} />
-              <Route path="/payment-failure/:id" element={<ProtectedRoute><PaymentFailurePage /></ProtectedRoute>} />
-              <Route path="/payment-failure" element={<ProtectedRoute><PaymentFailurePage /></ProtectedRoute>} />
-              <Route path="/payment-return" element={<ProtectedRoute><PaymentReturnPage /></ProtectedRoute>} />
-              <Route path="/payment/pending" element={<ProtectedRoute><PaymentPendingPage /></ProtectedRoute>} />
-              <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
-              <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-            </Routes>
+            <PageContainer>
+              <Routes location={location}>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/events" element={<EventsListingPage />} />
+                <Route path="/events/:id" element={<EventDetailsPage />} />
+                <Route path="/checkout/:id" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
+                <Route path="/confirmation/:id" element={<ProtectedRoute><ConfirmationPage /></ProtectedRoute>} />
+                <Route path="/payment-failure/:id" element={<ProtectedRoute><PaymentFailurePage /></ProtectedRoute>} />
+                <Route path="/payment-failure" element={<ProtectedRoute><PaymentFailurePage /></ProtectedRoute>} />
+                <Route path="/payment-return" element={<ProtectedRoute><PaymentReturnPage /></ProtectedRoute>} />
+                <Route path="/payment/pending" element={<ProtectedRoute><PaymentPendingPage /></ProtectedRoute>} />
+                <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
+                <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </PageContainer>
           </motion.div>
         </AnimatePresence>
       </main>

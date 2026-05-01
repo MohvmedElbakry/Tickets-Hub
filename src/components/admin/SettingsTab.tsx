@@ -12,22 +12,22 @@ export const SettingsTab: React.FC<SettingsTabProps> = () => {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   return (
     <section className="max-w-2xl">
-      <div className="bg-secondary-bg p-8 rounded-3xl border border-white/5">
-        <h3 className="text-xl font-bold mb-6">Global Application Settings</h3>
+      <div className="bg-bg-card p-8 rounded-3xl border border-bg-border">
+        <h3 className="text-h3 mb-6">Global Application Settings</h3>
         <div className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">Service Fee Percentage (%)</label>
+            <label className="block text-body-sm font-medium text-text-muted mb-2">Service Fee Percentage (%)</label>
             <input 
               type="number" 
               value={settings.service_fee_percent || 0}
               onChange={(e) => setSettings({ ...settings, service_fee_percent: parseFloat(e.target.value) })}
-              className="w-full bg-primary-bg border border-white/10 rounded-xl px-4 py-3 focus:border-accent outline-none"
+              className="w-full bg-bg-page border border-bg-border rounded-xl px-4 py-3 focus:border-teal outline-none text-text-primary placeholder:text-text-muted/50"
               placeholder="e.g. 5"
             />
-            <p className="mt-2 text-xs text-text-secondary italic">This fee is added to the total price of every order.</p>
+            <p className="mt-2 text-body-xs text-text-muted italic">This fee is added to the total price of every order.</p>
           </div>
           <Button 
-            variant="primary" 
+            variant="accent" 
             className="w-full py-4" 
             disabled={isSavingSettings}
             onClick={async () => {

@@ -13,7 +13,8 @@ import {
   X, 
   Clock, 
   RefreshCw,
-  Users
+  Users,
+  History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/Button';
@@ -138,129 +139,135 @@ export const UserDashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="flex flex-col md:flex-row gap-12">
-        <aside className="w-full md:w-64 space-y-2">
-          <button 
-            onClick={() => setActiveTab('dashboard')}
-            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'dashboard' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-text-secondary hover:bg-white/5'}`}
-          >
-            <LayoutDashboard size={20} /> Dashboard
-          </button>
-          <button 
-            onClick={() => setActiveTab('tickets')}
-            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'tickets' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-text-secondary hover:bg-white/5'}`}
-          >
-            <Ticket size={20} /> My Tickets
-          </button>
-          <button 
-            onClick={() => setActiveTab('rewards')}
-            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'rewards' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-text-secondary hover:bg-white/5'}`}
-          >
-            <Star size={20} /> Rewards
-          </button>
-          <button 
-            onClick={() => setActiveTab('payments')}
-            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'payments' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-text-secondary hover:bg-white/5'}`}
-          >
-            <CreditCard size={20} /> Payments
-          </button>
-          <button 
-            onClick={() => setActiveTab('profile')}
-            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'profile' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-text-secondary hover:bg-white/5'}`}
-          >
-            <User size={20} /> Profile
-          </button>
-          <div className="pt-8">
-            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-6 py-4 rounded-2xl text-red-400 hover:bg-red-400/5 transition-colors">
-              <LogOut size={20} /> Logout
+      <div className="flex flex-col md:flex-row gap-8 lg:gap-12">
+        <aside className="w-full md:w-64">
+          <div className="content-stack gap-2 bg-bg-card border border-bg-border rounded-card-lg p-2 sticky top-24">
+            <button 
+              onClick={() => setActiveTab('dashboard')}
+              className={`w-full flex items-center gap-3 px-6 py-4 rounded-card font-bold transition-all duration-base group active:scale-95 ${activeTab === 'dashboard' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated hover:text-text-primary'}`}
+            >
+              <LayoutDashboard size={20} className="group-hover:scale-110 transition-transform" /> <span className="text-body-sm">Dashboard</span>
             </button>
+            <button 
+              onClick={() => setActiveTab('tickets')}
+              className={`w-full flex items-center gap-3 px-6 py-4 rounded-card font-bold transition-all duration-base group active:scale-95 ${activeTab === 'tickets' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated hover:text-text-primary'}`}
+            >
+              <Ticket size={20} className="group-hover:scale-110 transition-transform" /> <span className="text-body-sm">My Tickets</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('rewards')}
+              className={`w-full flex items-center gap-3 px-6 py-4 rounded-card font-bold transition-all duration-base group active:scale-95 ${activeTab === 'rewards' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated hover:text-text-primary'}`}
+            >
+              <Star size={20} className="group-hover:scale-110 transition-transform" /> <span className="text-body-sm">Rewards</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('payments')}
+              className={`w-full flex items-center gap-3 px-6 py-4 rounded-card font-bold transition-all duration-base group active:scale-95 ${activeTab === 'payments' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated hover:text-text-primary'}`}
+            >
+              <CreditCard size={20} className="group-hover:scale-110 transition-transform" /> <span className="text-body-sm">Payments</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('profile')}
+              className={`w-full flex items-center gap-3 px-6 py-4 rounded-card font-bold transition-all duration-base group active:scale-95 ${activeTab === 'profile' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated hover:text-text-primary'}`}
+            >
+              <User size={20} className="group-hover:scale-110 transition-transform" /> <span className="text-body-sm">Profile</span>
+            </button>
+            <div className="pt-4 mt-2 border-t border-bg-border">
+              <button onClick={handleLogout} className="w-full flex items-center gap-3 px-6 py-4 rounded-card text-status-error hover:bg-status-error/10 transition-all duration-base">
+                <LogOut size={20} /> <span className="text-body-sm font-bold">Logout</span>
+              </button>
+            </div>
           </div>
         </aside>
 
-        <main className="flex-1 space-y-12">
+        <main className="flex-1 layout-stack">
           {activeTab === 'dashboard' && (
-            <>
+            <div className="layout-stack">
               <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-                <div>
-                  <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.name}!</h1>
-                  <p className="text-text-secondary">You have {orders.length} orders in your history.</p>
+                <div className="content-stack gap-2">
+                  <h1 className="text-h2">Welcome back, {user?.name.split(' ')[0]}!</h1>
+                  <p className="text-body-base text-text-muted">You have {orders.length} orders in your history.</p>
                 </div>
-                <div className="flex items-center gap-4 bg-secondary-bg p-4 rounded-3xl border border-white/5">
-                  <div className="w-12 h-12 bg-accent/10 text-accent rounded-2xl flex items-center justify-center">
+                <div className="flex items-center gap-4 bg-bg-card p-5 rounded-card-xl border border-bg-border shadow-card">
+                  <div className="w-12 h-12 bg-teal/10 text-teal rounded-card flex items-center justify-center">
                     <Star size={24} fill="currentColor" />
                   </div>
-                  <div>
-                    <p className="text-xs text-text-secondary uppercase font-bold tracking-wider">Points Balance</p>
-                    <p className="text-2xl font-bold">{points.balance} <span className="text-sm font-normal text-text-secondary">pts</span></p>
+                  <div className="content-stack gap-1">
+                    <p className="text-label text-text-muted">Points Balance</p>
+                    <p className="text-h4">{points.balance} <span className="text-body-xs font-normal text-text-muted">pts</span></p>
                   </div>
-                  <Button variant="accent" className="ml-4 px-4 py-2 text-xs" onClick={() => setActiveTab('rewards')}>Redeem</Button>
+                  <Button variant="outline" size="sm" className="ml-4" onClick={() => setActiveTab('rewards')}>Redeem</Button>
                 </div>
               </header>
 
-              <section>
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold">Recent Tickets</h3>
-                  <button onClick={() => setActiveTab('tickets')} className="text-accent text-sm font-bold hover:underline">View All</button>
+              <section className="content-stack gap-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-h3">Recent Tickets</h3>
+                  <button onClick={() => setActiveTab('tickets')} className="text-teal text-label font-bold hover:underline transition-all">View All</button>
                 </div>
                 {loading ? (
-                  <div className="text-center py-12">
-                    <div className="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-text-secondary">Loading your tickets...</p>
+                  <div className="text-center py-20 bg-bg-card rounded-card border border-bg-border animate-pulse">
+                    <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-text-muted font-medium">Loading your tickets...</p>
                   </div>
                 ) : orders.length > 0 ? (
                   <div className="grid sm:grid-cols-2 gap-6">
                     {orders.slice(0, 2).map(order => (
-                      <div key={order.id} className="bg-secondary-bg rounded-3xl border border-white/5 overflow-hidden flex flex-col">
-                        <div className="flex h-32">
-                          <div className="w-32 shrink-0">
+                      <div key={order.id} className="bg-bg-card rounded-card-lg border border-bg-border overflow-hidden flex flex-col hover:bg-bg-elevated hover:border-teal/30 hover:shadow-card-glow transition-all duration-base group active:scale-[0.98] cursor-pointer" onClick={() => setViewingTicket(order)}>
+                        <div className="flex h-36">
+                          <div className="w-36 shrink-0 overflow-hidden">
                             <img 
-                              src={order.event?.image_url || 'https://picsum.photos/seed/event/400/300'} 
-                              className="w-full h-full object-cover" 
+                              src={order.event?.image_url} 
+                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-slow" 
                               alt="Event" 
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/event/400/300';
-                              }}
                             />
                           </div>
-                          <div className="p-6 flex-1">
-                            <h4 className="font-bold mb-1 line-clamp-1">{order.event?.title}</h4>
-                            <p className="text-xs text-text-secondary mb-1">{order.event?.event_date}</p>
-                            <p className="text-[10px] text-text-secondary mb-2 uppercase tracking-wider font-medium">
-                              {formatEventTime(order.event?.event_date || order.event?.date, order.event?.event_time || order.event?.time)}
-                            </p>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                              order.order_status === 'paid' ? 'bg-green-400/10 text-green-400' : 'bg-yellow-400/10 text-yellow-400'
-                            }`}>
-                              {order.order_status}
-                            </span>
+                          <div className="p-5 flex-1 content-stack gap-2">
+                            <h4 className="text-h4 line-clamp-1 group-hover:text-teal transition-colors">{order.event?.title}</h4>
+                            <div className="content-stack gap-1">
+                              <p className="text-label text-teal font-bold">{order.event?.event_date}</p>
+                              <p className="text-body-xs text-text-muted line-clamp-1">{order.event?.location}</p>
+                            </div>
+                            <div className="mt-auto">
+                              <span className={`px-2 py-0.5 rounded-tag text-label font-bold uppercase ${
+                                order.order_status === 'paid' ? 'bg-status-success/10 text-status-success border border-status-success/20 shadow-status-success/5' : 'bg-status-warning/10 text-status-warning border border-status-warning/20'
+                              }`}>
+                                {order.order_status}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                        <div className="p-6 pt-0 flex justify-between items-center border-t border-white/5 mt-auto">
-                          <div>
-                            <p className="text-xs text-text-secondary">Order #{order.id}</p>
-                            <p className="font-bold text-accent">{order.total_price.toFixed(2)} EGP</p>
+                        <div className="p-5 pt-0 flex justify-between items-center border-t border-bg-border mt-auto h-16 bg-bg-elevated/20 group-hover:bg-bg-elevated transition-colors">
+                          <div className="content-stack gap-0">
+                            <p className="text-label text-text-muted">Order #{order.id}</p>
+                            <p className="text-body-sm text-text-primary font-black uppercase tracking-tight">{order.total_price.toFixed(2)} EGP</p>
                           </div>
-                          <Button variant="outline" className="px-3 py-1.5 text-xs" onClick={() => setViewingTicket(order)}>View Ticket</Button>
+                          <Button variant="outline" size="sm">Details</Button>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-12 bg-secondary-bg rounded-3xl border border-dashed border-white/10">
-                    <Ticket size={48} className="mx-auto text-text-secondary mb-4 opacity-20" />
-                    <p className="text-text-secondary">You haven't booked any tickets yet.</p>
-                    <Button variant="accent" className="mt-4" onClick={() => navigate('/events')}>Explore Events</Button>
+                  <div className="text-center py-20 bg-bg-card rounded-card-xl border-2 border-dashed border-bg-border content-stack gap-6">
+                    <div className="w-20 h-20 bg-bg-elevated rounded-card flex items-center justify-center mx-auto text-text-muted/20">
+                      <Ticket size={40} />
+                    </div>
+                    <div className="content-stack gap-2">
+                      <h4 className="text-h3">No Active Bookings</h4>
+                      <p className="text-body-base text-text-muted max-w-xs mx-auto">Your upcoming adventure starts here. Secure your first ticket today.</p>
+                    </div>
+                    <Button variant="accent" className="mx-auto px-10" onClick={() => navigate('/events')}>Browse Live Events</Button>
                   </div>
                 )}
               </section>
-            </>
+            </div>
           )}
 
           {activeTab === 'tickets' && (
-            <section>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8">
-                <h3 className="text-2xl font-bold">My Tickets</h3>
-                <div className="flex bg-secondary-bg p-1 rounded-2xl border border-white/5 overflow-x-auto no-scrollbar">
+            <div className="layout-stack">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                <h3 className="text-h2">My Tickets</h3>
+                <div className="flex bg-bg-card p-1 rounded-pill border border-bg-border overflow-x-auto no-scrollbar shadow-card">
                   {[
                     { id: 'all', label: 'All' },
                     { id: 'pre_registered', label: 'Pre-Reg' },
@@ -271,7 +278,7 @@ export const UserDashboard = () => {
                     <button
                       key={tab.id}
                       onClick={() => setTicketFilter(tab.id as any)}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${ticketFilter === tab.id ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-text-secondary hover:text-white'}`}
+                      className={`px-5 py-2 rounded-pill text-label font-bold transition-all whitespace-nowrap ${ticketFilter === tab.id ? 'bg-bg-elevated text-teal border border-teal-border-faint' : 'text-text-muted hover:text-text-primary'}`}
                     >
                       {tab.label}
                     </button>
@@ -280,54 +287,53 @@ export const UserDashboard = () => {
               </div>
 
               {filteredTickets.length > 0 ? (
-                <div className="grid sm:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {filteredTickets.map((item: any) => (
-                    <div key={item.id} className="bg-secondary-bg rounded-3xl border border-white/5 overflow-hidden flex flex-col">
-                      <div className="flex h-32">
-                        <div className="w-32 shrink-0">
+                    <div key={item.id} className="bg-bg-card rounded-card-xl border border-bg-border overflow-hidden flex flex-col hover:bg-bg-elevated transition-colors duration-base group">
+                      <div className="flex h-36">
+                        <div className="w-36 shrink-0 overflow-hidden">
                           <img 
-                            src={item.event?.image_url || 'https://picsum.photos/seed/event/400/300'} 
-                            className="w-full h-full object-cover" 
+                            src={item.event?.image_url} 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-slow" 
                             alt="Event" 
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/event/400/300';
-                            }}
                           />
                         </div>
-                        <div className="p-6 flex-1">
-                          <h4 className="font-bold mb-1 line-clamp-1">{item.event?.title}</h4>
-                          <p className="text-xs text-text-secondary mb-1">{item.event?.event_date}</p>
-                          <p className="text-[10px] text-text-secondary mb-2 uppercase tracking-wider font-medium">
-                            {formatEventTime(item.event?.event_date || item.event?.date, item.event?.event_time || item.event?.time)}
-                          </p>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                            item.displayStatus === 'paid' ? 'bg-green-400/10 text-green-400' : 
-                            item.displayStatus === 'approved' ? 'bg-blue-400/10 text-blue-400' :
-                            item.displayStatus === 'rejected' ? 'bg-red-400/10 text-red-400' :
-                            item.displayStatus === 'pre_registered' ? 'bg-gray-400/10 text-gray-400' :
-                            item.displayStatus === 'invited' ? 'bg-purple-400/10 text-purple-400' :
-                            'bg-yellow-400/10 text-yellow-400'
-                          }`}>
-                            {item.displayStatus === 'approved' ? 'Approved (Waiting for Payment)' : 
-                             item.displayStatus === 'pre_registered' ? 'Pre-Registered' :
-                             item.displayStatus === 'invited' ? 'Invited' :
-                             item.displayStatus}
-                          </span>
+                        <div className="p-5 flex-1 content-stack gap-2">
+                          <h4 className="text-h4 line-clamp-1">{item.event?.title}</h4>
+                          <div className="content-stack gap-1">
+                            <p className="text-label text-teal font-bold">{item.event?.event_date}</p>
+                            <p className="text-body-xs text-text-muted line-clamp-1">{item.event?.location}</p>
+                          </div>
+                          <div className="mt-auto">
+                            <span className={`px-2 py-0.5 rounded-tag text-label font-bold uppercase border ${
+                              item.displayStatus === 'paid' ? 'bg-status-success/10 text-status-success border-status-success/20' : 
+                              item.displayStatus === 'approved' ? 'bg-status-info/10 text-status-info border-status-info/20' :
+                              item.displayStatus === 'rejected' ? 'bg-status-error/10 text-status-error border-status-error/20' :
+                              item.displayStatus === 'pre_registered' ? 'bg-bg-elevated text-text-muted border-bg-border' :
+                              item.displayStatus === 'invited' ? 'bg-teal/10 text-teal border-teal-border-faint' :
+                              'bg-status-warning/10 text-status-warning border-status-warning/20'
+                            }`}>
+                              {item.displayStatus === 'approved' ? 'Awaiting Payment' : 
+                               item.displayStatus === 'pre_registered' ? 'Pre-Registered' :
+                               item.displayStatus === 'invited' ? 'Invited' :
+                               item.displayStatus}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                      <div className="p-6 pt-0 flex justify-between items-center border-t border-white/5 mt-auto">
-                        <div>
-                          <p className="text-xs text-text-secondary">{item.type === 'order' ? `Order #${item.id}` : 'Pre-Registration'}</p>
-                          <p className="font-bold text-accent">{item.total_price ? `${item.total_price.toFixed(2)} EGP` : 'TBA'}</p>
+                      <div className="p-5 pt-0 flex justify-between items-center border-t border-bg-border mt-auto h-20">
+                        <div className="content-stack gap-0">
+                          <p className="text-label text-text-muted">{item.type === 'order' ? `Order #${item.id}` : 'Pre-Registration'}</p>
+                          <p className="text-body-sm font-bold text-text-primary">{item.total_price ? `${item.total_price.toFixed(2)} EGP` : 'TBA'}</p>
                         </div>
                         <div className="flex gap-2">
                           {item.type === 'order' ? (
                             <>
-                              <Button variant="outline" className="px-3 py-1.5 text-xs" onClick={() => setViewingTicket(item)}>View</Button>
+                              <Button variant="outline" size="sm" onClick={() => setViewingTicket(item)}>View</Button>
                               {item.order_status === 'approved' && (
                                 <Button 
-                                  variant="primary" 
-                                  className="px-3 py-1.5 text-xs"
+                                  variant="accent" 
+                                  size="sm"
                                   onClick={() => {
                                     if (confirm('Proceed to payment? (Simulated)')) {
                                       orderService.payOrder(item.id).then(data => data && window.location.reload());
@@ -339,8 +345,9 @@ export const UserDashboard = () => {
                               )}
                               {item.order_status === 'paid' && (
                                 <Button 
-                                  variant="outline" 
-                                  className="px-3 py-1.5 text-xs text-red-400 border-red-400/20 hover:bg-red-400/5"
+                                  variant="ghost" 
+                                  size="sm"
+                                  className="text-status-error hover:bg-status-error/10"
                                   onClick={() => {
                                     const ticketToResell = item.items && item.items.length > 0 ? item.items[0] : null;
                                     if (ticketToResell) {
@@ -357,8 +364,8 @@ export const UserDashboard = () => {
                               {item.order_status === 'invited' && (
                                 <div className="flex gap-2">
                                   <Button 
-                                    variant="primary" 
-                                    className="px-3 py-1.5 text-xs bg-green-500 hover:bg-green-600 border-none"
+                                    variant="accent" 
+                                    size="sm"
                                     onClick={() => {
                                       if (confirm('Accept this invitation?')) {
                                         orderService.payOrder(item.id).then(data => data && window.location.reload());
@@ -368,8 +375,9 @@ export const UserDashboard = () => {
                                     Accept
                                   </Button>
                                   <Button 
-                                    variant="outline" 
-                                    className="px-3 py-1.5 text-xs text-red-400 border-red-400/20 hover:bg-red-400/5"
+                                    variant="ghost" 
+                                    size="sm"
+                                    className="text-status-error hover:bg-status-error/10"
                                     onClick={() => {
                                       if (confirm('Reject this invitation?')) {
                                         orderService.rejectInvitation(item.id).then(data => data && window.location.reload());
@@ -382,18 +390,15 @@ export const UserDashboard = () => {
                               )}
                               {item.order_status === 'pending' && (
                                 <div className="flex flex-col items-end gap-1">
-                                  <span className="text-[10px] text-yellow-500 font-bold uppercase tracking-wider">Awaiting approval</span>
-                                  <span className="text-[8px] text-text-secondary flex items-center gap-1 uppercase tracking-widest leading-none">
-                                    <Clock size={8} /> 1hr Reservation
+                                  <span className="text-label text-status-warning font-black uppercase tracking-widest">Awaiting approval</span>
+                                  <span className="text-label text-text-muted flex items-center gap-1 opacity-60">
+                                    <Clock size={10} /> 1H window
                                   </span>
                                 </div>
                               )}
-                              {item.order_status === 'requested' && (
-                                <span className="text-[10px] text-yellow-500 font-bold">Waiting for approval</span>
-                              )}
                             </>
                           ) : (
-                            <Button variant="outline" className="px-3 py-1.5 text-xs" onClick={() => navigate('/events')}>View Event</Button>
+                            <Button variant="outline" size="sm" onClick={() => navigate('/events')}>View Event</Button>
                           )}
                         </div>
                       </div>
@@ -401,42 +406,55 @@ export const UserDashboard = () => {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-20 bg-secondary-bg rounded-3xl border border-dashed border-white/10">
-                  <Ticket size={48} className="mx-auto text-text-secondary mb-4 opacity-20" />
-                  <h3 className="text-xl font-bold mb-2">No tickets found</h3>
-                  <p className="text-text-secondary">You don't have any tickets matching this filter.</p>
+                <div className="text-center py-32 bg-bg-card rounded-card-2xl border-2 border-dashed border-bg-border content-stack gap-8">
+                  <div className="w-24 h-24 bg-bg-elevated rounded-card flex items-center justify-center mx-auto text-text-muted/10">
+                    <History size={48} />
+                  </div>
+                  <div className="content-stack gap-3">
+                    <h3 className="text-h3">No Tickets Found</h3>
+                    <p className="text-body-base text-text-muted max-w-sm mx-auto">
+                      {ticketFilter === 'all' 
+                        ? "You haven't secured any memberships yet. Your future experiences will appear here." 
+                        : `You have no tickets currently marked as ${ticketFilter.replace('_', ' ')}.`}
+                    </p>
+                  </div>
+                  {ticketFilter !== 'all' ? (
+                    <Button variant="outline" size="sm" className="mx-auto px-8" onClick={() => setTicketFilter('all')}>View All Inventory</Button>
+                  ) : (
+                    <Button variant="accent" className="mx-auto px-10" onClick={() => navigate('/events')}>Explore Events Hub</Button>
+                  )}
                 </div>
               )}
-            </section>
+            </div>
           )}
 
           {activeTab === 'rewards' && (
-            <section>
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-2xl font-bold">Rewards & Points</h3>
-                <div className="bg-accent/10 px-4 py-2 rounded-2xl border border-accent/20">
-                  <p className="text-xs text-accent font-bold uppercase tracking-wider">Current Balance</p>
-                  <p className="text-xl font-bold text-accent">{points.balance} Points</p>
-                </div>
-              </div>
+            <div className="layout-stack gap-8">
+              <header className="flex items-center justify-between">
+                <h3 className="text-h2">Rewards & Points</h3>
+                  <div className="bg-bg-card px-6 py-4 rounded-card-lg border border-teal-border-faint shadow-card hover:shadow-card-glow transition-all duration-slow">
+                    <p className="text-label text-text-muted uppercase tracking-widest mb-1">Current Balance</p>
+                    <p className="text-h2 text-teal animate-pulse-glow">{points.balance} <span className="text-body-sm font-normal text-text-muted">pts</span></p>
+                  </div>
+              </header>
 
-              <div className="grid md:grid-cols-2 gap-8 mb-12">
-                <div className="bg-secondary-bg p-8 rounded-[2.5rem] border border-white/5">
-                  <h4 className="text-xl font-bold mb-6">Redeem Points</h4>
+              <div className="grid md:grid-cols-2 gap-8">
+                <div className="bg-bg-card p-8 rounded-card-xl border border-bg-border content-stack gap-6">
+                  <h4 className="text-h4">Redeem Points</h4>
                   <div className="space-y-4">
                     {[
                       { points: 500, discount: 50, label: '50 EGP Discount' },
                       { points: 1000, discount: 100, label: '100 EGP Discount' },
                       { points: 2000, discount: 250, label: '250 EGP Discount' }
                     ].map(reward => (
-                      <div key={reward.points} className="flex items-center justify-between p-4 bg-primary-bg rounded-2xl border border-white/5">
-                        <div>
-                          <p className="font-bold">{reward.label}</p>
-                          <p className="text-xs text-text-secondary">{reward.points} Points</p>
+                      <div key={reward.points} className="flex items-center justify-between p-5 bg-bg-page rounded-card border border-bg-border hover:border-teal-border-faint transition-colors duration-base">
+                        <div className="content-stack gap-1">
+                          <p className="text-body-base font-bold">{reward.label}</p>
+                          <p className="text-body-xs text-text-muted">{reward.points} Points required</p>
                         </div>
                         <Button 
                           variant="accent" 
-                          className="px-4 py-2 text-xs"
+                          size="sm"
                           disabled={points.balance < reward.points}
                           onClick={() => {
                             if (confirm(`Redeem ${reward.points} points for a ${reward.discount} EGP voucher?`)) {
@@ -456,234 +474,266 @@ export const UserDashboard = () => {
                   </div>
                 </div>
 
-                <div className="bg-secondary-bg p-8 rounded-[2.5rem] border border-white/5">
-                  <h4 className="text-xl font-bold mb-6">How to earn points?</h4>
+                <div className="bg-bg-card p-8 rounded-card-xl border border-bg-border content-stack gap-8">
+                  <h4 className="text-h4">How to earn points?</h4>
                   <div className="space-y-6">
-                    <div className="flex gap-4">
-                      <div className="w-10 h-10 bg-accent/10 text-accent rounded-xl flex items-center justify-center shrink-0">
-                        <Ticket size={20} />
+                    <div className="flex gap-5">
+                      <div className="w-12 h-12 bg-teal/10 text-teal rounded-card flex items-center justify-center shrink-0">
+                        <Ticket size={24} />
                       </div>
-                      <div>
-                        <p className="font-bold text-sm">Book Tickets</p>
-                        <p className="text-xs text-text-secondary">Earn 1 point for every 10 EGP spent on tickets.</p>
+                      <div className="content-stack gap-1">
+                        <p className="text-body-base font-bold">Book Tickets</p>
+                        <p className="text-body-sm text-text-muted">Earn 1 point for every 10 EGP spent on tickets. Automatic addition.</p>
                       </div>
                     </div>
-                    <div className="flex gap-4">
-                      <div className="w-10 h-10 bg-accent/10 text-accent rounded-xl flex items-center justify-center shrink-0">
-                        <Users size={20} />
+                    <div className="flex gap-5">
+                      <div className="w-12 h-12 bg-teal/10 text-teal rounded-card flex items-center justify-center shrink-0">
+                        <Users size={24} />
                       </div>
-                      <div>
-                        <p className="font-bold text-sm">Refer Friends</p>
-                        <p className="text-xs text-text-secondary">Earn 50 points when a friend makes their first booking.</p>
+                      <div className="content-stack gap-1">
+                        <p className="text-body-base font-bold">Refer Friends</p>
+                        <p className="text-body-sm text-text-muted">Earn 50 points when a friend makes their first booking using your link.</p>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div>
-                <h4 className="text-xl font-bold mb-6">Points History</h4>
-                <div className="bg-secondary-bg rounded-[2.5rem] border border-white/5 overflow-hidden">
-                  <table className="w-full text-left">
+              <div className="content-stack gap-6">
+                <h4 className="text-h4">Points History</h4>
+                <div className="bg-bg-card rounded-card-xl border border-bg-border overflow-hidden shadow-card">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-bg-border bg-bg-elevated/50">
+                          <th className="px-6 py-4 text-label font-bold text-text-muted uppercase tracking-widest">Description</th>
+                          <th className="px-6 py-4 text-label font-bold text-text-muted uppercase tracking-widest text-center">Points</th>
+                          <th className="px-6 py-4 text-label font-bold text-text-muted uppercase tracking-widest text-right">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-bg-border">
+                        {points.history.length > 0 ? (
+                          points.history.map(h => (
+                            <tr key={h.id} className="hover:bg-bg-elevated transition-all duration-base group">
+                              <td className="px-6 py-5 text-body-sm font-medium group-hover:text-teal transition-colors">{h.description}</td>
+                              <td className={`px-6 py-5 text-center font-mono font-bold ${h.type === 'earn' ? 'text-status-success' : 'text-status-error'}`}>
+                                {h.type === 'earn' ? '+' : '-'}{h.points}
+                              </td>
+                              <td className="px-6 py-5 text-body-xs text-text-muted text-right italic">{h.created_at}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={3} className="px-10 py-24 text-center">
+                              <div className="content-stack items-center gap-4">
+                                <div className="w-16 h-16 bg-bg-elevated rounded-card flex items-center justify-center text-text-muted/20">
+                                  <Star size={32} />
+                                </div>
+                                <div className="content-stack gap-1">
+                                  <p className="text-body-base font-bold text-text-muted">No Movement Yet</p>
+                                  <p className="text-body-xs text-text-muted opacity-60">Earn your first points by attending curated events.</p>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'profile' && (
+            <div className="layout-stack max-w-3xl">
+              <h3 className="text-h2">Profile Settings</h3>
+              <div className="bg-bg-card p-8 rounded-card-xl border border-bg-border shadow-card content-stack gap-10">
+                <div className="flex flex-col sm:flex-row items-center gap-8">
+                  <div className="w-32 h-32 bg-bg-elevated border-2 border-bg-border rounded-card-lg flex items-center justify-center text-teal shadow-inner group overflow-hidden relative">
+                    <User size={64} className="group-hover:scale-110 transition-transform duration-slow" />
+                    <div className="absolute inset-0 bg-teal/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                  <div className="content-stack gap-2 text-center sm:text-left">
+                    <h4 className="text-h3">{user?.name}</h4>
+                    <p className="text-body-base text-text-muted">{user?.email}</p>
+                    <div className="flex flex-wrap justify-center sm:justify-start gap-2 mt-2">
+                       <span className="px-3 py-1 bg-teal/10 text-teal rounded-pill text-label font-bold uppercase tracking-wider border border-teal-border-faint">
+                        {user?.role} Account
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-8 pt-8 border-t border-bg-border">
+                  <div className="content-stack gap-1.5">
+                    <label className="text-label font-bold text-text-muted uppercase tracking-widest">Full Name</label>
+                    <p className="text-body-base font-bold text-text-primary">{user?.name}</p>
+                  </div>
+                  <div className="content-stack gap-1.5">
+                    <label className="text-label font-bold text-text-muted uppercase tracking-widest">Email Address</label>
+                    <p className="text-body-base font-bold text-text-primary">{user?.email}</p>
+                  </div>
+                  <div className="content-stack gap-1.5">
+                    <label className="text-label font-bold text-text-muted uppercase tracking-widest">Phone Number</label>
+                    <p className="text-body-base font-bold text-text-primary">{user?.phone || 'Not provided'}</p>
+                  </div>
+                  <div className="content-stack gap-1.5">
+                    <label className="text-label font-bold text-text-muted uppercase tracking-widest">Gender</label>
+                    <p className="text-body-base font-bold text-text-primary">{user?.gender || 'Not specified'}</p>
+                  </div>
+                  <div className="content-stack gap-1.5 sm:col-span-2">
+                    <label className="text-label font-bold text-text-muted uppercase tracking-widest">Member Since</label>
+                    <p className="text-body-base font-bold text-text-primary">{user?.created_at ? new Date(user.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A'}</p>
+                  </div>
+                </div>
+
+                <div className="pt-6">
+                  <Button variant="outline" className="w-full sm:w-auto px-10">Edit Profile Details</Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'payments' && (
+            <div className="layout-stack">
+              <h3 className="text-h2">Payment History</h3>
+              <div className="bg-bg-card rounded-card-xl border border-bg-border overflow-hidden shadow-card">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left font-sans">
                     <thead>
-                      <tr className="border-b border-white/5">
-                        <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-widest">Description</th>
-                        <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-widest">Points</th>
-                        <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-widest">Date</th>
+                      <tr className="border-b border-bg-border bg-bg-elevated/50">
+                        <th className="px-6 py-4 text-label font-bold text-text-muted uppercase tracking-widest">Order ID</th>
+                        <th className="px-6 py-4 text-label font-bold text-text-muted uppercase tracking-widest">Event</th>
+                        <th className="px-6 py-4 text-label font-bold text-text-muted uppercase tracking-widest">Amount</th>
+                        <th className="px-6 py-4 text-label font-bold text-text-muted uppercase tracking-widest">Date</th>
+                        <th className="px-6 py-4 text-label font-bold text-text-muted uppercase tracking-widest">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {points.history.length > 0 ? (
-                        points.history.map(h => (
-                          <tr key={h.id} className="hover:bg-white/5 transition-colors">
-                            <td className="px-6 py-4 text-sm">{h.description}</td>
-                            <td className={`px-6 py-4 font-bold ${h.type === 'earn' ? 'text-green-400' : 'text-red-400'}`}>
-                              {h.type === 'earn' ? '+' : '-'}{h.points}
+                    <tbody className="divide-y divide-bg-border">
+                      {orders.length > 0 ? (
+                        orders.map(order => (
+                          <tr key={order.id} className="hover:bg-bg-elevated/50 transition-colors duration-base">
+                            <td className="px-6 py-5 font-mono text-body-xs text-text-muted tracking-tighter">#{order.id}</td>
+                            <td className="px-6 py-5 text-body-sm font-bold text-text-primary">{order.event?.title}</td>
+                            <td className="px-6 py-5 text-body-sm font-bold text-teal">{order.total_price.toFixed(2)} <span className="text-body-xs font-normal opacity-60">EGP</span></td>
+                            <td className="px-6 py-5 text-body-xs text-text-muted">{order.created_at}</td>
+                            <td className="px-6 py-5">
+                              <span className={`px-2 py-0.5 rounded-tag text-label font-bold uppercase border ${
+                                order.order_status === 'paid' ? 'bg-status-success/10 text-status-success border-status-success/20' : 'bg-status-warning/10 text-status-warning border-status-warning/20'
+                              }`}>
+                                {order.order_status}
+                              </span>
                             </td>
-                            <td className="px-6 py-4 text-xs text-text-secondary">{h.created_at}</td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={3} className="px-6 py-12 text-center text-text-secondary">No points history yet.</td>
+                          <td colSpan={5} className="px-10 py-32 text-center">
+                            <div className="content-stack items-center gap-6">
+                              <div className="w-20 h-20 bg-bg-elevated rounded-card flex items-center justify-center text-text-muted/10 relative">
+                                <CreditCard size={40} />
+                                <div className="absolute inset-0 border-4 border-bg-border rounded-card border-dashed"></div>
+                              </div>
+                              <div className="content-stack gap-2">
+                                <h4 className="text-h4 text-text-muted">No Transaction Records</h4>
+                                <p className="text-body-xs text-text-muted max-w-[200px]">Complete your first booking to initialize your ledger.</p>
+                              </div>
+                              <Button variant="outline" size="sm" className="px-8 border-bg-border" onClick={() => navigate('/events')}>Explore Events</Button>
+                            </div>
+                          </td>
                         </tr>
                       )}
                     </tbody>
                   </table>
                 </div>
               </div>
-            </section>
-          )}
-
-          {activeTab === 'profile' && (
-            <section className="max-w-2xl">
-              <h3 className="text-2xl font-bold mb-8">Profile Settings</h3>
-              <div className="bg-secondary-bg p-8 rounded-[2.5rem] border border-white/5 space-y-8">
-                <div className="flex items-center gap-6">
-                  <div className="w-24 h-24 bg-accent/10 rounded-3xl flex items-center justify-center text-accent">
-                    <User size={48} />
-                  </div>
-                  <div>
-                    <h4 className="text-xl font-bold">{user?.name}</h4>
-                    <p className="text-text-secondary">{user?.email}</p>
-                    <span className="inline-block mt-2 px-3 py-1 bg-accent/20 text-accent rounded-full text-[10px] font-bold uppercase tracking-wider border border-accent/30">
-                      {user?.role} Account
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid sm:grid-cols-2 gap-6 pt-4 border-t border-white/5">
-                  <div>
-                    <label className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-2 block">Full Name</label>
-                    <p className="font-bold">{user?.name}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-2 block">Email Address</label>
-                    <p className="font-bold">{user?.email}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-2 block">Phone Number</label>
-                    <p className="font-bold">{user?.phone || 'Not provided'}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-2 block">Gender</label>
-                    <p className="font-bold">{user?.gender || 'Not specified'}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-2 block">Member Since</label>
-                    <p className="font-bold">{user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}</p>
-                  </div>
-                </div>
-
-                <div className="pt-6 border-t border-white/5">
-                  <Button variant="outline" className="w-full py-4 text-sm">Edit Profile Details</Button>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {activeTab === 'payments' && (
-            <section>
-              <h3 className="text-2xl font-bold mb-8">Payment History</h3>
-              <div className="bg-secondary-bg rounded-[2.5rem] border border-white/5 overflow-hidden">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-white/5">
-                      <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-widest">Order ID</th>
-                      <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-widest">Event</th>
-                      <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-widest">Amount</th>
-                      <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-widest">Date</th>
-                      <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-widest">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {orders.length > 0 ? (
-                      orders.map(order => (
-                        <tr key={order.id} className="hover:bg-white/5 transition-colors">
-                          <td className="px-6 py-4 font-mono text-sm">#{order.id}</td>
-                          <td className="px-6 py-4 font-bold">{order.event?.title}</td>
-                          <td className="px-6 py-4">{order.total_price.toFixed(2)} EGP</td>
-                          <td className="px-6 py-4 text-sm text-text-secondary">{order.created_at}</td>
-                          <td className="px-6 py-4">
-                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                              order.order_status === 'paid' ? 'bg-green-400/10 text-green-400' : 'bg-yellow-400/10 text-yellow-400'
-                            }`}>
-                              {order.order_status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={5} className="px-6 py-12 text-center text-text-secondary">No payments yet.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+            </div>
           )}
         </main>
 
         {/* Viewing Ticket Modal */}
         <AnimatePresence>
           {viewingTicket && (
-            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-primary-bg/90 backdrop-blur-md">
+            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-bg-page/90 backdrop-blur-md">
               <motion.div 
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="bg-secondary-bg w-full max-w-lg rounded-[3rem] overflow-hidden border border-white/10 shadow-2xl flex flex-col"
+                className="bg-bg-card w-full max-w-lg rounded-card-2xl overflow-hidden border border-bg-border shadow-2xl flex flex-col"
               >
                 {/* Premium Ticket Header */}
-                <div className="relative h-32 w-full overflow-hidden">
+                <div className="relative h-40 w-full overflow-hidden">
                   <img 
-                    src={(freshOrder || viewingTicket).event?.image_url || 'https://picsum.photos/seed/event/800/400'} 
+                    src={(freshOrder || viewingTicket).event?.image_url} 
                     alt="Event" 
                     className="w-full h-full object-cover brightness-50"
                     referrerPolicy="no-referrer"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/event/800/400';
-                    }}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-secondary-bg to-transparent"></div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-bg-card to-transparent"></div>
                   <button 
                     onClick={() => setViewingTicket(null)} 
-                    className="absolute top-4 right-4 p-1.5 bg-black/40 hover:bg-black/60 rounded-full text-white backdrop-blur-md transition-all z-20"
+                    className="absolute top-6 right-6 p-2 bg-black/40 hover:bg-black/60 rounded-pill text-text-primary backdrop-blur-md transition-all z-20"
                   >
-                    <X size={18} />
+                    <X size={20} />
                   </button>
-                  <div className="absolute bottom-4 left-6 right-6 z-10">
-                    <span className="px-2 py-0.5 bg-accent/20 text-accent rounded-full text-[9px] font-black uppercase tracking-widest border border-accent/30 mb-1 inline-block">
+                  <div className="absolute bottom-6 left-8 right-8 z-10 content-stack gap-1">
+                    <span className="px-2.5 py-0.5 bg-teal/20 text-teal rounded-tag text-label font-black uppercase tracking-widest border border-teal/30 w-fit">
                       {(freshOrder || viewingTicket).items?.[0]?.name || 'Standard Entry'}
                     </span>
-                    <h2 className="text-xl font-black text-white leading-tight line-clamp-1">{(freshOrder || viewingTicket).event?.title}</h2>
+                    <h2 className="text-h3 text-text-primary leading-tight line-clamp-1">{(freshOrder || viewingTicket).event?.title}</h2>
                   </div>
                 </div>
 
-                <div id={`ticket-card-${(freshOrder || viewingTicket).id}`} className="p-6 space-y-6">
+                <div id={`ticket-card-${(freshOrder || viewingTicket).id}`} className="p-8 content-stack gap-8">
                   {/* Event Details Grid */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-0.5">
-                      <p className="text-[9px] text-text-secondary font-black uppercase tracking-widest">Date & Time</p>
-                      <p className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <Calendar size={12} className="text-accent" />
-                        {(freshOrder || viewingTicket).event?.event_date}
-                      </p>
-                      <p className="text-[10px] text-text-secondary pl-4">
-                        {formatEventTime((freshOrder || viewingTicket).event?.event_date || (freshOrder || viewingTicket).event?.date, (freshOrder || viewingTicket).event?.event_time || (freshOrder || viewingTicket).event?.time)}
-                      </p>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="content-stack gap-1.5">
+                      <p className="text-label text-text-muted font-black uppercase tracking-widest">Date & Time</p>
+                      <div className="content-stack gap-0.5">
+                        <p className="text-body-sm font-bold text-text-primary flex items-center gap-2">
+                          <Calendar size={14} className="text-teal" />
+                          {(freshOrder || viewingTicket).event?.event_date}
+                        </p>
+                        <p className="text-body-xs text-text-muted pl-5">
+                          {formatEventTime((freshOrder || viewingTicket).event?.event_date || (freshOrder || viewingTicket).event?.date, (freshOrder || viewingTicket).event?.event_time || (freshOrder || viewingTicket).event?.time)}
+                        </p>
+                      </div>
                     </div>
-                    <div className="space-y-0.5">
-                      <p className="text-[9px] text-text-secondary font-black uppercase tracking-widest">Location</p>
-                      <p className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <MapPin size={12} className="text-accent" />
-                        {(freshOrder || viewingTicket).event?.location}
-                      </p>
-                      <p className="text-[10px] text-text-secondary pl-4 line-clamp-1">{(freshOrder || viewingTicket).event?.venue}</p>
+                    <div className="content-stack gap-1.5">
+                      <p className="text-label text-text-muted font-black uppercase tracking-widest">Location</p>
+                      <div className="content-stack gap-0.5">
+                        <p className="text-body-sm font-bold text-text-primary flex items-center gap-2">
+                          <MapPin size={14} className="text-teal" />
+                          {(freshOrder || viewingTicket).event?.location}
+                        </p>
+                        <p className="text-body-xs text-text-muted pl-5 line-clamp-1">{(freshOrder || viewingTicket).event?.venue}</p>
+                      </div>
                     </div>
                   </div>
 
                   {/* Ticket Holders Section */}
-                  <div className="space-y-3">
-                    <p className="text-[9px] text-text-secondary font-black uppercase tracking-widest">Ticket Holders</p>
-                    <div className="space-y-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
+                  <div className="content-stack gap-4">
+                    <p className="text-label text-text-muted font-black uppercase tracking-widest">Ticket Holders</p>
+                    <div className="content-stack gap-2 max-h-36 overflow-y-auto pr-2 custom-scrollbar">
                       {loadingFullOrder && !(freshOrder || viewingTicket).items ? (
-                        <div className="flex justify-center py-4">
-                          <RefreshCw className="animate-spin text-accent" size={24} />
+                        <div className="flex justify-center py-6">
+                          <RefreshCw className="animate-spin text-teal" size={28} />
                         </div>
                       ) : (freshOrder || viewingTicket).items?.map((item, idx) => (
-                        <div key={item.id || idx} className="flex justify-between items-center p-3 bg-primary-bg rounded-2xl border border-white/5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center text-accent text-[10px] font-bold">
+                        <div key={item.id || idx} className="flex justify-between items-center p-4 bg-bg-page rounded-card border border-bg-border hover:border-teal/20 transition-colors">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-teal/10 rounded-card flex items-center justify-center text-teal text-label font-black">
                               {idx + 1}
                             </div>
-                            <div>
-                              <p className="text-xs font-bold">{item.name || 'Ticket Holder'}</p>
-                              <p className="text-[10px] text-text-secondary">#{item.id}</p>
+                            <div className="content-stack gap-0">
+                              <p className="text-body-sm font-bold text-text-primary">{item.name || 'Ticket Holder'}</p>
+                              <p className="text-body-xs text-text-muted font-mono">#{item.id}</p>
                             </div>
                           </div>
-                          <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase ${item.is_used ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
+                          <span className={`px-2.5 py-0.5 rounded-tag text-label font-bold uppercase border ${
+                            item.is_used ? 'bg-status-error/10 text-status-error border-status-error/20' : 'bg-status-success/10 text-status-success border-status-success/20'
+                          }`}>
                             {item.is_used ? 'Used' : 'Valid'}
                           </span>
                         </div>
@@ -692,72 +742,76 @@ export const UserDashboard = () => {
                   </div>
 
                   {/* QR Code Section */}
-                  <div className="flex flex-col items-center justify-center py-4 border-t border-dashed border-white/10">
+                  <div className="flex flex-col items-center justify-center py-8 border-y border-dashed border-bg-border">
                     {(() => {
                       if (!(freshOrder || viewingTicket).is_paid) {
                         return (
-                          <div className="text-center p-6 bg-yellow-500/5 rounded-3xl border border-yellow-500/10 w-full">
-                            <Clock size={24} className="mx-auto text-yellow-500 mb-2" />
-                            <p className="text-sm font-bold text-yellow-500">
-                              {(freshOrder || viewingTicket).displayStatus === 'approved' ? 'Payment Required' : 'Pending Approval'}
-                            </p>
-                            <p className="text-xs text-text-secondary mt-1">
-                              {(freshOrder || viewingTicket).displayStatus === 'approved' ? 'Complete payment to see QR' : 'Approval pending. Reservation expires in 1 hour if not paid/approved.'}
-                            </p>
+                          <div className="text-center p-8 bg-status-warning/5 rounded-card-xl border border-status-warning/10 w-full content-stack gap-3">
+                            <Clock size={32} className="mx-auto text-status-warning" />
+                            <div className="content-stack gap-1">
+                              <p className="text-body-base font-bold text-status-warning">
+                                {(freshOrder || viewingTicket).displayStatus === 'approved' ? 'Payment Required' : 'Pending Approval'}
+                              </p>
+                              <p className="text-body-xs text-text-muted max-w-[240px] mx-auto">
+                                {(freshOrder || viewingTicket).displayStatus === 'approved' ? 'Complete payment to activate your QR entry code.' : 'Your reservation is being reviewed. Active for 1 hour.'}
+                              </p>
+                            </div>
                           </div>
                         );
                       }
 
                       if (loadingViewingQr) {
                         return (
-                          <div className="p-12">
-                            <RefreshCw className="animate-spin text-accent" size={32} />
+                          <div className="p-16">
+                            <RefreshCw className="animate-spin text-teal" size={40} />
                           </div>
                         );
                       }
 
                       if (viewingTicketQrStatus?.visible) {
                         return (
-                          <div className="flex flex-col items-center gap-4">
-                            <div className="bg-white p-4 rounded-[2rem] shadow-2xl shadow-accent/20">
+                          <div className="layout-stack items-center gap-6">
+                            <div className="bg-text-primary p-6 rounded-card-2xl shadow-card-glow transform hover:scale-105 transition-transform duration-slow">
                               <img 
-                                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${viewingTicketQrStatus.qr_data}`} 
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${viewingTicketQrStatus.qr_data}`} 
                                 alt="QR Code" 
-                                className="w-40 h-40" 
+                                className="w-44 h-44" 
                               />
                             </div>
-                            <div className="text-center">
-                              <p className="text-[10px] text-text-secondary font-black uppercase tracking-widest mb-1">Scan for Entry</p>
-                              <p className="text-xs font-bold text-accent">Order ID: #{(freshOrder || viewingTicket).id}</p>
+                            <div className="text-center content-stack gap-1">
+                              <p className="text-label text-text-muted font-black uppercase tracking-widest">Scan for entry at gate</p>
+                              <p className="text-body-xs font-bold text-teal font-mono">Order: #{(freshOrder || viewingTicket).id}</p>
                             </div>
                           </div>
                         );
                       }
 
                       return (
-                        <div className="text-center p-6 bg-accent/5 rounded-3xl border border-accent/10 w-full">
-                          <Clock size={24} className="mx-auto text-accent mb-2" />
-                          <p className="text-sm font-bold text-accent">QR Code Locked</p>
-                          <p className="text-xs text-text-secondary mt-1">{viewingTicketQrStatus?.reason || 'QR codes appear 1 hour before the event starts.'}</p>
+                        <div className="text-center p-8 bg-teal/5 rounded-card-xl border border-teal/10 w-full content-stack gap-3">
+                          <Clock size={32} className="mx-auto text-teal" />
+                          <div className="content-stack gap-1">
+                            <p className="text-body-base font-bold text-teal">QR Code Locked</p>
+                            <p className="text-body-xs text-text-muted max-w-[240px] mx-auto">{viewingTicketQrStatus?.reason || 'QR codes are activated 1 hour before the event starts.'}</p>
+                          </div>
                         </div>
                       );
                     })()}
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-3 pt-4">
+                  <div className="flex gap-4">
                     <Button 
                       variant="outline" 
-                      className="flex-1 py-4 rounded-2xl text-xs gap-2 border-white/10 hover:bg-white/5" 
+                      className="flex-1 py-6 rounded-card text-label gap-2 font-bold" 
                       onClick={() => handleDownloadPDF(freshOrder || viewingTicket)}
                     >
-                      <Download size={14} /> Download PDF
+                      <Download size={16} /> PDF Ticket
                     </Button>
                     
                     {(freshOrder || viewingTicket).is_paid && (
                       <Button 
-                        variant="secondary" 
-                        className="flex-1 py-4 rounded-2xl text-xs bg-red-500/10 text-red-500 hover:bg-red-500/20 border-none" 
+                        variant="ghost" 
+                        className="flex-1 py-6 rounded-card text-label font-bold text-status-error hover:bg-status-error/10"
                         onClick={() => {
                           const ticketToResell = (freshOrder || viewingTicket).items && (freshOrder || viewingTicket).items.length > 0 ? (freshOrder || viewingTicket).items[0] : null;
                           if (ticketToResell) {
@@ -773,8 +827,8 @@ export const UserDashboard = () => {
 
                     {!(freshOrder || viewingTicket).is_paid && (freshOrder || viewingTicket).displayStatus === 'approved' && (
                       <Button 
-                        variant="primary" 
-                        className="flex-1 py-4 rounded-2xl text-xs shadow-lg shadow-accent/30" 
+                        variant="accent" 
+                        className="flex-1 py-6 rounded-card text-label font-bold shadow-card-glow"
                         onClick={() => {
                           if (confirm('Proceed to payment? (Simulated)')) {
                             orderService.payOrder((freshOrder || viewingTicket).id).then(data => data && window.location.reload());
@@ -794,46 +848,50 @@ export const UserDashboard = () => {
         {/* Resale Modal */}
         <AnimatePresence>
           {isResaleModalOpen && (
-            <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-primary-bg/80 backdrop-blur-sm">
+            <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-bg-page/80 backdrop-blur-md">
               <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-secondary-bg w-full max-w-md rounded-[2.5rem] p-8 border border-white/5 shadow-2xl"
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-bg-card w-full max-w-md rounded-card-2xl p-10 border border-bg-border shadow-2xl content-stack gap-8"
               >
-                <div className="flex justify-between items-center mb-8">
-                  <h2 className="text-2xl font-bold">Resell Ticket</h2>
-                  <button onClick={() => setIsResaleModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-h2">Resell Ticket</h2>
+                  <button 
+                    onClick={() => setIsResaleModalOpen(false)} 
+                    className="p-2 hover:bg-bg-elevated rounded-pill transition-colors text-text-primary"
+                  >
                     <X size={24} />
                   </button>
                 </div>
 
-                <div className="space-y-6">
-                  <div className="p-4 bg-accent/5 rounded-2xl border border-accent/10">
-                    <p className="text-sm text-text-secondary mb-1">Estimated Payout</p>
-                    <p className="text-2xl font-bold text-accent">{selectedTicket?.price_each} EGP</p>
-                    <p className="text-[10px] text-text-secondary mt-2">Note: Ticket will be placed in resale queue and sold after original tickets are sold out.</p>
+                <div className="content-stack gap-8">
+                  <div className="p-6 bg-teal/5 rounded-card border border-teal-border-faint content-stack gap-2">
+                    <p className="text-label text-text-muted uppercase tracking-widest font-black">Estimated Payout</p>
+                    <p className="text-h2 text-teal font-mono">{selectedTicket?.price_each} <span className="text-body-sm font-sans font-normal text-text-muted">EGP</span></p>
+                    <p className="text-body-xs text-text-muted mt-2 border-t border-teal/10 pt-2 italic">Note: Payout occurs after original tickets sell out.</p>
                   </div>
 
-                  <div className="space-y-4">
-                    <label className="text-sm font-medium text-text-secondary">Payout Method</label>
+                  <div className="content-stack gap-4">
+                    <label className="text-label text-text-muted uppercase tracking-widest font-black">Payout Method</label>
                     <div className="grid grid-cols-2 gap-4">
                       <button 
                         onClick={() => setPayoutMethod('instapay')}
-                        className={`p-4 rounded-xl border transition-all text-center ${payoutMethod === 'instapay' ? 'border-accent bg-accent/10 text-white' : 'border-white/10 text-text-secondary hover:bg-white/5'}`}
+                        className={`p-5 rounded-card border-2 transition-all duration-base text-center content-stack gap-1 ${payoutMethod === 'instapay' ? 'border-teal bg-teal/5 text-teal shadow-card' : 'border-bg-border text-text-muted hover:border-text-muted/30 hover:bg-bg-elevated'}`}
                       >
-                        Instapay
+                        <span className="text-body-sm font-bold">Instapay</span>
                       </button>
                       <button 
                         onClick={() => setPayoutMethod('vodafone')}
-                        className={`p-4 rounded-xl border transition-all text-center ${payoutMethod === 'vodafone' ? 'border-accent bg-accent/10 text-white' : 'border-white/10 text-text-secondary hover:bg-white/5'}`}
+                        className={`p-5 rounded-card border-2 transition-all duration-base text-center content-stack gap-1 ${payoutMethod === 'vodafone' ? 'border-teal bg-teal/5 text-teal shadow-card' : 'border-bg-border text-text-muted hover:border-text-muted/30 hover:bg-bg-elevated'}`}
                       >
-                        Vodafone Cash
+                        <span className="text-body-sm font-bold">Vodafone Cash</span>
                       </button>
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-text-secondary">
+                  <div className="content-stack gap-3">
+                    <label className="text-label text-text-muted uppercase tracking-widest font-black">
                       {payoutMethod === 'instapay' ? 'Instapay Address' : 'Wallet Number'}
                     </label>
                     <input 
@@ -841,11 +899,13 @@ export const UserDashboard = () => {
                       value={payoutAddress}
                       onChange={(e) => setPayoutAddress(e.target.value)}
                       placeholder={payoutMethod === 'instapay' ? 'username@instapay' : '01xxxxxxxxx'}
-                      className="w-full bg-primary-bg border border-white/10 rounded-xl px-4 py-3 focus:border-accent outline-none transition-colors"
+                      className="w-full bg-bg-page border border-bg-border rounded-card px-6 py-4 focus:ring-2 focus:ring-teal/20 focus:border-teal outline-none transition-all text-body-base text-text-primary text-center font-bold tracking-wide"
                     />
                   </div>
 
-                  <Button className="w-full py-4" onClick={handleResaleRequest}>Submit Resale Request</Button>
+                  <Button className="w-full py-6 rounded-card text-label font-black uppercase tracking-widest" onClick={handleResaleRequest}>
+                    Submit Request
+                  </Button>
                 </div>
               </motion.div>
             </div>

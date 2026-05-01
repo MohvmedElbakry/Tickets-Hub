@@ -91,15 +91,15 @@ export const QRScannerTab: React.FC<QRScannerTabProps> = () => {
 
   return (
     <div className="space-y-8">
-      <div className="bg-secondary-bg p-8 rounded-3xl border border-white/5">
-        <h3 className="text-xl font-bold mb-6">Event Entry Scanner</h3>
+      <div className="bg-bg-card p-8 rounded-3xl border border-bg-border">
+        <h3 className="text-h3 mb-6">Event Entry Scanner</h3>
         <div className="grid sm:grid-cols-2 gap-6 mb-8">
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">Select Event</label>
+            <label className="block text-body-sm font-medium text-text-muted mb-2">Select Event</label>
             <select 
               value={selectedEventId} 
               onChange={(e) => setSelectedEventId(e.target.value)}
-              className="w-full bg-primary-bg border border-white/10 rounded-xl px-4 py-3 focus:border-accent outline-none"
+              className="w-full bg-bg-page border border-bg-border rounded-xl px-4 py-3 focus:border-teal outline-none text-text-primary"
             >
               <option value="">Select an event...</option>
               {events.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
@@ -107,7 +107,7 @@ export const QRScannerTab: React.FC<QRScannerTabProps> = () => {
           </div>
           <div className="flex items-end">
             <Button 
-              variant="primary" 
+              variant="accent" 
               className="w-full py-3" 
               disabled={!selectedEventId || isScanning}
               onClick={startScanning}
@@ -118,23 +118,23 @@ export const QRScannerTab: React.FC<QRScannerTabProps> = () => {
         </div>
 
         {cameraError && (
-          <div className="mt-6 p-6 bg-red-400/10 border border-red-400/20 rounded-3xl text-center">
-            <div className="flex items-center justify-center gap-3 text-red-400 mb-4">
+          <div className="mt-6 p-6 bg-status-error/10 border border-status-error/20 rounded-3xl text-center">
+            <div className="flex items-center justify-center gap-3 text-status-error mb-4">
               <AlertCircle size={24} />
-              <p className="font-bold">{cameraError}</p>
+              <p className="text-body-base font-bold">{cameraError}</p>
             </div>
-            <div className="text-sm text-text-secondary mb-6 space-y-2">
+            <div className="text-body-xs text-text-muted mb-6 space-y-2">
               <p>To fix this:</p>
-              <p className="font-medium text-white">Click the lock icon in the browser → allow camera → refresh page</p>
+              <p className="font-medium text-text-primary">Click the lock icon in the browser → allow camera → refresh page</p>
             </div>
-            <Button variant="outline" onClick={startScanning}>
+            <Button variant="outline" size="sm" onClick={startScanning}>
               <RefreshCw size={18} className="mr-2" /> Retry
             </Button>
           </div>
         )}
 
         {isScanning && (
-          <div className="max-w-md mx-auto bg-black rounded-2xl overflow-hidden border border-white/10">
+          <div className="max-w-md mx-auto bg-black rounded-2xl overflow-hidden border border-bg-border">
             <div id="reader"></div>
             <Button variant="outline" className="w-full rounded-none border-0" onClick={() => setIsScanning(false)}>Cancel</Button>
           </div>
@@ -144,29 +144,29 @@ export const QRScannerTab: React.FC<QRScannerTabProps> = () => {
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className={`mt-8 p-8 rounded-3xl border ${scanResult.success ? 'bg-green-400/10 border-green-400/20' : 'bg-red-400/10 border-red-400/20'}`}
+            className={`mt-8 p-8 rounded-3xl border ${scanResult.success ? 'bg-status-success/10 border-status-success/20' : 'bg-status-error/10 border-status-error/20'}`}
           >
             <div className="flex items-center gap-4 mb-4">
               {scanResult.success ? (
-                <CheckCircle2 className="text-green-400" size={32} />
+                <CheckCircle2 className="text-status-success" size={32} />
               ) : (
-                <X className="text-red-400" size={32} />
+                <X className="text-status-error" size={32} />
               )}
-              <h4 className={`text-2xl font-bold ${scanResult.success ? 'text-green-400' : 'text-red-400'}`}>
+              <h4 className={`text-h2 ${scanResult.success ? 'text-status-success' : 'text-status-error'}`}>
                 {scanResult.success ? 'Access Granted' : 'Access Denied'}
               </h4>
             </div>
-            <p className="text-lg mb-4">{scanResult.message}</p>
+            <p className="text-body-base mb-4 text-text-primary">{scanResult.message}</p>
             {scanResult.scanned_count !== undefined && (
-              <p className="font-bold text-red-400">Previous scans: {scanResult.scanned_count}</p>
+              <p className="text-body-base font-bold text-status-error">Previous scans: {scanResult.scanned_count}</p>
             )}
             {scanResult.ticket && (
-              <div className="mt-4 pt-4 border-t border-white/5 space-y-2">
-                <p className="text-sm text-text-secondary">Ticket ID: <span className="text-white font-mono">#{scanResult.ticket.id}</span></p>
-                <p className="text-sm text-text-secondary">Type: <span className="text-white">{scanResult.ticket.name}</span></p>
+              <div className="mt-4 pt-4 border-t border-bg-border space-y-2">
+                <p className="text-body-xs text-text-muted">Ticket ID: <span className="text-text-primary font-mono">#{scanResult.ticket.id}</span></p>
+                <p className="text-body-xs text-text-muted">Type: <span className="text-text-primary">{scanResult.ticket.name}</span></p>
               </div>
             )}
-            <Button variant="outline" className="mt-6" onClick={() => setScanResult(null)}>Clear Result</Button>
+            <Button variant="outline" size="sm" className="mt-6" onClick={() => setScanResult(null)}>Clear Result</Button>
           </motion.div>
         )}
       </div>

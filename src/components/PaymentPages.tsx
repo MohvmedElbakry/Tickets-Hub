@@ -22,6 +22,7 @@ export const CheckoutPage = () => {
   const [order, setOrder] = useState<Order | null>(lastOrder && lastOrder.id.toString() === id ? lastOrder : null);
   const [loading, setLoading] = useState(!order);
   const [error, setError] = useState<string | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   useEffect(() => {
     if (id && (!order || order.id.toString() !== id)) {
@@ -43,7 +44,8 @@ export const CheckoutPage = () => {
   }, [id, order, setLastOrder]);
 
   const handlePay = async () => {
-    if (!order) return;
+    if (!order || paymentLoading) return;
+    setPaymentLoading(true);
     try {
       // Clear any existing session locks before starting a new payment session
       sessionStorage.removeItem("payment_redirect_done");
@@ -55,81 +57,107 @@ export const CheckoutPage = () => {
         localStorage.setItem('last_payment_time', Date.now().toString());
         window.location.href = data.checkoutUrl;
       } else {
-        alert('Failed to create payment session. Please try again.');
+        setError('Failed to create payment session. Please try again.');
+        setPaymentLoading(false);
       }
     } catch (err) {
       console.error('Payment error:', err);
-      alert('Payment initialization failed.');
+      setError('Payment initialization failed. Please contact support.');
+      setPaymentLoading(false);
     }
   };
 
   if (loading || !order || order.id.toString() !== id) return (
     <div className="max-w-7xl mx-auto px-4 py-24 text-center">
-      <RefreshCw className="animate-spin text-accent mx-auto mb-4" size={48} />
-      <p className="text-text-secondary">Loading order details...</p>
+      <RefreshCw className="animate-spin text-teal mx-auto mb-4" size={48} />
+      <p className="text-text-muted font-bold tracking-widest uppercase text-label">Verifying Order Details...</p>
     </div>
   );
 
   if (error || !order) return (
-    <div className="max-w-7xl mx-auto px-4 py-24 text-center">
-      <XCircle className="text-red-500 mx-auto mb-4" size={48} />
-      <h2 className="text-2xl font-bold mb-2">Order Not Found</h2>
-      <p className="text-text-secondary mb-8">{error || 'We couldn\'t find the order you\'re looking for.'}</p>
-      <Button onClick={() => navigate('/')}>Back to Home</Button>
+    <div className="max-w-7xl mx-auto px-4 py-32 text-center layout-stack items-center">
+      <div className="w-20 h-20 bg-status-error/10 text-status-error rounded-card flex items-center justify-center">
+        <XCircle size={40} />
+      </div>
+      <div className="content-stack gap-2">
+        <h2 className="text-h2">Order Not Found</h2>
+        <p className="text-text-muted max-w-sm mx-auto">{error || 'We couldn\'t find the order you\'re looking for.'}</p>
+      </div>
+      <Button variant="outline" className="px-10" onClick={() => navigate('/')}>Return to Hub</Button>
     </div>
   );
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-12">
-      <button onClick={() => navigate('/')} className="flex items-center gap-2 text-text-secondary hover:text-white mb-8 transition-colors">
-        <ArrowLeft size={18} /> Cancel and Return
+      <button onClick={() => navigate('/')} className="flex items-center gap-2 text-text-muted hover:text-text-primary mb-10 transition-colors group">
+        <div className="w-8 h-8 rounded-card border border-bg-border flex items-center justify-center group-hover:bg-bg-elevated transition-colors">
+          <ArrowLeft size={16} />
+        </div>
+        <span className="text-label font-black tracking-widest uppercase">Cancel and Return</span>
       </button>
 
-      <div className="bg-secondary-bg rounded-[2.5rem] border border-white/5 overflow-hidden shadow-2xl">
-        <div className="p-8 border-b border-white/5 bg-white/5">
-          <h1 className="text-3xl font-bold mb-2">Checkout</h1>
-          <p className="text-text-secondary">Order #{order.id}</p>
+      <div className="bg-bg-card rounded-card-2xl border border-bg-border overflow-hidden shadow-2xl">
+        <div className="p-10 border-b border-bg-border bg-bg-elevated/30 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="content-stack gap-1">
+            <h1 className="text-h2">Checkout</h1>
+            <p className="text-label text-text-muted font-bold tracking-widest">ORDER TRANSACTION <span className="text-teal">#{order.id}</span></p>
+          </div>
+          <div className="hidden md:block">
+            <span className="px-4 py-1.5 bg-status-warning/10 text-status-warning border border-status-warning/20 rounded-tag text-[10px] font-black uppercase tracking-widest">Awaiting Payment</span>
+          </div>
         </div>
 
-        <div className="p-8 space-y-8">
-          <div className="space-y-4">
-            <h3 className="text-lg font-bold">Order Summary</h3>
-            <div className="space-y-3">
+        <div className="p-10 layout-stack gap-10">
+          <div className="content-stack gap-6">
+            <h3 className="text-h4">Order Summary</h3>
+            <div className="layout-stack gap-4">
               {order.items?.map((item, idx) => (
-                <div key={idx} className="flex justify-between items-center p-4 bg-primary-bg rounded-2xl border border-white/5">
-                  <div>
-                    <p className="font-bold">{item.name}</p>
-                    <p className="text-xs text-text-secondary">Quantity: {item.quantity}</p>
+                <div key={idx} className="flex justify-between items-center p-5 bg-bg-elevated rounded-card border border-bg-border/50 group hover:border-teal/30 transition-colors">
+                  <div className="content-stack gap-1">
+                    <p className="text-body-base font-black text-text-primary uppercase tracking-tight">{item.name}</p>
+                    <p className="text-label text-text-muted font-bold tracking-widest">{item.quantity}× UNIT PASS</p>
                   </div>
-                  <p className="font-bold">{(item.price_each * item.quantity).toFixed(2)} EGP</p>
+                  <p className="text-h4 text-text-primary">{(item.price_each * item.quantity).toFixed(2)} <span className="text-body-xs font-normal opacity-40">EGP</span></p>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="pt-6 border-t border-white/5 space-y-3">
-            <div className="flex justify-between text-text-secondary">
-              <span>Subtotal</span>
-              <span>{(order.total_price / 1.1).toFixed(2)} EGP</span>
+          <div className="pt-10 border-t border-bg-border layout-stack gap-4">
+            <div className="flex justify-between items-center text-text-muted">
+              <span className="text-label font-bold tracking-widest">SUBTOTAL</span>
+              <span className="text-body-base font-mono">{(order.total_price / 1.1).toFixed(2)} EGP</span>
             </div>
-            <div className="flex justify-between text-text-secondary">
-              <span>Service Fee (10%)</span>
-              <span>{(order.total_price - (order.total_price / 1.1)).toFixed(2)} EGP</span>
+            <div className="flex justify-between items-center text-text-muted">
+              <span className="text-label font-bold tracking-widest">SERVICE FEE (10%)</span>
+              <span className="text-body-base font-mono">{(order.total_price - (order.total_price / 1.1)).toFixed(2)} EGP</span>
             </div>
-            <div className="flex justify-between items-center pt-3">
-              <span className="text-xl font-bold">Total Amount</span>
-              <span className="text-3xl font-bold text-accent">{order.total_price.toFixed(2)} EGP</span>
+            <div className="flex justify-between items-center pt-6 mt-4 border-t border-bg-border/30">
+              <span className="text-h3">Total Amount</span>
+              <span className="text-h2 text-teal shadow-teal/5">{order.total_price.toFixed(2)} <span className="text-body-sm font-normal text-text-muted">EGP</span></span>
             </div>
           </div>
 
-          <div className="pt-8">
-            <Button className="w-full py-5 text-lg gap-3" onClick={handlePay}>
-              <CreditCard size={20} /> Pay with Kashier
+          <div className="pt-10">
+            <Button 
+              variant="accent" 
+              className="w-full py-6 text-button font-black uppercase tracking-widest gap-3 shadow-card-glow" 
+              onClick={handlePay}
+              disabled={paymentLoading}
+            >
+              <CreditCard size={22} className="opacity-80" /> {paymentLoading ? 'INITIALIZING...' : 'Pay with HUB-PAY'}
             </Button>
-            <p className="text-center text-xs text-text-secondary mt-6 flex items-center justify-center gap-2">
-              <ShieldCheck size={14} className="text-green-500" /> 
-              Your payment is secured and encrypted by Kashier
-            </p>
+            <div className="flex flex-col items-center gap-6 mt-10">
+              <div className="flex items-center gap-8 filter grayscale opacity-40 hover:grayscale-0 hover:opacity-100 transition-all duration-medium">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg" alt="Visa" className="h-4" />
+                <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="MasterCard" className="h-8" />
+                <p className="text-label font-black opacity-60">FAWRY</p>
+              </div>
+              <p className="text-center text-[10px] text-text-muted flex items-center justify-center gap-2 font-black tracking-widest uppercase bg-bg-elevated py-2 px-6 rounded-pill border border-bg-border/50">
+                <ShieldCheck size={14} className="text-status-success" /> 
+                Secure 256-bit SSL Encrypted Transaction
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -141,23 +169,30 @@ export const PaymentSuccessPage = () => {
   const navigate = useNavigate();
   const { lastOrder: order } = useUI();
   return (
-    <div className="max-w-2xl mx-auto px-4 py-24 text-center">
-    <motion.div 
-      initial={{ scale: 0.5, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      className="w-24 h-24 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto mb-8"
-    >
-      <CheckCircle2 size={48} />
-    </motion.div>
-    <h1 className="text-4xl font-bold mb-4">Payment Successful!</h1>
-    <p className="text-text-secondary text-lg mb-12">
-      Thank you for your purchase. Your order #{order?.id} has been confirmed and your tickets are now available in your dashboard.
-    </p>
-    <div className="flex justify-center gap-4">
-      <Button variant="primary" onClick={() => navigate('/dashboard')}>Go to My Tickets</Button>
-      <Button variant="outline" onClick={() => navigate('/')}>Back to Home</Button>
+    <div className="max-w-2xl mx-auto px-4 py-32 text-center layout-stack gap-12">
+      <div className="content-stack items-center">
+        <motion.div 
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", damping: 15 }}
+          className="w-24 h-24 bg-status-success/20 text-status-success rounded-full flex items-center justify-center mx-auto mb-10 shadow-status-success/10 shadow-2xl"
+        >
+          <CheckCircle2 size={48} />
+        </motion.div>
+        
+        <div className="content-stack gap-4">
+          <h1 className="text-h1">Payment Successful!</h1>
+          <p className="text-body-lg text-text-muted max-w-lg mx-auto">
+            Thank you for your purchase. Your order <span className="text-text-primary font-black">#{order?.id}</span> has been confirmed and your tickets are now activated in your dashboard.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row justify-center gap-4 pt-8 border-t border-bg-border">
+        <Button variant="accent" className="px-10 py-4 text-button font-black uppercase tracking-widest" onClick={() => navigate('/dashboard')}>Access My Tickets</Button>
+        <Button variant="outline" className="px-10 py-4 text-button font-black uppercase tracking-widest font-sans" onClick={() => navigate('/')}>Return to Hub</Button>
+      </div>
     </div>
-  </div>
   );
 };
 
@@ -165,38 +200,52 @@ export const PaymentFailurePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   return (
-    <div className="max-w-2xl mx-auto px-4 py-24 text-center">
-    <div className="w-24 h-24 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mx-auto mb-8">
-      <XCircle size={48} />
+    <div className="max-w-2xl mx-auto px-4 py-32 text-center layout-stack gap-12">
+      <div className="content-stack items-center">
+        <div className="w-24 h-24 bg-status-error/20 text-status-error rounded-full flex items-center justify-center mx-auto mb-10 shadow-status-error/10 shadow-2xl">
+          <XCircle size={48} />
+        </div>
+        
+        <div className="content-stack gap-4">
+          <h1 className="text-h1">Payment Failed</h1>
+          <p className="text-body-lg text-text-muted max-w-lg mx-auto">
+            We couldn't process your payment for order <span className="text-text-primary font-black">#{id || '(Unknown)'}</span>. Please verify your details or try a different payment method.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row justify-center gap-4 pt-8 border-t border-bg-border">
+        {id ? (
+          <Button variant="accent" className="px-10 py-4 text-button font-black uppercase tracking-widest" onClick={() => navigate(`/checkout/${id}`)}>Retry Payment</Button>
+        ) : (
+          <Button variant="accent" className="px-10 py-4 text-button font-black uppercase tracking-widest" onClick={() => navigate('/')}>Back to Home</Button>
+        )}
+        <Button variant="outline" className="px-10 py-4 text-button font-black uppercase tracking-widest" onClick={() => navigate('/')}>Contact Support</Button>
+      </div>
     </div>
-    <h1 className="text-4xl font-bold mb-4">Payment Failed</h1>
-    <p className="text-text-secondary text-lg mb-12">
-      We couldn't process your payment for order #{id || '(Unknown)'}. Please try again or use a different payment method.
-    </p>
-    <div className="flex justify-center gap-4">
-      {id ? (
-        <Button variant="primary" onClick={() => navigate(`/checkout/${id}`)}>Retry Payment</Button>
-      ) : (
-        <Button variant="primary" onClick={() => navigate('/')}>Back to Home</Button>
-      )}
-      <Button variant="outline" onClick={() => navigate('/')}>Contact Support</Button>
-    </div>
-  </div>
   );
 };
 
 export const PaymentPendingPage = () => {
   const navigate = useNavigate();
   return (
-    <div className="max-w-2xl mx-auto px-4 py-24 text-center">
-    <div className="w-24 h-24 bg-yellow-500/20 text-yellow-500 rounded-full flex items-center justify-center mx-auto mb-8">
-      <Clock size={48} />
+    <div className="max-w-2xl mx-auto px-4 py-32 text-center layout-stack gap-12">
+      <div className="content-stack items-center">
+        <div className="w-24 h-24 bg-status-warning/20 text-status-warning rounded-full flex items-center justify-center mx-auto mb-10 animate-pulse shadow-status-warning/10 shadow-2xl">
+          <Clock size={48} />
+        </div>
+        
+        <div className="content-stack gap-4">
+          <h1 className="text-h1">Payment Pending</h1>
+          <p className="text-body-lg text-text-muted max-w-lg mx-auto">
+            Your payment is currently being processed by <span className="text-text-primary font-black tracking-widest">HUB-PAY</span>. We will notify you once it's confirmed.
+          </p>
+        </div>
+      </div>
+
+      <div className="pt-8 border-t border-bg-border">
+        <Button variant="outline" className="px-12 py-4 text-button font-black uppercase tracking-widest" onClick={() => navigate('/')}>Return to Hub</Button>
+      </div>
     </div>
-    <h1 className="text-4xl font-bold mb-4">Payment Pending</h1>
-    <p className="text-text-secondary text-lg mb-12">
-      Your payment is currently being processed. We will notify you once it's confirmed.
-    </p>
-    <Button variant="outline" onClick={() => navigate('/')}>Back to Home</Button>
-  </div>
   );
 };

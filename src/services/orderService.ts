@@ -1,5 +1,6 @@
 
 import * as ordersApi from '../lib/api/ordersApi';
+import { normalizeEvent } from '../lib/utils';
 
 export const orderService = {
   async createOrder(params: {
@@ -16,11 +17,22 @@ export const orderService = {
   },
 
   async getOrders() {
-    return await ordersApi.getOrders();
+    const data = await ordersApi.getOrders();
+    if (data && Array.isArray(data)) {
+      return data.map((o: any) => ({
+        ...o,
+        event: o.event ? normalizeEvent(o.event) : null
+      }));
+    }
+    return data;
   },
 
   async getOrder(id: string | number) {
-    return await ordersApi.getOrder(id);
+    const data = await ordersApi.getOrder(id);
+    if (data && data.event) {
+      data.event = normalizeEvent(data.event);
+    }
+    return data;
   },
 
   async getOrderQRStatus(id: string | number) {

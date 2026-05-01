@@ -2,32 +2,20 @@
 import * as eventsApi from '../lib/api/eventsApi';
 import * as authApi from '../lib/api/authApi';
 import { Event } from '../types';
+import { normalizeEvent } from '../lib/utils';
 
 export const eventService = {
   async getEvents(): Promise<Event[]> {
     const data = await eventsApi.getEvents();
     if (!data || !Array.isArray(data)) return [];
     
-    return data.map((e: any) => ({
-      ...e,
-      date: e.event_date,
-      price: e.ticket_types && e.ticket_types.length > 0 
-        ? Math.min(...e.ticket_types.map((t: any) => t.price)) 
-        : 0
-    }));
+    return data.map((e: any) => normalizeEvent(e));
   },
 
   async getEvent(id: string | number): Promise<Event> {
     const data = await eventsApi.getEvent(id);
-    console.log("FETCH EVENT ID:", id);
     if (!data) return data;
-    return {
-      ...data,
-      date: data.event_date,
-      price: data.ticket_types && data.ticket_types.length > 0 
-        ? Math.min(...data.ticket_types.map((t: any) => t.price)) 
-        : 0
-    };
+    return normalizeEvent(data);
   },
 
   async getSettings() {

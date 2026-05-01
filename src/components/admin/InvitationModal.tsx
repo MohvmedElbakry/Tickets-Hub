@@ -47,39 +47,39 @@ export const InvitationModal: React.FC<InvitationModalProps> = ({ onClose, onSuc
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-secondary-bg w-full max-w-md rounded-3xl p-8 border border-white/10 relative"
+        className="bg-bg-card w-full max-w-md rounded-3xl p-8 border border-bg-border relative"
       >
-        <button onClick={onClose} className="absolute top-6 right-6 text-text-secondary hover:text-white">
+        <button onClick={onClose} className="absolute top-6 right-6 text-text-muted hover:text-text-primary transition-colors">
           <X size={24} />
         </button>
         
-        <h2 className="text-2xl font-bold mb-6">Send Invitation</h2>
+        <h2 className="text-h2 mb-6">Send Invitation</h2>
         
         {error && (
-          <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-4 rounded-xl mb-6 text-sm">
+          <div className="bg-status-error/10 border border-status-error/50 text-status-error p-4 rounded-xl mb-6 text-body-sm">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">User Email</label>
+            <label className="block text-body-sm font-medium text-text-muted mb-2">User Email</label>
             <input 
               type="email" 
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-primary-bg border border-white/10 rounded-xl px-4 py-3 focus:border-accent outline-none"
+              className="w-full bg-bg-page border border-bg-border rounded-xl px-4 py-3 focus:border-teal outline-none text-text-primary placeholder:text-text-muted/50"
               placeholder="user@example.com"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">Event</label>
+            <label className="block text-body-sm font-medium text-text-muted mb-2">Event</label>
             <select 
               required
               value={eventId}
               onChange={(e) => setEventId(e.target.value)}
-              className="w-full bg-primary-bg border border-white/10 rounded-xl px-4 py-3 focus:border-accent outline-none"
+              className="w-full bg-bg-page border border-bg-border rounded-xl px-4 py-3 focus:border-teal outline-none text-text-primary"
             >
               <option value="">Select Event</option>
               {events.map(ev => (
@@ -89,12 +89,12 @@ export const InvitationModal: React.FC<InvitationModalProps> = ({ onClose, onSuc
           </div>
           {eventId && (
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">Ticket Type</label>
+              <label className="block text-body-sm font-medium text-text-muted mb-2">Ticket Type</label>
               <select 
                 required
                 value={ticketTypeId}
                 onChange={(e) => setTicketTypeId(e.target.value)}
-                className="w-full bg-primary-bg border border-white/10 rounded-xl px-4 py-3 focus:border-accent outline-none"
+                className="w-full bg-bg-page border border-bg-border rounded-xl px-4 py-3 focus:border-teal outline-none text-text-primary"
               >
                 <option value="">Select Ticket Type</option>
                 {events.find(ev => String(ev.id) === String(eventId))?.ticket_types?.map(tt => (
@@ -103,7 +103,7 @@ export const InvitationModal: React.FC<InvitationModalProps> = ({ onClose, onSuc
               </select>
             </div>
           )}
-          <Button type="submit" className="w-full py-4" disabled={loading}>
+          <Button variant="accent" type="submit" className="w-full py-4 text-body-base" disabled={loading}>
             {loading ? 'Sending...' : 'Send Invitation'}
           </Button>
         </form>

@@ -178,52 +178,52 @@ export const AdminDashboard: React.FC = React.memo(() => {
         <aside className="w-full md:w-64 space-y-2">
           <button 
             onClick={() => setActiveTab('events')}
-            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'events' ? 'bg-accent text-white' : 'text-text-secondary hover:bg-white/5'}`}
+            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'events' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated'}`}
           >
             <Calendar size={20} /> Events
           </button>
           <button 
             onClick={() => setActiveTab('orders')}
-            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'orders' ? 'bg-accent text-white' : 'text-text-secondary hover:bg-white/5'}`}
+            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'orders' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated'}`}
           >
             <Ticket size={20} /> Orders
           </button>
           <button 
             onClick={() => setActiveTab('users')}
-            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'users' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-text-secondary hover:bg-white/5'}`}
+            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'users' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated'}`}
           >
             <Users size={20} /> Users
           </button>
           <button 
             onClick={() => setActiveTab('vouchers')}
-            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'vouchers' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-text-secondary hover:bg-white/5'}`}
+            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'vouchers' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated'}`}
           >
             <Ticket size={20} /> Vouchers
           </button>
           <button 
             onClick={() => setActiveTab('resale')}
-            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'resale' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-text-secondary hover:bg-white/5'}`}
+            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'resale' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated'}`}
           >
             <ArrowLeft size={20} /> Resale
           </button>
           <button 
             onClick={() => setActiveTab('invitations')}
-            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'invitations' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-text-secondary hover:bg-white/5'}`}
+            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'invitations' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated'}`}
           >
             <Mail size={20} /> Invitations
           </button>
           <button 
             onClick={() => setActiveTab('scanner')}
-            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'scanner' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-text-secondary hover:bg-white/5'}`}
+            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'scanner' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated'}`}
           >
             <Search size={20} /> QR Scanner
           </button>
-          <button onClick={() => setIsEventModalOpen(true)} className="w-full flex items-center gap-3 px-6 py-4 rounded-2xl text-text-secondary hover:bg-white/5 transition-colors">
+          <button onClick={() => setIsEventModalOpen(true)} className="w-full flex items-center gap-3 px-6 py-4 rounded-2xl text-text-muted hover:bg-bg-elevated transition-colors">
             <PlusCircle size={20} /> Create Event
           </button>
           <button 
             onClick={() => setActiveTab('settings')}
-            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'settings' ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-text-secondary hover:bg-white/5'}`}
+            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'settings' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated'}`}
           >
             <Settings size={20} /> Settings
           </button>
@@ -232,8 +232,8 @@ export const AdminDashboard: React.FC = React.memo(() => {
         <main className="flex-1 space-y-12">
           <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
-              <p className="text-text-secondary">
+              <h1 className="text-h1 mb-2">Admin Dashboard</h1>
+              <p className="text-text-muted">
                 {activeTab === 'events' && 'Manage your events and track your sales performance.'}
                 {activeTab === 'orders' && 'View and manage all ticket orders.'}
                 {activeTab === 'users' && 'Manage user roles and permissions.'}
@@ -245,10 +245,10 @@ export const AdminDashboard: React.FC = React.memo(() => {
               </p>
             </div>
             {activeTab === 'events' && (
-              <Button variant="primary" onClick={() => setIsEventModalOpen(true)}><PlusCircle size={20} /> Create New Event</Button>
+              <Button variant="accent" onClick={() => setIsEventModalOpen(true)}><PlusCircle size={20} /> Create New Event</Button>
             )}
             {activeTab === 'vouchers' && (
-              <Button variant="primary" onClick={() => setIsVoucherModalOpen(true)}><PlusCircle size={20} /> Create Voucher</Button>
+              <Button variant="accent" onClick={() => setIsVoucherModalOpen(true)}><PlusCircle size={20} /> Create Voucher</Button>
             )}
           </header>
 
@@ -315,25 +315,26 @@ export const AdminDashboard: React.FC = React.memo(() => {
         {/* Delete Confirmation Modal */}
         <AnimatePresence>
           {deleteConfirm && (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-primary-bg/90 backdrop-blur-md">
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-bg-page/90 backdrop-blur-md">
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="bg-secondary-bg w-full max-w-sm rounded-[2.5rem] p-8 border border-white/10 shadow-2xl text-center"
+                className="bg-bg-card w-full max-w-sm rounded-[2.5rem] p-8 border border-bg-border shadow-2xl text-center"
               >
-                <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                <div className="w-16 h-16 bg-status-error/10 text-status-error rounded-full flex items-center justify-center mx-auto mb-6">
                   <Trash2 size={32} />
                 </div>
-                <h3 className="text-xl font-bold mb-2">Are you sure?</h3>
-                <p className="text-text-secondary mb-8">
+                <h3 className="text-h3 mb-2">Are you sure?</h3>
+                <p className="text-text-muted mb-8 text-body-sm">
                   This action cannot be undone. Are you sure you want to delete this {deleteConfirm.type}?
                 </p>
                 <div className="flex gap-4">
-                  <Button variant="secondary" className="flex-1" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+                  <Button variant="secondary" size="md" className="flex-1" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
                   <Button 
-                    variant="primary" 
-                    className="flex-1 bg-red-500 hover:bg-red-600 border-none" 
+                    variant="outline" 
+                    size="md"
+                    className="flex-1 text-status-error border-status-error/20 hover:bg-status-error/5" 
                     onClick={() => {
                       if (deleteConfirm.type === 'event') handleDeleteEvent(deleteConfirm.id);
                       else handleDeleteInvitation(deleteConfirm.id);

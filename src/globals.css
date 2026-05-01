@@ -1,0 +1,399 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* Colors */
+  --color-teal: var(--teal);
+  --color-teal-light: var(--teal-light);
+  --color-teal-dark: var(--teal-dark);
+  --color-teal-deep: var(--teal-deep);
+  --color-teal-glow: var(--teal-glow);
+  --color-teal-glow-soft: var(--teal-glow-soft);
+
+  --color-gold: var(--gold);
+  --color-gold-light: var(--gold-light);
+  --color-gold-glow: var(--gold-glow);
+
+  --color-bg-page: var(--bg-page);
+  --color-bg-card: var(--bg-card);
+  --color-bg-border: var(--bg-border);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-alt: var(--bg-hero-alt);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --color-text-inverse: var(--text-inverse);
+  --color-onteal: var(--text-on-teal);
+
+  --color-status-success: var(--status-success);
+  --color-status-error: var(--status-error);
+  --color-status-warning: var(--status-warning);
+  --color-status-info: var(--status-info);
+
+  /* Borders derived from colors */
+  --color-teal-border-faint: var(--color-teal-border-faint);
+  --color-teal-border-mid: var(--color-teal-border-mid);
+  --color-teal-border-strong: var(--color-teal-border-strong);
+  --color-teal-border-nav: var(--color-teal-border-nav);
+  --color-gold-border: var(--color-gold-border);
+
+  /* Radius */
+  --radius-pill: var(--radius-pill);
+  --radius-card: var(--radius-card);
+  --radius-card-lg: var(--radius-card-lg);
+  --radius-card-xl: var(--radius-card-xl);
+  --radius-tag: var(--radius-tag);
+  --radius-input: var(--radius-input);
+  --radius-nav: var(--radius-nav-item);
+  --radius-logo: var(--radius-logo-box);
+  --radius-stamp: var(--radius-stamp);
+
+  /* Shadows */
+  --shadow-card: var(--shadow-card);
+  --shadow-card-glow: var(--shadow-card-glow);
+  --shadow-ticket: var(--shadow-ticket);
+  --shadow-ticket-vip: var(--shadow-ticket-vip);
+  --shadow-modal: var(--shadow-modal);
+  --shadow-dropdown: var(--shadow-dropdown);
+
+  /* Fonts */
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* Transitions */
+  --animate-base: opacity var(--duration-base) var(--ease-base);
+}
+
+/* =========================================================
+   🎨 DESIGN TOKENS
+========================================================= */
+
+:root {
+  /* === BRAND COLORS === */
+  --teal:           #00C9B1;
+  --teal-light:     #4DDECF;
+  --teal-dark:      #00A896;
+  --teal-deep:      #007A6E;
+  --teal-glow:      rgba(0, 201, 177, 0.18);
+  --teal-glow-soft: rgba(0, 201, 177, 0.12);
+  
+  /* extracted colors for tailwind borderColor */
+  --color-teal-border-faint:  rgba(0, 201, 177, 0.33);
+  --color-teal-border-mid:    rgba(0, 201, 177, 0.44);
+  --color-teal-border-strong: rgba(0, 201, 177, 0.55);
+  --color-teal-border-nav:    rgba(0, 201, 177, 0.27);
+
+  --gold:           #C8A84B;
+  --gold-light:     #F5D980;
+  --gold-glow:      rgba(200, 168, 75, 0.22);
+  --color-gold-border:    rgba(200, 168, 75, 0.33);
+
+  /* === BACKGROUND TIERS === */
+  --bg-page:        #0A0F0E;   /* L0 — page/viewport */
+  --bg-card:        #111918;   /* L1 — card surface   */
+  --bg-border:      #1A2422;   /* L2 — borders/dividers */
+  --bg-elevated:    #1E2D2B;   /* L3 — hover/active surfaces */
+  --bg-hero-alt:    #0D1A18;   /* gradient alt for dark cards */
+
+  /* === TEXT === */
+  --text-primary:   #E8F5F3;
+  --text-muted:     #7AADA6;
+  --text-inverse:   #FFFFFF;
+  --text-on-teal:   #0A0F0E;
+
+  /* === STATUS === */
+  --status-success: #00C9B1;
+  --status-error:   #E84040;
+  --status-warning: #E8A020;
+  --status-info:    #00C9B1;
+
+  /* === BORDERS (Full Shorthand) === */
+  --border-default: 1px solid var(--bg-border);
+  --border-teal-faint:  1px solid var(--color-teal-border-faint);
+  --border-teal-mid:    1px solid var(--color-teal-border-mid);
+  --border-teal-strong: 1px solid var(--color-teal-border-strong);
+  --border-gold-faint:  1px solid var(--color-gold-border);
+  --border-dashed-teal: 1px dashed var(--color-teal-border-faint);
+  --border-dashed-white:1px dashed rgba(255, 255, 255, 0.20);
+  --border-stamp-teal:  2px solid var(--teal);
+  --border-stamp-error: 2px solid var(--status-error);
+  --border-stamp-gold:  2px solid var(--gold);
+
+  /* === SHADOWS === */
+  --shadow-card:       0 2px 12px rgba(0, 0, 0, 0.30);
+  --shadow-card-glow:  0 0 32px rgba(0, 201, 177, 0.18);
+  --shadow-ticket:     0 12px 40px rgba(0, 0, 0, 0.50), 0 0 0 1px rgba(0, 201, 177, 0.22);
+  --shadow-ticket-vip: 0 12px 40px rgba(0, 0, 0, 0.70), 0 0 0 1px rgba(200, 168, 75, 0.13);
+  --shadow-modal:      0 24px 64px rgba(0, 0, 0, 0.60);
+  --shadow-dropdown:   0 8px 24px rgba(0, 0, 0, 0.40);
+
+  /* === GRADIENTS === */
+  --gradient-cta:         linear-gradient(90deg, #00C9B1, #4DDECF);
+  --gradient-ticket-top:  linear-gradient(90deg, #00C9B1, #4DDECF, #00C9B1);
+  --gradient-vip-top:     linear-gradient(90deg, #C8A84B, #F5D980, #C8A84B);
+  --gradient-card-dark:   linear-gradient(135deg, #0A0F0E, #0D1A18);
+  --gradient-section-bar: linear-gradient(180deg, #00C9B1, #00A896);
+  --gradient-section-line:linear-gradient(90deg, #00C9B1, #4DDECF, transparent);
+  --gradient-ticket-back: linear-gradient(135deg, #00C9B1, #007A6E);
+  --gradient-hero-radial: radial-gradient(ellipse at 60% 40%, rgba(0,201,177,0.12), transparent 60%);
+  --gradient-glow-radial: radial-gradient(circle, rgba(0,201,177,0.18), transparent 70%);
+
+  /* === RADIUS === */
+  --radius-pill:       20px;
+  --radius-card:       16px;
+  --radius-card-lg:    18px;
+  --radius-card-xl:    20px;
+  --radius-tag:        6px;
+  --radius-input:      10px;
+  --radius-nav-item:   8px;
+  --radius-logo-box:   8px;
+  --radius-stamp:      6px;
+
+  /* === NATIVE TRANSITION TOKENS === */
+  --duration-fast:   150ms;
+  --duration-base:   200ms;
+  --duration-medium: 250ms;
+  --duration-slow:   350ms;
+
+  --ease-base:   ease;
+  --ease-out:    ease-out;
+
+  /* === SPACING === */
+  --spacing-18: 4.5rem; /* 72px */
+  --spacing-22: 5.5rem; /* 88px */
+
+  /* =========================================================
+     📐 LAYOUT SYSTEM
+  ========================================================= */
+  --container-sm: 640px;
+  --container-md: 768px;
+  --container-lg: 1024px;
+  --container-xl: 1280px;
+
+  --page-padding-x: 1.5rem;
+  --page-padding-y: 2rem;
+
+  --content-spacing: 1.5rem;
+  --section-spacing: 2.5rem;
+
+  /* =========================================================
+     🔤 TYPOGRAPHY SYSTEM
+  ========================================================= */
+  --text-hero-size: 4rem;
+  --text-hero-lh: 1.1;
+  --text-hero-ls: -0.02em;
+
+  --text-h2-size: 2.5rem;
+  --text-h2-lh: 1.2;
+  --text-h2-ls: -0.01em;
+
+  --text-h3-size: 2rem;
+  --text-h3-lh: 1.3;
+  --text-h3-ls: -0.01em;
+
+  --text-h4-size: 1.5rem;
+  --text-h4-lh: 1.4;
+  --text-h4-ls: 0;
+
+  --text-body-lg-size: 1.125rem;
+  --text-body-lg-lh: 1.6;
+
+  --text-body-base-size: 1rem;
+  --text-body-base-lh: 1.5;
+
+  --text-body-sm-size: 0.875rem;
+  --text-body-sm-lh: 1.5;
+
+  --text-body-xs-size: 0.75rem;
+  --text-body-xs-lh: 1.4;
+
+  --text-label-size: 0.625rem;
+  --text-label-lh: 1;
+  --text-label-ls: 0.1em;
+
+  /* Utility font mappings */
+  --font-display: "Playfair Display", ui-serif, serif;
+  --font-sans:    "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-heading: "Playfair Display", ui-serif, serif;
+  --font-body:    "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:    "DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@layer base {
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    @apply bg-bg-page text-text-primary;
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* =========================================================
+   🧱 COMPONENT UTILITIES
+========================================================= */
+
+@layer components {
+  /*
+  STRICT TYPOGRAPHY ENFORCEMENT:
+
+  ❌ DO NOT USE:
+  - text-[xxpx]
+  - inline font-size styles
+  - random Tailwind font sizes (text-lg, text-xl...)
+
+  ✅ ONLY USE:
+  - .text-hero
+  - .text-h2 / h3 / h4
+  - .text-body / body-sm / body-xs
+  - .text-label / data / price
+
+  This is REQUIRED for consistency across the system.
+  */
+
+  /* === HEADINGS (DISPLAY FONT) === */
+  .text-hero {
+    font-family: var(--font-display);
+    font-size: var(--text-hero-size);
+    line-height: var(--text-hero-lh);
+    letter-spacing: var(--text-hero-ls);
+    font-weight: 800;
+  }
+
+  .text-h2 {
+    font-family: var(--font-display);
+    font-size: var(--text-h2-size);
+    line-height: var(--text-h2-lh);
+    letter-spacing: var(--text-h2-ls);
+    font-weight: 700;
+  }
+
+  .text-h3 {
+    font-family: var(--font-display);
+    font-size: var(--text-h3-size);
+    line-height: var(--text-h3-lh);
+    letter-spacing: var(--text-h3-ls);
+    font-weight: 700;
+  }
+
+  .text-h4 {
+    font-family: var(--font-display);
+    font-size: var(--text-h4-size);
+    line-height: var(--text-h4-lh);
+    font-weight: 600;
+  }
+
+  /* === BODY (SANS FONT) === */
+  .text-body-lg {
+    font-family: var(--font-sans);
+    font-size: var(--text-body-lg-size);
+    line-height: var(--text-body-lg-lh);
+  }
+
+  .text-body {
+    font-family: var(--font-sans);
+    font-size: var(--text-body-base-size);
+    line-height: var(--text-body-base-lh);
+  }
+
+  .text-body-sm {
+    font-family: var(--font-sans);
+    font-size: var(--text-body-sm-size);
+    line-height: var(--text-body-sm-lh);
+  }
+
+  .text-body-xs {
+    font-family: var(--font-sans);
+    font-size: var(--text-body-xs-size);
+    line-height: var(--text-body-xs-lh);
+  }
+
+  /* === LABELS / DATA (MONO FONT) === */
+  .text-label {
+    font-family: var(--font-mono);
+    font-size: var(--text-label-size);
+    line-height: var(--text-label-lh);
+    letter-spacing: var(--text-label-ls);
+    text-transform: uppercase;
+  }
+
+  .text-data {
+    font-family: var(--font-mono);
+    font-weight: 500;
+  }
+
+  .text-price {
+    font-family: var(--font-mono);
+    font-size: 1.125rem;
+    font-weight: 800;
+  }
+
+  .text-ticket-id {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--teal);
+  }
+
+  /* === UTILITIES === */
+  .layout-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--section-spacing);
+  }
+
+  .content-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--content-spacing);
+  }
+
+  .pulse-glow {
+    animation: pulse-glow 2s infinite;
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 3s infinite ease-in-out;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 1; filter: drop-shadow(0 0 2px var(--teal)); }
+    50% { opacity: 0.7; filter: drop-shadow(0 0 10px var(--teal)); }
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes kenBurns {
+    from { transform: scale(1); }
+    to { transform: scale(1.06); }
+  }
+
+  .drop-shadow-teal {
+    filter: drop-shadow(0 0 8px var(--teal-glow));
+  }
+
+  .shadow-status-success {
+    box-shadow: 0 0 12px var(--status-success);
+  }
+}
+
+/* =========================================================
+   📏 RULES & GOVERNANCE
+========================================================= */
+
+/*
+LAYOUT SAFETY RULE:
+- NEVER nest PageContainer inside another PageContainer
+- Extend layout using className instead
+*/
+
+/*
+LAYOUT RULES:
+- All pages must use PageContainer
+- No fixed pixel page margins in components
+- No random padding hacks (px-10, mx-4) for layout
+- Spacing must come from layout system OR Tailwind spacing scale
+*/

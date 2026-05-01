@@ -73,8 +73,8 @@ export const ConfirmationPage = () => {
   } else if (loadingOrder || !order) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center">
-        <RefreshCw className="animate-spin text-accent mb-4" size={48} />
-        <p className="text-text-secondary">Loading payment details...</p>
+        <RefreshCw className="animate-spin text-teal mb-4" size={48} />
+        <p className="text-text-muted font-black tracking-widest uppercase text-label">Updating Order Integrity...</p>
       </div>
     );
   }
@@ -95,105 +95,118 @@ export const ConfirmationPage = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-20 text-center">
-      <motion.div 
-        initial={{ scale: 0.5, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className={`w-24 h-24 ${isPaid ? 'bg-green-500/20 text-green-500' : 'bg-yellow-500/20 text-yellow-500'} rounded-full flex items-center justify-center mx-auto mb-8`}
-      >
-        {isPaid ? <CheckCircle2 size={48} /> : <RefreshCw className="animate-spin" size={48} />}
-      </motion.div>
-      
-      <h1 className="text-4xl font-bold mb-4">
-        {isPaid ? 'Booking Confirmed!' : 'Processing Payment...'}
-      </h1>
-      
-      <p className="text-text-secondary text-lg mb-12">
-        {isPaid ? (
-          <>{confirmationMessage} Order for <span className="text-white font-bold">{order.event?.title}</span>.</>
-        ) : (
-          <>
-            <p className="mb-2">We are waiting for Kashier to confirm your payment for <span className="text-white font-bold">{order.event?.title}</span>.</p>
-            {order.order_status === 'pending' && (
-              <p className="text-sm text-yellow-500/80 bg-yellow-500/5 py-3 px-4 rounded-2xl border border-yellow-500/10 inline-flex items-center gap-2 mx-auto">
-                <Clock size={14} /> Your reservation will expire in 1 hour if payment is not completed.
-              </p>
-            )}
-          </>
-        )}
-        <br />
-        Order ID: #{order.id}
-      </p>
-
-      {isProcessing && (
-        <div className="mb-8">
-          <Button variant="outline" onClick={refreshOrderStatus} className="gap-2">
-            <RefreshCw size={16} /> Refresh Status
-          </Button>
+    <div className="max-w-2xl mx-auto px-4 py-20 text-center layout-stack gap-12">
+      <div>
+        <motion.div 
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className={`w-24 h-24 ${isPaid ? 'bg-status-success/20 text-status-success' : 'bg-status-warning/20 text-status-warning'} rounded-full flex items-center justify-center mx-auto mb-8`}
+        >
+          {isPaid ? <CheckCircle2 size={48} /> : <RefreshCw className="animate-spin" size={48} />}
+        </motion.div>
+        
+        <h1 className="text-h1 mb-4">
+          {isPaid ? 'Booking Confirmed!' : 'Processing Payment...'}
+        </h1>
+        
+        <div className="text-text-muted text-body-lg mb-8 max-w-lg mx-auto leading-relaxed">
+          {isPaid ? (
+            <>
+              {confirmationMessage} Order for <span className="text-text-primary font-black uppercase tracking-tight">{order.event?.title}</span>.
+            </>
+          ) : (
+            <div className="content-stack gap-4">
+              <p>We are waiting for HUB-PAY to confirm your payment for <span className="text-text-primary font-black">{order.event?.title}</span>.</p>
+              {order.order_status === 'pending' && (
+                <div className="text-label text-status-warning bg-status-warning/5 py-3 px-5 rounded-card border border-status-warning/10 inline-flex items-center gap-2 mx-auto font-black tracking-widest">
+                  <Clock size={14} /> EXPIRES IN 60 MINUTES
+                </div>
+              )}
+            </div>
+          )}
+          <div className="mt-4 text-label font-bold tracking-widest text-text-muted/60">
+            ORDER ID: <span className="text-teal">#{order.id}</span>
+          </div>
         </div>
-      )}
 
-      <div id={`ticket-card-${order.id}`} className="bg-secondary-bg p-8 rounded-[2.5rem] border border-white/5 mb-12 relative overflow-hidden">
-        <div className={`absolute top-0 left-0 w-full h-2 ${isPaid ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-        <div className="flex flex-col md:flex-row gap-8 items-center">
-          <div className="w-48 h-48 bg-white p-4 rounded-2xl relative flex items-center justify-center">
+        {isProcessing && (
+          <div className="mb-8">
+            <Button variant="outline" onClick={refreshOrderStatus} className="gap-2 text-button font-black uppercase tracking-widest">
+              <RefreshCw size={16} /> Refresh Status
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div id={`ticket-card-${order.id}`} className="bg-bg-card p-8 rounded-card-2xl border border-bg-border mb-4 relative overflow-hidden shadow-ticket transition-all duration-slow hover:shadow-card-glow group">
+        <div className={`absolute top-0 left-0 w-full h-1.5 ${isPaid ? 'bg-status-success shadow-status-success/20 shadow-lg' : 'bg-status-warning animate-pulse'}`}></div>
+        
+        <div className="flex flex-col md:flex-row gap-8 items-center text-left">
+          <div className="w-48 h-48 bg-white p-4 rounded-card relative flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform duration-slow">
             {loadingQr ? (
-              <RefreshCw className="animate-spin text-primary-bg" size={32} />
+              <RefreshCw className="animate-spin text-bg-page" size={32} />
             ) : qrStatus?.visible ? (
               <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${qrStatus.qr_data}`} alt="QR Code" className="w-full h-full" />
             ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-primary-bg text-center p-2">
-                <Lock size={32} className="mb-2" />
-                <p className="text-[10px] font-bold uppercase">QR Code Locked</p>
-                <p className="text-[8px]">{qrStatus?.reason || 'Waiting for entry window'}</p>
+              <div className="w-full h-full flex flex-col items-center justify-center text-bg-page text-center p-2">
+                <Lock size={32} className="mb-2 opacity-60" />
+                <p className="text-[10px] font-black uppercase tracking-widest leading-tight">QR Code Locked</p>
+                <p className="text-[8px] font-bold mt-1 max-w-[120px]">{qrStatus?.reason || 'Waiting for entry window'}</p>
               </div>
             )}
           </div>
-          <div className="text-left flex-1">
-            <div className="flex justify-between items-start mb-2">
-              <h3 className="text-2xl font-bold">{order.event?.title}</h3>
-              <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${isPaid ? 'bg-green-500/20 text-green-500' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                {isPaid ? 'Paid' : 'Payment Processing'}
-              </span>
+
+          <div className="flex-1 content-stack gap-4">
+            <div className="flex flex-col gap-2">
+              <div className="flex justify-between items-start">
+                <span className={`px-2.5 py-1 rounded-tag text-[10px] font-black uppercase tracking-wider ${isPaid ? 'bg-status-success/10 text-status-success border border-status-success/20' : 'bg-status-warning/10 text-status-warning border border-status-warning/20'}`}>
+                  {isPaid ? 'CONFIRMED' : 'PENDING'}
+                </span>
+                {isPaid && <p className="text-label text-text-muted font-bold">DIGITAL PASS</p>}
+              </div>
+              <h3 className="text-h3 leading-tight">{order.event?.title}</h3>
             </div>
-            <div className="space-y-2 text-text-secondary">
+
+            <div className="content-stack gap-2 text-text-muted text-body-sm font-medium">
               <p className="flex items-center gap-2">
-                <Calendar size={16} /> 
+                <Calendar size={16} className="text-teal" /> 
                 {order.event?.event_date || (order.event?.date ? new Date(order.event.date).toLocaleDateString() : 'Date TBD')} at {formatEventTime(order.event?.event_date || order.event?.date, order.event?.event_time || order.event?.time)}
               </p>
-              <p className="flex items-center gap-2"><MapPin size={16} /> {order.event?.location || 'Location TBD'}</p>
-              <div className="mt-4 pt-4 border-t border-white/5">
+              <p className="flex items-center gap-2"><MapPin size={16} className="text-teal" /> {order.event?.location || 'Location TBD'}</p>
+              
+              <div className="mt-4 pt-4 border-t border-bg-border flex flex-col gap-2">
                 {order.items?.map((item: any, index: number) => (
-                  <p key={item.id || index} className="flex items-center gap-2 text-sm">
-                    <Ticket size={14} /> {item.quantity}x {item.name || (item.ticket_type ? item.ticket_type.name : 'Ticket')}
+                  <p key={item.id || index} className="flex items-center gap-2 text-body-xs font-black uppercase tracking-widest text-text-primary">
+                    <Ticket size={14} className="text-teal" /> {item.quantity}x {item.name || (item.ticket_type ? item.ticket_type.name : 'Ticket')}
                   </p>
                 ))}
               </div>
             </div>
-            <div className="mt-6 flex gap-3">
-              {isPaid && (
+
+            {isPaid && (
+              <div className="mt-4 flex flex-wrap gap-3">
                 <Button 
-                  variant="primary" 
-                  className="px-4 py-2 text-sm"
+                  variant="accent" 
+                  className="px-5 py-2 text-label font-black uppercase tracking-widest flex items-center gap-2"
                   onClick={() => handleDownloadPDF(order)}
                 >
-                  <Download size={16} /> Download PDF
+                  <Download size={14} /> Download PDF
                 </Button>
-              )}
-              <div className="relative group">
-                <Button variant="secondary" className="px-4 py-2 text-sm opacity-50 cursor-not-allowed">Add to Wallet</Button>
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1 bg-black text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                  Coming Soon
+                <div className="relative group/tooltip">
+                  <Button variant="outline" className="px-5 py-2 text-label font-black uppercase tracking-widest opacity-50 cursor-not-allowed">Add to Wallet</Button>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1 bg-bg-elevated text-text-primary text-[10px] rounded-tag opacity-0 group-hover/tooltip:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-bg-border z-10 font-bold tracking-widest">
+                    COMING SOON
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="flex justify-center gap-4">
-        <Button variant="outline" onClick={() => navigate('/')}>Back to Home</Button>
-        <Button variant="ghost" onClick={() => navigate('/dashboard')}>View My Tickets</Button>
+      <div className="flex flex-col sm:flex-row justify-center gap-4 border-t border-bg-border pt-12">
+        <Button variant="outline" className="px-8 py-3 text-button font-black uppercase tracking-widest" onClick={() => navigate('/')}>Return to Hub</Button>
+        <Button variant="ghost" className="px-8 py-3 text-button font-black uppercase tracking-widest text-teal hover:text-teal-light" onClick={() => navigate('/dashboard')}>My Tickets Dashboard</Button>
       </div>
     </div>
   );

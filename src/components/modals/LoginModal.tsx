@@ -46,74 +46,93 @@ export const LoginModal = () => {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-primary-bg/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-bg-page/80 backdrop-blur-md">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="bg-secondary-bg w-full max-w-md rounded-[2.5rem] p-8 border border-white/5 shadow-2xl relative overflow-hidden"
+            className="bg-bg-card w-full max-w-md rounded-card-2xl p-8 border border-bg-border shadow-2xl relative overflow-hidden"
           >
-            <div className="absolute top-0 left-0 w-full h-2 bg-accent"></div>
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-3xl font-bold">Welcome <span className="text-accent">Back</span></h2>
-              <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-colors">
-                <X size={24} />
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-teal shadow-teal/20 shadow-lg"></div>
+            
+            <div className="flex justify-between items-center mb-10">
+              <div className="content-stack gap-1">
+                <h2 className="text-h2">Welcome <span className="text-teal">Back</span></h2>
+                <p className="text-label text-text-muted font-bold tracking-widest uppercase">The HUB awaits you</p>
+              </div>
+              <button 
+                onClick={onClose} 
+                className="w-10 h-10 flex items-center justify-center bg-bg-elevated/50 hover:bg-bg-elevated rounded-card transition-all duration-base group"
+              >
+                <X size={20} className="text-text-muted group-hover:text-text-primary transition-colors" />
               </button>
             </div>
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/20 text-red-500 p-4 rounded-2xl mb-6 flex items-center gap-3 text-sm">
-                <AlertCircle size={18} /> {error}
+              <div className="bg-status-error/10 border border-status-error/20 text-status-error p-4 rounded-card mb-8 flex items-center gap-3 text-body-sm font-medium">
+                <div className="w-6 h-6 rounded-full bg-status-error/20 flex items-center justify-center shrink-0">
+                  <AlertCircle size={14} />
+                </div>
+                {error}
               </div>
             )}
 
-            <form onSubmit={handleLogin} className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-text-secondary ml-1">Email Address</label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+            <form onSubmit={handleLogin} className="content-stack gap-6">
+              <div className="content-stack gap-2">
+                <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Email Address</label>
+                <div className="relative group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-card flex items-center justify-center text-text-muted group-focus-within:text-teal group-focus-within:bg-teal/10 transition-all duration-base">
+                    <Mail size={16} />
+                  </div>
                   <input 
                     type="email" 
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="name@example.com"
-                    className="w-full bg-primary-bg border border-white/10 rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:border-accent transition-colors"
+                    className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="content-stack gap-2">
                 <div className="flex justify-between items-center ml-1">
-                  <label className="text-sm font-medium text-text-secondary">Password</label>
-                  <button type="button" className="text-xs text-accent hover:underline">Forgot Password?</button>
+                  <label className="text-label text-text-muted font-black uppercase tracking-widest">Password</label>
+                  <button type="button" className="text-label text-teal font-black uppercase tracking-widest hover:text-teal-light transition-colors">Forgot Password?</button>
                 </div>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+                <div className="relative group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-card flex items-center justify-center text-text-muted group-focus-within:text-teal group-focus-within:bg-teal/10 transition-all duration-base">
+                    <Lock size={16} />
+                  </div>
                   <input 
                     type="password" 
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-primary-bg border border-white/10 rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:border-accent transition-colors"
+                    className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                   />
                 </div>
               </div>
 
-              <Button type="submit" className="w-full py-4 text-lg" disabled={loading}>
-                {loading ? 'Logging in...' : 'Login'}
+              <Button 
+                type="submit" 
+                variant="accent"
+                className="w-full py-4 text-button font-black uppercase tracking-widest mt-4" 
+                disabled={loading}
+              >
+                {loading ? 'Authenticating...' : 'Login to Account'}
               </Button>
             </form>
 
-            <div className="mt-8 pt-8 border-t border-white/5 text-center">
-              <p className="text-text-secondary">
+            <div className="mt-10 pt-10 border-t border-bg-border text-center">
+              <p className="text-body-sm text-text-muted">
                 Don't have an account? 
                 <button 
                   onClick={() => { onClose(); onOpenSignup(); }}
-                  className="text-accent font-bold ml-2 hover:underline"
+                  className="text-teal font-black uppercase tracking-widest text-label ml-3 hover:text-teal-light transition-colors"
                 >
-                  Sign Up
+                  Create Account
                 </button>
               </p>
             </div>

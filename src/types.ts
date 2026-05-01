@@ -75,6 +75,8 @@ export interface Event {
   created_at?: string;
   ticket_types?: TicketType[];
   pre_registration_count?: number;
+  is_featured?: boolean;
+  featured_order?: number;
   // For backward compatibility with mock data and UI
   date?: string;
   time?: string;
