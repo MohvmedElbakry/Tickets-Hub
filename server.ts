@@ -60,367 +60,682 @@ const parseSafeDate = (input: any, required: boolean = false) => {
 class PrismaDB {
   // Settings
   async getSettings() {
-    let settings = await prisma.setting.findFirst();
-    if (!settings) {
-      settings = await prisma.setting.create({ data: { service_fee_percent: 10 } });
+    try {
+      let settings = await prisma.setting.findFirst();
+      if (!settings) {
+        settings = await prisma.setting.create({ data: { service_fee_percent: 10 } });
+        console.log('[DB SUCCESS] Settings created');
+      } else {
+        console.log('[DB SUCCESS] Settings fetched');
+      }
+      return settings;
+    } catch (err) {
+      console.error('[DB ERROR] getSettings:', err);
+      throw err;
     }
-    return settings;
   }
 
   async updateSettings(updates: any) {
-    const settings = await this.getSettings();
-    return await prisma.setting.update({
-      where: { id: settings.id },
-      data: updates
-    });
+    try {
+      const settings = await this.getSettings();
+      const result = await prisma.setting.update({
+        where: { id: settings.id },
+        data: updates
+      });
+      console.log('[DB SUCCESS] Settings updated:', result);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] updateSettings:', err);
+      throw err;
+    }
   }
 
   // Users
   async getUsers() {
-    return await prisma.user.findMany();
+    try {
+      const result = await prisma.user.findMany();
+      console.log(`[DB SUCCESS] Fetched ${result.length} users`);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] getUsers:', err);
+      throw err;
+    }
   }
 
   async getUserById(id: number) {
-    return await prisma.user.findUnique({ where: { id } });
+    try {
+      const result = await prisma.user.findUnique({ where: { id } });
+      console.log(`[DB SUCCESS] User fetched by ID ${id}:`, !!result);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getUserById(${id}):`, err);
+      throw err;
+    }
   }
 
   async getUserByEmail(email: string) {
-    return await prisma.user.findUnique({ where: { email } });
+    try {
+      const result = await prisma.user.findUnique({ where: { email } });
+      console.log(`[DB SUCCESS] User fetched by email ${email}:`, !!result);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getUserByEmail(${email}):`, err);
+      throw err;
+    }
   }
 
   async addUser(user: any) {
-    const { id, ...data } = user;
-    return await prisma.user.create({ data });
+    try {
+      const { id, ...data } = user;
+      const result = await prisma.user.create({ data });
+      console.log('[DB SUCCESS] User added:', result.id);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] addUser:', err);
+      throw err;
+    }
   }
 
   async updateUser(id: number, updates: any) {
-    return await prisma.user.update({ where: { id }, data: updates });
+    try {
+      const result = await prisma.user.update({ where: { id }, data: updates });
+      console.log('[DB SUCCESS] User updated:', id);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] updateUser(${id}):`, err);
+      throw err;
+    }
   }
 
   async deleteUser(id: number) {
     try {
       await prisma.user.delete({ where: { id } });
+      console.log('[DB SUCCESS] User deleted:', id);
       return true;
-    } catch {
+    } catch (err) {
+      console.error(`[DB ERROR] deleteUser(${id}):`, err);
       return false;
     }
   }
 
   // Events
   async getEvents() {
-    return await prisma.event.findMany();
+    try {
+      const result = await prisma.event.findMany();
+      console.log(`[DB SUCCESS] Fetched ${result.length} events`);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] getEvents:', err);
+      throw err;
+    }
   }
 
   async getEventById(id: number) {
-    return await prisma.event.findUnique({ where: { id } });
+    try {
+      const result = await prisma.event.findUnique({ where: { id } });
+      console.log(`[DB SUCCESS] Event fetched by ID ${id}:`, !!result);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getEventById(${id}):`, err);
+      throw err;
+    }
   }
 
   async addEvent(event: any) {
-    const { id, ...data } = event;
-    const eventDate = data.date || data.event_date;
-    const parsedDate = parseSafeDate(eventDate, true);
+    try {
+      const { id, ...data } = event;
+      const eventDate = data.date || data.event_date;
+      const parsedDate = parseSafeDate(eventDate, true);
 
-    // Ensure event_date is a string for Prisma
-    if (data.event_date) {
-      data.event_date = typeof data.event_date === 'string' ? data.event_date : parsedDate!.toISOString();
-    }
-
-    return await prisma.event.create({
-      data: {
-        ...data,
-        date: parsedDate!,
-        government: data.government || 'Other',
-        require_approval: data.require_approval || false,
-        qr_enabled_manual: data.qr_enabled_manual ?? false
+      // Ensure event_date is a string for Prisma
+      if (data.event_date) {
+        data.event_date = typeof data.event_date === 'string' ? data.event_date : parsedDate!.toISOString();
       }
-    });
+
+      const result = await prisma.event.create({
+        data: {
+          ...data,
+          date: parsedDate!,
+          government: data.government || 'Other',
+          require_approval: data.require_approval || false,
+          qr_enabled_manual: data.qr_enabled_manual ?? false
+        }
+      });
+      console.log('[DB SUCCESS] Event added:', result.id);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] addEvent:', err);
+      throw err;
+    }
   }
 
   async updateEvent(id: number, updates: any) {
-    const data = { ...updates };
-    if (data.date !== undefined) {
-      data.date = parseSafeDate(data.date);
-      if (data.date === null) delete data.date;
-    }
-    if (data.event_date !== undefined) {
-      const parsed = parseSafeDate(data.event_date);
-      if (parsed === null) {
-        delete data.event_date;
-      } else {
-        // Prisma expects a String for event_date, not a Date object
-        data.event_date = typeof data.event_date === 'string' ? data.event_date : parsed.toISOString();
+    try {
+      const data = { ...updates };
+      if (data.date !== undefined) {
+        data.date = parseSafeDate(data.date);
+        if (data.date === null) delete data.date;
       }
+      if (data.event_date !== undefined) {
+        const parsed = parseSafeDate(data.event_date);
+        if (parsed === null) {
+          delete data.event_date;
+        } else {
+          // Prisma expects a String for event_date, not a Date object
+          data.event_date = typeof data.event_date === 'string' ? data.event_date : parsed.toISOString();
+        }
+      }
+      const result = await prisma.event.update({ where: { id }, data });
+      console.log('[DB SUCCESS] Event updated:', id);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] updateEvent(${id}):`, err);
+      throw err;
     }
-    return await prisma.event.update({ where: { id }, data });
   }
 
   async deleteEvent(id: number) {
     try {
       await prisma.event.delete({ where: { id } });
+      console.log('[DB SUCCESS] Event deleted:', id);
       return true;
-    } catch {
+    } catch (err) {
+      console.error(`[DB ERROR] deleteEvent(${id}):`, err);
       return false;
     }
   }
 
   // Pre-Registrations
   async getPreRegistrations() {
-    return await prisma.preRegistration.findMany();
+    try {
+      const result = await prisma.preRegistration.findMany();
+      console.log(`[DB SUCCESS] Fetched ${result.length} pre-registrations`);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] getPreRegistrations:', err);
+      throw err;
+    }
   }
 
   async getPreRegistrationsByEventId(eventId: number) {
-    return await prisma.preRegistration.findMany({ where: { event_id: eventId } });
+    try {
+      const result = await prisma.preRegistration.findMany({ where: { event_id: eventId } });
+      console.log(`[DB SUCCESS] Fetched ${result.length} pre-registrations for event ${eventId}`);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getPreRegistrationsByEventId(${eventId}):`, err);
+      throw err;
+    }
   }
 
   async getPreRegistrationsByUserId(userId: number) {
-    return await prisma.preRegistration.findMany({ where: { user_id: userId } });
+    try {
+      const result = await prisma.preRegistration.findMany({ where: { user_id: userId } });
+      console.log(`[DB SUCCESS] Fetched ${result.length} pre-registrations for user ${userId}`);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getPreRegistrationsByUserId(${userId}):`, err);
+      throw err;
+    }
   }
 
   async addPreRegistration(pr: any) {
-    const { id, ...data } = pr;
-    return await prisma.preRegistration.create({ data });
+    try {
+      const { id, ...data } = pr;
+      const result = await prisma.preRegistration.create({ data });
+      console.log('[DB SUCCESS] Pre-registration added:', result.id);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] addPreRegistration:', err);
+      throw err;
+    }
   }
 
   async removePreRegistration(userId: number, eventId: number) {
-    await prisma.preRegistration.deleteMany({
-      where: { user_id: userId, event_id: eventId }
-    });
+    try {
+      await prisma.preRegistration.deleteMany({
+        where: { user_id: userId, event_id: eventId }
+      });
+      console.log(`[DB SUCCESS] Pre-registration removed for user ${userId} and event ${eventId}`);
+    } catch (err) {
+      console.error('[DB ERROR] removePreRegistration:', err);
+      throw err;
+    }
   }
 
   // Notifications
   async getNotificationsByUserId(userId: number) {
-    return await prisma.notification.findMany({
-      where: { user_id: userId },
-      orderBy: { created_at: 'desc' }
-    });
+    try {
+      const result = await prisma.notification.findMany({
+        where: { user_id: userId },
+        orderBy: { created_at: 'desc' }
+      });
+      console.log(`[DB SUCCESS] Fetched ${result.length} notifications for user ${userId}`);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getNotificationsByUserId(${userId}):`, err);
+      throw err;
+    }
   }
 
   async addNotification(n: any) {
-    const { id, ...data } = n;
-    return await prisma.notification.create({
-      data: { ...data, read: false }
-    });
+    try {
+      const { id, ...data } = n;
+      const result = await prisma.notification.create({
+        data: { ...data, read: false }
+      });
+      console.log('[DB SUCCESS] Notification added:', result.id);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] addNotification:', err);
+      throw err;
+    }
   }
 
   async markNotificationAsRead(id: number) {
-    return await prisma.notification.update({
-      where: { id },
-      data: { read: true }
-    });
+    try {
+      const result = await prisma.notification.update({
+        where: { id },
+        data: { read: true }
+      });
+      console.log('[DB SUCCESS] Notification marked as read:', id);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] markNotificationAsRead(${id}):`, err);
+      throw err;
+    }
   }
 
   // Ticket Types
   async getTicketTypes() {
-    return await prisma.ticketType.findMany();
+    try {
+      const result = await prisma.ticketType.findMany();
+      console.log(`[DB SUCCESS] Fetched ${result.length} ticket types`);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] getTicketTypes:', err);
+      throw err;
+    }
   }
 
   async getTicketTypesByEventId(eventId: number) {
-    return await prisma.ticketType.findMany({ where: { event_id: eventId } });
+    try {
+      const result = await prisma.ticketType.findMany({ where: { event_id: eventId } });
+      console.log(`[DB SUCCESS] Fetched ${result.length} ticket types for event ${eventId}`);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getTicketTypesByEventId(${eventId}):`, err);
+      throw err;
+    }
   }
 
   async addTicketType(ticketType: any) {
-    const { id, ...data } = ticketType;
-    return await prisma.ticketType.create({
-      data: {
-        ...data,
-        description: data.description || null,
-        sale_start: parseSafeDate(data.sale_start),
-        sale_end: parseSafeDate(data.sale_end),
-        resale_queue: 0
-      }
-    });
+    try {
+      const { id, ...data } = ticketType;
+      const result = await prisma.ticketType.create({
+        data: {
+          ...data,
+          description: data.description || null,
+          sale_start: parseSafeDate(data.sale_start),
+          sale_end: parseSafeDate(data.sale_end),
+          resale_queue: 0
+        }
+      });
+      console.log('[DB SUCCESS] Ticket type added:', result.id);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] addTicketType:', err);
+      throw err;
+    }
   }
 
   async getTicketTypeById(id: number) {
-    return await prisma.ticketType.findUnique({ where: { id } });
+    try {
+      const result = await prisma.ticketType.findUnique({ where: { id } });
+      console.log(`[DB SUCCESS] Ticket type fetched by ID ${id}:`, !!result);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getTicketTypeById(${id}):`, err);
+      throw err;
+    }
   }
 
   async updateTicketType(id: number, updates: any) {
-    const current = await prisma.ticketType.findUnique({ where: { id } });
-    if (!current) return null;
-    
-    const data = { ...updates };
-    if (data.sale_start !== undefined) data.sale_start = parseSafeDate(data.sale_start);
-    if (data.sale_end !== undefined) data.sale_end = parseSafeDate(data.sale_end);
+    try {
+      const current = await prisma.ticketType.findUnique({ where: { id } });
+      if (!current) return null;
+      
+      const data = { ...updates };
+      if (data.sale_start !== undefined) data.sale_start = parseSafeDate(data.sale_start);
+      if (data.sale_end !== undefined) data.sale_end = parseSafeDate(data.sale_end);
 
-    const next = { ...current, ...data };
-    if (next.quantity_sold > next.quantity_total) {
-      throw new Error(`CRITICAL: quantity_sold (${next.quantity_sold}) exceeds quantity_total (${next.quantity_total}) for ticket type ${id}`);
+      const next = { ...current, ...data };
+      if (next.quantity_sold > next.quantity_total) {
+        throw new Error(`CRITICAL: quantity_sold (${next.quantity_sold}) exceeds quantity_total (${next.quantity_total}) for ticket type ${id}`);
+      }
+      
+      const result = await prisma.ticketType.update({ where: { id }, data });
+      console.log('[DB SUCCESS] Ticket type updated:', id);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] updateTicketType(${id}):`, err);
+      throw err;
     }
-    
-    return await prisma.ticketType.update({ where: { id }, data });
   }
 
   async deleteTicketType(id: number) {
-    await prisma.ticketType.delete({ where: { id } });
+    try {
+      await prisma.ticketType.delete({ where: { id } });
+      console.log('[DB SUCCESS] Ticket type deleted:', id);
+    } catch (err) {
+      console.error(`[DB ERROR] deleteTicketType(${id}):`, err);
+      throw err;
+    }
   }
 
   async setTicketTypesForEvent(eventId: number, ticketTypes: any[]) {
-    return await prisma.$transaction(async (tx) => {
-      await tx.ticketType.deleteMany({ where: { event_id: eventId } });
-      const created = [];
-      for (const tt of ticketTypes) {
-        const { id, ...data } = tt;
-        created.push(await tx.ticketType.create({
-          data: {
-            ...data,
-            event_id: eventId,
-            description: data.description || null,
-            sale_start: parseSafeDate(data.sale_start),
-            sale_end: parseSafeDate(data.sale_end),
-            resale_queue: tt.resale_queue || 0
-          }
-        }));
-      }
-      return created;
-    });
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        await tx.ticketType.deleteMany({ where: { event_id: eventId } });
+        const created = [];
+        for (const tt of ticketTypes) {
+          const { id, ...data } = tt;
+          created.push(await tx.ticketType.create({
+            data: {
+              ...data,
+              event_id: eventId,
+              description: data.description || null,
+              sale_start: parseSafeDate(data.sale_start),
+              sale_end: parseSafeDate(data.sale_end),
+              resale_queue: tt.resale_queue || 0
+            }
+          }));
+        }
+        return created;
+      });
+      console.log(`[DB SUCCESS] Set ${ticketTypes.length} ticket types for event ${eventId}`);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] setTicketTypesForEvent(${eventId}):`, err);
+      throw err;
+    }
   }
 
   // Vouchers
   async getVouchers() {
-    return await prisma.voucher.findMany();
+    try {
+      const result = await prisma.voucher.findMany();
+      console.log(`[DB SUCCESS] Fetched ${result.length} vouchers`);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] getVouchers:', err);
+      throw err;
+    }
   }
 
   async getVoucherByCode(code: string) {
-    return await prisma.voucher.findUnique({ where: { code } });
+    try {
+      const result = await prisma.voucher.findUnique({ where: { code } });
+      console.log(`[DB SUCCESS] Voucher fetched by code ${code}:`, !!result);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getVoucherByCode(${code}):`, err);
+      throw err;
+    }
   }
 
   async addVoucher(voucher: any) {
-    const { id, ...data } = voucher;
-    return await prisma.voucher.create({
-      data: {
-        ...data,
-        expiration_date: parseSafeDate(data.expiration_date, true)!,
-        current_uses: 0
-      }
-    });
+    try {
+      const { id, ...data } = voucher;
+      const result = await prisma.voucher.create({
+        data: {
+          ...data,
+          expiration_date: parseSafeDate(data.expiration_date, true)!,
+          current_uses: 0
+        }
+      });
+      console.log('[DB SUCCESS] Voucher added:', result.id);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] addVoucher:', err);
+      throw err;
+    }
   }
 
   async updateVoucher(id: number, updates: any) {
-    const current = await prisma.voucher.findUnique({ where: { id } });
-    if (!current) return null;
-    
-    const data = { ...updates };
-    if (data.expiration_date !== undefined) {
-      data.expiration_date = parseSafeDate(data.expiration_date, true);
-    }
+    try {
+      const current = await prisma.voucher.findUnique({ where: { id } });
+      if (!current) return null;
+      
+      const data = { ...updates };
+      if (data.expiration_date !== undefined) {
+        data.expiration_date = parseSafeDate(data.expiration_date, true);
+      }
 
-    const next = { ...current, ...data };
-    if (next.current_uses > next.max_uses) {
-      throw new Error(`CRITICAL: current_uses (${next.current_uses}) exceeds max_uses (${next.max_uses}) for voucher ${id}`);
+      const next = { ...current, ...data };
+      if (next.current_uses > next.max_uses) {
+        throw new Error(`CRITICAL: current_uses (${next.current_uses}) exceeds max_uses (${next.max_uses}) for voucher ${id}`);
+      }
+      
+      const result = await prisma.voucher.update({ where: { id }, data });
+      console.log('[DB SUCCESS] Voucher updated:', id);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] updateVoucher(${id}):`, err);
+      throw err;
     }
-    
-    return await prisma.voucher.update({ where: { id }, data });
   }
 
   async deleteVoucher(id: number) {
-    await prisma.voucher.delete({ where: { id } });
+    try {
+      await prisma.voucher.delete({ where: { id } });
+      console.log('[DB SUCCESS] Voucher deleted:', id);
+    } catch (err) {
+      console.error(`[DB ERROR] deleteVoucher(${id}):`, err);
+      throw err;
+    }
   }
 
   // Resell Requests
   async getResellRequests() {
-    return await prisma.resellRequest.findMany();
+    try {
+      const result = await prisma.resellRequest.findMany();
+      console.log(`[DB SUCCESS] Fetched ${result.length} resell requests`);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] getResellRequests:', err);
+      throw err;
+    }
   }
 
   async getResellRequestById(id: number) {
-    return await prisma.resellRequest.findUnique({ where: { id } });
+    try {
+      const result = await prisma.resellRequest.findUnique({ where: { id } });
+      console.log(`[DB SUCCESS] Resell request fetched by ID ${id}:`, !!result);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getResellRequestById(${id}):`, err);
+      throw err;
+    }
   }
 
   async addResellRequest(request: any) {
-    const { id, ...data } = request;
-    return await prisma.resellRequest.create({
-      data: { ...data, status: 'pending' }
-    });
+    try {
+      const { id, ...data } = request;
+      const result = await prisma.resellRequest.create({
+        data: { ...data, status: 'pending' }
+      });
+      console.log('[DB SUCCESS] Resell request added:', result.id);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] addResellRequest:', err);
+      throw err;
+    }
   }
 
   async updateResellRequest(id: number, updates: any) {
-    return await prisma.resellRequest.update({ where: { id }, data: updates });
+    try {
+      const result = await prisma.resellRequest.update({ where: { id }, data: updates });
+      console.log('[DB SUCCESS] Resell request updated:', id);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] updateResellRequest(${id}):`, err);
+      throw err;
+    }
   }
 
   // Invitations
   async getInvitations() {
-    return await prisma.invitation.findMany();
+    try {
+      const result = await prisma.invitation.findMany();
+      console.log(`[DB SUCCESS] Fetched ${result.length} invitations`);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] getInvitations:', err);
+      throw err;
+    }
   }
 
   async addInvitation(invitation: any) {
-    const { id, ...data } = invitation;
-    return await prisma.invitation.create({
-      data: { ...data, status: 'pending' }
-    });
+    try {
+      const { id, ...data } = invitation;
+      const result = await prisma.invitation.create({
+        data: { ...data, status: 'pending' }
+      });
+      console.log('[DB SUCCESS] Invitation added:', result.id);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] addInvitation:', err);
+      throw err;
+    }
   }
 
   async updateInvitation(id: number, updates: any) {
-    return await prisma.invitation.update({ where: { id }, data: updates });
+    try {
+      const result = await prisma.invitation.update({ where: { id }, data: updates });
+      console.log('[DB SUCCESS] Invitation updated:', id);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] updateInvitation(${id}):`, err);
+      throw err;
+    }
   }
 
   async deleteInvitation(id: number) {
-    await prisma.invitation.delete({ where: { id } });
+    try {
+      await prisma.invitation.delete({ where: { id } });
+      console.log('[DB SUCCESS] Invitation deleted:', id);
+    } catch (err) {
+      console.error(`[DB ERROR] deleteInvitation(${id}):`, err);
+      throw err;
+    }
   }
 
   // Orders
   async getOrders() {
-    return await prisma.order.findMany();
+    try {
+      const result = await prisma.order.findMany();
+      console.log(`[DB SUCCESS] Fetched ${result.length} orders`);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] getOrders:', err);
+      throw err;
+    }
   }
 
   async getOrdersByUserId(userId: number) {
-    return await prisma.order.findMany({ where: { user_id: userId } });
+    try {
+      const result = await prisma.order.findMany({ where: { user_id: userId } });
+      console.log(`[DB SUCCESS] Fetched ${result.length} orders for user ${userId}`);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getOrdersByUserId(${userId}):`, err);
+      throw err;
+    }
   }
 
   async getOrderById(id: number) {
-    const order = await prisma.order.findUnique({ 
-      where: { id },
-      include: { 
-        user: true,
-        event: true,
-        order_tickets: {
-          include: {
-            ticket_type: true
+    try {
+      const order = await prisma.order.findUnique({ 
+        where: { id },
+        include: { 
+          user: true,
+          event: true,
+          order_tickets: {
+            include: {
+              ticket_type: true
+            }
           }
         }
+      });
+      
+      if (order && (order as any).order_tickets) {
+        (order as any).items = (order as any).order_tickets;
       }
-    });
-    
-    if (order && (order as any).order_tickets) {
-      (order as any).items = (order as any).order_tickets;
+      
+      console.log(`[DB SUCCESS] Order fetched by ID ${id}:`, !!order);
+      return order;
+    } catch (err) {
+      console.error(`[DB ERROR] getOrderById(${id}):`, err);
+      throw err;
     }
-    
-    return order;
   }
 
   async getOrderByKashierOrderId(kashierOrderId: string) {
-    return await prisma.order.findUnique({
-      where: { kashier_order_id: kashierOrderId },
-      include: {
-        user: true,
-        event: true,
-        order_tickets: {
-          include: {
-            ticket_type: true
+    try {
+      const result = await prisma.order.findUnique({
+        where: { kashier_order_id: kashierOrderId },
+        include: {
+          user: true,
+          event: true,
+          order_tickets: {
+            include: {
+              ticket_type: true
+            }
           }
         }
-      }
-    });
+      });
+      console.log(`[DB SUCCESS] Order fetched by Kashier order ID ${kashierOrderId}:`, !!result);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getOrderByKashierOrderId(${kashierOrderId}):`, err);
+      throw err;
+    }
   }
 
   async addOrder(order: any) {
-    const { id, ...data } = order;
-    return await prisma.order.create({
-      data: {
-        ...data,
-        is_paid: data.is_paid || false,
-        order_status: data.order_status || 'pending',
-        qr_code_token: null,
-        kashier_transaction_id: null,
-        processing_payment: false,
-        points_awarded: false
-      }
-    });
+    try {
+      const { id, ...data } = order;
+      const result = await prisma.order.create({
+        data: {
+          ...data,
+          is_paid: data.is_paid || false,
+          order_status: data.order_status || 'pending',
+          qr_code_token: null,
+          kashier_transaction_id: null,
+          processing_payment: false,
+          points_awarded: false
+        }
+      });
+      console.log('[DB SUCCESS] Order added:', result.id);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] addOrder:', err);
+      throw err;
+    }
   }
 
   async updateOrder(id: number, updates: any) {
-    const data = { ...updates };
-    if (data.paid_at) data.paid_at = new Date(data.paid_at);
-    return await prisma.order.update({ where: { id }, data });
+    try {
+      const data = { ...updates };
+      if (data.paid_at) data.paid_at = new Date(data.paid_at);
+      const result = await prisma.order.update({ where: { id }, data });
+      console.log('[DB SUCCESS] Order updated:', id);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] updateOrder(${id}):`, err);
+      throw err;
+    }
   }
 
   async cleanupExpiredReservations() {
@@ -476,124 +791,179 @@ class PrismaDB {
   }
 
   async markOrderAsPaid(orderId: number, transactionId: string, kashierOrderId?: string) {
-    return await prisma.$transaction(async (tx) => {
-      // Read order with FOR UPDATE behavior
-      const orders = await tx.$queryRaw<any[]>`SELECT * FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
-      const order = orders[0];
-      if (!order) return { success: false, reason: 'not_found' };
-      
-      // RULE: Idempotency - If already paid, return success instantly
-      if (order.is_paid) {
-        return { success: true, already_paid: true, order };
-      }
-
-      // Check if transaction ID already used by another order (security check)
-      const existingTransaction = await tx.order.findFirst({ 
-        where: { kashier_transaction_id: transactionId, id: { not: orderId } } 
-      });
-      
-      if (existingTransaction) {
-        // If this transaction is already linked to another order, we have a problem
-        console.error(`[PAYMENT] Transaction ID ${transactionId} already used for another order #${existingTransaction.id}`);
-        return { success: false, reason: 'transaction_reused' };
-      }
-
-      const updateData: any = {
-        order_status: 'paid',
-        is_paid: true,
-        paid_at: new Date(),
-        kashier_transaction_id: transactionId,
-        processing_payment: false
-      };
-
-      if (!order.qr_code_token) {
-        updateData.qr_code_token = crypto.randomBytes(16).toString('hex');
-      }
-
-      if (kashierOrderId) {
-        updateData.kashier_order_id = kashierOrderId;
-      }
-
-      const updatedOrder = await tx.order.update({
-        where: { id: orderId },
-        data: updateData
-      });
-      
-      // Award points if not already awarded
-      if (!updatedOrder.points_awarded) {
-        try {
-          const points = Math.floor(updatedOrder.total_price * 0.1);
-          const user = await tx.user.findUnique({ where: { id: updatedOrder.user_id! } });
-          if (user) {
-            await tx.user.update({
-              where: { id: user.id },
-              data: { points: { increment: points } }
-            });
-            await tx.pointsHistory.create({
-              data: {
-                user_id: user.id,
-                order_id: orderId,
-                points,
-                type: 'earn',
-                description: `Points earned from order #${orderId}`
-              }
-            });
-            await tx.order.update({
-              where: { id: orderId },
-              data: { points_awarded: true }
-            });
-          }
-        } catch (e) {
-          console.error('[PAYMENT] Failed to award points:', e);
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        // Read order with FOR UPDATE behavior
+        const orders = await tx.$queryRaw<any[]>`SELECT * FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+        const order = orders[0];
+        if (!order) {
+          console.log(`[PAYMENT] Order #${orderId} not found`);
+          return { success: false, reason: 'not_found' };
         }
-      }
+        
+        // RULE: Idempotency - If already paid, return success instantly
+        if (order.is_paid) {
+          console.log(`[PAYMENT] Order #${orderId} already paid`);
+          return { success: true, already_paid: true, order };
+        }
 
-      // Create notifications
-      try {
-        await tx.notification.create({
-          data: {
-            user_id: updatedOrder.user_id,
-            title: 'Payment Confirmed',
-            message: `Your payment of ${updatedOrder.total_price} EGP for order #${orderId} was successful and your tickets are ready!`,
-            type: 'payment'
-          }
+        // Check if transaction ID already used by another order (security check)
+        const existingTransaction = await tx.order.findFirst({ 
+          where: { kashier_transaction_id: transactionId, id: { not: orderId } } 
         });
-      } catch (e) {
-        console.error('[PAYMENT] Failed to create notification:', e);
-      }
+        
+        if (existingTransaction) {
+          // If this transaction is already linked to another order, we have a problem
+          console.error(`[PAYMENT] Transaction ID ${transactionId} already used for another order #${existingTransaction.id}`);
+          return { success: false, reason: 'transaction_reused' };
+        }
 
-      return { success: true, order: updatedOrder };
-    }, { timeout: 15000 });
+        const updateData: any = {
+          order_status: 'paid',
+          is_paid: true,
+          paid_at: new Date(),
+          kashier_transaction_id: transactionId,
+          processing_payment: false
+        };
+
+        if (!order.qr_code_token) {
+          updateData.qr_code_token = crypto.randomBytes(16).toString('hex');
+        }
+
+        if (kashierOrderId) {
+          updateData.kashier_order_id = kashierOrderId;
+        }
+
+        const updatedOrder = await tx.order.update({
+          where: { id: orderId },
+          data: updateData
+        });
+        
+        console.log(`[PAYMENT] Order #${orderId} marked as paid successfully`);
+
+        // Award points if not already awarded
+        if (!updatedOrder.points_awarded) {
+          try {
+            const points = Math.floor(updatedOrder.total_price * 0.1);
+            const user = await tx.user.findUnique({ where: { id: updatedOrder.user_id! } });
+            if (user) {
+              await tx.user.update({
+                where: { id: user.id },
+                data: { points: { increment: points } }
+              });
+              await tx.pointsHistory.create({
+                data: {
+                  user_id: user.id,
+                  order_id: orderId,
+                  points,
+                  type: 'earn',
+                  description: `Points earned from order #${orderId}`
+                }
+              });
+              await tx.order.update({
+                where: { id: orderId },
+                data: { points_awarded: true }
+              });
+              console.log(`[PAYMENT] Points (${points}) awarded to user ${user.id}`);
+            }
+          } catch (e) {
+            console.error('[PAYMENT] Failed to award points:', e);
+          }
+        }
+
+        // Create notifications
+        try {
+          await tx.notification.create({
+            data: {
+              user_id: updatedOrder.user_id,
+              title: 'Payment Confirmed',
+              message: `Your payment of ${updatedOrder.total_price} EGP for order #${orderId} was successful and your tickets are ready!`,
+              type: 'payment'
+            }
+          });
+        } catch (e) {
+          console.error('[PAYMENT] Failed to create notification:', e);
+        }
+
+        return { success: true, order: updatedOrder };
+      }, { timeout: 15000 });
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] markOrderAsPaid(${orderId}):`, err);
+      throw err;
+    }
   }
 
   // Order Tickets
   async getOrderTicketsByOrderId(orderId: number) {
-    return await prisma.orderTicket.findMany({ where: { order_id: orderId } });
+    try {
+      const result = await prisma.orderTicket.findMany({ where: { order_id: orderId } });
+      console.log(`[DB SUCCESS] Fetched ${result.length} tickets for order ${orderId}`);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getOrderTicketsByOrderId(${orderId}):`, err);
+      throw err;
+    }
   }
 
   async addOrderTicket(orderTicket: any) {
-    const { id, ...data } = orderTicket;
-    return await prisma.orderTicket.create({
-      data: { ...data, scanned_count: 0, is_used: false }
-    });
+    try {
+      const { id, ...data } = orderTicket;
+      const result = await prisma.orderTicket.create({
+        data: { ...data, scanned_count: 0, is_used: false }
+      });
+      console.log('[DB SUCCESS] Order ticket added:', result.id);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] addOrderTicket:', err);
+      throw err;
+    }
   }
 
   async updateOrderTicket(id: number, updates: any) {
-    return await prisma.orderTicket.update({ where: { id }, data: updates });
+    try {
+      const result = await prisma.orderTicket.update({ where: { id }, data: updates });
+      console.log('[DB SUCCESS] Order ticket updated:', id);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] updateOrderTicket(${id}):`, err);
+      throw err;
+    }
   }
 
   async getOrderTicketById(id: number) {
-    return await prisma.orderTicket.findUnique({ where: { id } });
+    try {
+      const result = await prisma.orderTicket.findUnique({ where: { id } });
+      console.log(`[DB SUCCESS] Order ticket fetched by ID ${id}:`, !!result);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getOrderTicketById(${id}):`, err);
+      throw err;
+    }
   }
 
   // Points History
   async getPointsHistoryByUserId(userId: number) {
-    return await prisma.pointsHistory.findMany({ where: { user_id: userId } });
+    try {
+      const result = await prisma.pointsHistory.findMany({ where: { user_id: userId } });
+      console.log(`[DB SUCCESS] Fetched ${result.length} points history entries for user ${userId}`);
+      return result;
+    } catch (err) {
+      console.error(`[DB ERROR] getPointsHistoryByUserId(${userId}):`, err);
+      throw err;
+    }
   }
 
   async addPointsHistory(history: any) {
-    const { id, ...data } = history;
-    return await prisma.pointsHistory.create({ data });
+    try {
+      const { id, ...data } = history;
+      const result = await prisma.pointsHistory.create({ data });
+      console.log('[DB SUCCESS] Points history entry added:', result.id);
+      return result;
+    } catch (err) {
+      console.error('[DB ERROR] addPointsHistory:', err);
+      throw err;
+    }
   }
 
   // Compatibility methods
@@ -605,6 +975,13 @@ const db = new PrismaDB();
 
 async function startServer() {
   const app = express();
+  
+  // Global Request Logger
+  app.use((req, res, next) => {
+    console.log(`[REQUEST] ${req.method} ${req.url}`);
+    next();
+  });
+
   app.use(express.json({ limit: '50mb' }));
   app.use(cors());
 
@@ -740,37 +1117,54 @@ async function startServer() {
     console.log('[API] Login request received:', req.body.email);
     try {
       const { email, password } = req.body;
+      console.log('[LOGIN ATTEMPT]', email);
 
       if (!email || !password) {
+        console.log('[LOGIN FAILED] Email or password missing');
         return res.status(400).json({ error: 'Email and password are required.' });
       }
 
       const user = await db.getUserByEmail(email);
       if (!user) {
+        console.log('[LOGIN FAILED] User not found:', email);
         return res.status(401).json({ error: 'Invalid email or password.' });
       }
 
       const validPassword = await bcrypt.compare(password, user.password_hash);
       if (!validPassword) {
+        console.log('[LOGIN FAILED] Incorrect password for user:', email);
         return res.status(401).json({ error: 'Invalid email or password.' });
       }
 
+      console.log('[LOGIN SUCCESS] Token generated for user:', email);
       const { accessToken, refreshToken, user: userPayload } = generateTokens(user);
       res.json({ user: userPayload, accessToken, refreshToken });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error('[LOGIN ERROR]', error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
   app.get('/api/auth/me', authenticateToken, async (req: any, res) => {
+    console.log(`[API] Fetching current user info for user ID: ${req.user.id}`);
     try {
       const user = await db.getUserById(req.user.id);
-      if (!user) return res.status(404).json({ error: 'User not found.' });
+      if (!user) {
+        console.warn(`[API] User not found for ID: ${req.user.id}`);
+        return res.status(404).json({ error: 'User not found.' });
+      }
       
       const { password_hash, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error(`[API ERROR] /api/auth/me (User ID: ${req.user.id}):`, error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
@@ -908,6 +1302,7 @@ async function startServer() {
   // --- Events API ---
 
   app.get('/api/events', async (req, res) => {
+    console.log('[API] Fetching all events');
     try {
       const events = await db.getEvents();
       const eventsWithTickets = await Promise.all(events.map(async (e) => {
@@ -915,22 +1310,37 @@ async function startServer() {
         const preRegistrations = await db.getPreRegistrationsByEventId(e.id);
         return { ...e, ticket_types: ticketTypes, pre_registration_count: preRegistrations.length };
       }));
+      console.log(`[API] Successfully served ${eventsWithTickets.length} events`);
       res.json(eventsWithTickets);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error('[API ERROR] /api/events:', error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
   app.get('/api/events/:id', async (req, res) => {
+    const eventId = parseInt(req.params.id);
+    console.log(`[API] Fetching event details for ID: ${eventId}`);
     try {
       await db.cleanupExpiredReservations();
-      const event = await db.getEventById(parseInt(req.params.id));
-      if (!event) return res.status(404).json({ error: 'Event not found.' });
+      const event = await db.getEventById(eventId);
+      if (!event) {
+        console.warn(`[API] Event not found for ID: ${eventId}`);
+        return res.status(404).json({ error: 'Event not found.' });
+      }
       const ticketTypes = await db.getTicketTypesByEventId(event.id);
       const preRegistrations = await db.getPreRegistrationsByEventId(event.id);
+      console.log(`[API] Successfully served details for event: ${event.title}`);
       res.json({ ...event, ticket_types: ticketTypes, pre_registration_count: preRegistrations.length });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error(`[API ERROR] /api/events/${eventId}:`, error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
@@ -1242,24 +1652,16 @@ async function startServer() {
 
   // --- Order Management API ---
   app.post('/api/orders', authenticateToken, async (req: any, res) => {
+    console.log(`[API] Creating order for user ID: ${req.user.id}`);
     try {
       await db.cleanupExpiredReservations();
-      const { event_id, tickets, instagram_username, phone, age, voucher_code, ticket_holders } = req.body; // tickets: [{ ticket_type_id, quantity }]
+      const { event_id, tickets, instagram_username, phone, age, voucher_code, ticket_holders } = req.body;
       
       if (!event_id || !tickets || !Array.isArray(tickets) || tickets.length === 0) {
+        console.warn(`[API FAILED] Missing required order data for user ${req.user.id}`);
         return res.status(400).json({ error: 'Event ID and tickets are required.' });
       }
 
-      if (!instagram_username || !phone || !age) {
-        return res.status(400).json({ error: 'Instagram username, phone, and age are required.' });
-      }
-
-      // Validate ticket holders if provided
-      if (ticket_holders && !Array.isArray(ticket_holders)) {
-        return res.status(400).json({ error: 'Ticket holders must be an array.' });
-      }
-
-      // Use a transaction to prevent race conditions across multiple ticket types and vouchers
       const result = await prisma.$transaction(async (tx) => {
         const event = await tx.event.findUnique({ where: { id: parseInt(event_id) } });
         if (!event) throw new Error('Event not found.');
@@ -1271,7 +1673,6 @@ async function startServer() {
         let discountPercent = 0;
         let voucherId = null;
         if (voucher_code) {
-          // Read voucher with FOR UPDATE behavior
           const vouchers = await tx.$queryRaw<any[]>`SELECT * FROM "Voucher" WHERE code = ${voucher_code} FOR UPDATE`;
           const voucher = vouchers[0];
           if (!voucher) throw new Error('Invalid voucher code.');
@@ -1286,7 +1687,6 @@ async function startServer() {
 
         // Validate all tickets first
         for (const item of tickets) {
-          // Read ticket_type with FOR UPDATE behavior
           const ticketTypes = await tx.$queryRaw<any[]>`SELECT * FROM "TicketType" WHERE id = ${parseInt(item.ticket_type_id)} FOR UPDATE`;
           const ticketType = ticketTypes[0];
           if (!ticketType || ticketType.event_id !== event.id) {
@@ -1307,7 +1707,6 @@ async function startServer() {
             }
           }
 
-          // Check availability (original + resale)
           const availableOriginal = ticketType.quantity_total - ticketType.quantity_sold;
           const availableResale = ticketType.resale_queue || 0;
           const totalAvailable = availableOriginal + availableResale;
@@ -1322,29 +1721,20 @@ async function startServer() {
             quantity: item.quantity,
             price_each: ticketType.price,
             name: ticketType.name,
-            is_resale: availableOriginal < item.quantity // If we need more than available original, some are resale
+            is_resale: availableOriginal < item.quantity
           });
         }
 
-        // Apply discount
         if (discountPercent > 0) {
           totalPrice = totalPrice * (1 - discountPercent / 100);
         }
 
-        if (instagram_username) {
-          const user = await tx.user.findUnique({ where: { id: req.user.id } });
-          if (user && !user.instagram_username) {
-            await tx.user.update({ where: { id: user.id }, data: { instagram_username } });
-          }
-        }
-
-        // Create order
         const newOrder = await tx.order.create({
           data: {
             user_id: req.user.id,
             event_id: event.id,
             total_price: totalPrice,
-            order_status: 'pending',
+            order_status: event.require_approval ? 'pending_approval' : 'pending',
             reserved_at: new Date(),
             instagram_username,
             phone,
@@ -1356,7 +1746,6 @@ async function startServer() {
           }
         });
 
-        // Update voucher usage
         if (voucherId) {
           await tx.voucher.update({
             where: { id: voucherId },
@@ -1364,22 +1753,17 @@ async function startServer() {
           });
         }
 
-        // Create order tickets and update quantities
         let holderIndex = 0;
         for (const item of orderItems) {
-          // Re-fetch ticketType inside transaction to ensure we have latest state (though locked)
           const ticketType = await tx.ticketType.findUnique({ where: { id: item.ticket_type_id } });
           if (!ticketType) throw new Error('Ticket type not found');
           
-          // Logic for resale vs original
           let qtyFromOriginal = Math.min(item.quantity, ticketType.quantity_total - ticketType.quantity_sold);
           let qtyFromResale = item.quantity - qtyFromOriginal;
 
-          // Extract holders for this ticket type
           const currentHolders = ticket_holders ? ticket_holders.slice(holderIndex, holderIndex + item.quantity) : [];
           holderIndex += item.quantity;
 
-          // FIX: Ensure holder_name is a string before inserting into DB
           const formattedHolderNames = currentHolders.map((h: any) => {
             if (typeof h === 'string') return h;
             if (h && typeof h === 'object') {
@@ -1409,7 +1793,6 @@ async function startServer() {
             }
           });
 
-          // If resale tickets were sold, mark the oldest pending resale requests as 'resold'
           if (qtyFromResale > 0) {
             const resaleRequests = await tx.resellRequest.findMany({
               where: { status: 'pending', ticket_type_id: item.ticket_type_id },
@@ -1418,16 +1801,9 @@ async function startServer() {
             });
             
             for (const rr of resaleRequests) {
-              await tx.resellRequest.update({
-                where: { id: rr.id },
-                data: { status: 'resold' }
-              });
-              // Also mark the original ticket as resold if order_ticket_id is provided
+              await tx.resellRequest.update({ where: { id: rr.id }, data: { status: 'resold' } });
               if (rr.order_ticket_id) {
-                await tx.orderTicket.update({
-                  where: { id: rr.order_ticket_id },
-                  data: { status: 'resold' }
-                });
+                await tx.orderTicket.update({ where: { id: rr.order_ticket_id }, data: { status: 'resold' } });
               }
             }
           }
@@ -1435,20 +1811,14 @@ async function startServer() {
         return { success: true, order: newOrder, items: orderItems, event };
       });
 
-      // Notify admin of new request (outside transaction)
-      const admins = (await db.getUsers()).filter(u => u.role === 'admin');
-      for (const admin of admins) {
-        await db.addNotification({
-          user_id: admin.id,
-          title: 'New Ticket Request',
-          message: `${req.user.name} has requested tickets for ${result.event.title}.`,
-          type: 'info'
-        });
-      }
-
+      console.log(`[API SUCCESS] Order created: #${result.order.id} for user ${req.user.id}`);
       res.status(201).json({ ...result.order, items: result.items, event: result.event });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error(`[API ERROR] /api/orders (POST):`, error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
@@ -2057,13 +2427,16 @@ async function startServer() {
       }
     } catch (error: any) {
       console.error('[Kashier] Internal Error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
   app.get('/api/payments/verify/:orderId', async (req: any, res) => {
     const orderIdParam = req.params.orderId;
-    console.log(`[VERIFY-STATIC] Checking DB state for order identifier: ${orderIdParam}`);
+    console.log(`[API] Checking payment verify state for order identifier: ${orderIdParam}`);
 
     try {
       // 1. Try numeric internal ID
@@ -2078,11 +2451,12 @@ async function startServer() {
       }
 
       if (!order) {
+        console.warn(`[API] Order for verification not found: ${orderIdParam}`);
         return res.status(404).json({ error: 'Order not found' });
       }
 
       // 3. RULE: Return current DB state ONLY (Read-only)
-      // The frontend now relies exclusively on is_paid = true as the source of truth
+      console.log(`[API] Returning payment state for order #${order.id}: ${order.is_paid ? 'PAID' : 'NOT PAID'}`);
       return res.json({ 
         success: order.is_paid, 
         is_paid: order.is_paid,
@@ -2091,17 +2465,21 @@ async function startServer() {
       });
 
     } catch (error: any) {
-      console.error('[VERIFY-STATIC] Fatal error:', error);
-      res.status(500).json({ error: error.message });
+      console.error(`[API ERROR] /api/payments/verify/${orderIdParam}:`, error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
   app.post('/api/payments/confirm-from-return', async (req, res) => {
     const { orderId, transactionId, status } = req.body;
     
-    console.log(`[CONFIRM-RETURN] Signal received for order ${orderId}, status ${status}`);
+    console.log(`[API] Confirm from return signal received for order ${orderId}, status ${status}, transaction ${transactionId}`);
 
     if (status !== 'SUCCESS') {
+      console.log(`[API FAILED] Invalid status from kashier return: ${status}`);
       return res.status(400).json({ error: 'Invalid status for confirmation.' });
     }
 
@@ -2116,13 +2494,13 @@ async function startServer() {
       }
 
       if (!order) {
+        console.warn(`[API] Order for confirm-from-return not found: ${orderId}`);
         return res.status(404).json({ error: 'Order not found.' });
       }
 
       // FIX 2: BACKEND IDEMPOTENCY (MANDATORY)
-      // If already paid, return success immediately WITHOUT re-processing
       if (order.is_paid) {
-        console.log(`[CONFIRM-RETURN] Order #${order.id} already marked as paid. Returning cached success.`);
+        console.log(`[API] Order #${order.id} already marked as paid. Returning cached success.`);
         return res.json({ success: true, is_paid: true, order });
       }
 
@@ -2131,14 +2509,18 @@ async function startServer() {
       
       // 3. RULE: Return success if the order is now paid (or was already paid)
       if (result.success) {
+        console.log(`[API SUCCESS] Order #${order.id} confirmed via return.`);
         return res.json({ success: true, is_paid: true, order: result.order });
       } else {
-        // This handles cases like 'transaction_reused' or 'not_found'
+        console.warn(`[API FAILED] Order #${order.id} confirmation failed: ${result.reason}`);
         return res.status(400).json({ success: false, error: result.reason });
       }
     } catch (error: any) {
-      console.error('[CONFIRM-RETURN] Fatal error:', error);
-      res.status(500).json({ error: error.message });
+      console.error(`[API ERROR] /api/payments/confirm-from-return:`, error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
@@ -2228,40 +2610,61 @@ async function startServer() {
         reason: 'QR code will be available 1 hour before the event.' 
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error(`[API ERROR] /api/orders/${req.params.id}/qr-status:`, error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
   // --- Vouchers API ---
   app.get('/api/vouchers', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+    console.log('[API] Admin: Fetching all vouchers');
     try {
       const vouchers = await db.getVouchers();
       res.json(vouchers);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error('[API ERROR] /api/vouchers:', error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
   app.post('/api/vouchers', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+    console.log('[API] Admin: Adding new voucher tracker');
     try {
       const voucher = await db.addVoucher(req.body);
       res.status(201).json(voucher);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error('[API ERROR] /api/vouchers (POST):', error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
   app.delete('/api/vouchers/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+    const id = parseInt(req.params.id);
+    console.log(`[API] Admin: Deleting voucher ${id}`);
     try {
-      await db.deleteVoucher(parseInt(req.params.id));
+      await db.deleteVoucher(id);
       res.json({ message: 'Voucher deleted successfully.' });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error(`[API ERROR] /api/vouchers/${id} (DELETE):`, error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
   // --- Resell API ---
   app.get('/api/resell', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+    console.log('[API] Admin: Fetching all resell requests');
     try {
       const requests = await db.getResellRequests();
       const requestsWithDetails = await Promise.all(requests.map(async (r) => {
@@ -2272,15 +2675,21 @@ async function startServer() {
       }));
       res.json(requestsWithDetails);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error('[API ERROR] /api/resell:', error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
   app.post('/api/resell', authenticateToken, async (req: any, res) => {
+    console.log(`[API] User ${req.user.id} requesting resell for order ${req.body.order_id}`);
     try {
       const { order_id, reason, price } = req.body;
       const order = await db.getOrderById(parseInt(order_id));
       if (!order || order.user_id !== req.user.id) {
+        console.warn(`[API FAILED] Invalid resell request for order ${order_id} by user ${req.user.id}`);
         return res.status(403).json({ error: 'Invalid order.' });
       }
       const request = await db.addResellRequest({
@@ -2291,17 +2700,27 @@ async function startServer() {
       });
       res.status(201).json(request);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error('[API ERROR] /api/resell (POST):', error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
   app.put('/api/resell/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+    const id = parseInt(req.params.id);
+    console.log(`[API] Admin: Updating resell request ${id}`);
     try {
-      const updated = await db.updateResellRequest(parseInt(req.params.id), req.body);
+      const updated = await db.updateResellRequest(id, req.body);
       if (!updated) return res.status(404).json({ error: 'Request not found.' });
       res.json(updated);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error(`[API ERROR] /api/resell/${id} (PUT):`, error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
@@ -2311,21 +2730,31 @@ async function startServer() {
       const settings = await db.getSettings();
       res.json(settings);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error('[API ERROR] /api/settings:', error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
   app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+    console.log('[API] Admin: Updating global settings');
     try {
       const settings = await db.updateSettings(req.body);
       res.json(settings);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error('[API ERROR] /api/settings (PUT):', error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
   // --- Invitations API ---
   app.get('/api/admin/invitations', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+    console.log('[API] Admin: Fetching invitations');
     try {
       const invitations = await db.getInvitations();
       const invitationsWithDetails = await Promise.all(invitations.map(async (i) => {
@@ -2334,25 +2763,28 @@ async function startServer() {
       }));
       res.json(invitationsWithDetails);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error('[API ERROR] /api/admin/invitations:', error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
-  app.post('/api/admin/invitations', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+  app.post('/api/admin/invitations', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+    console.log('[API] Admin: Sending invitation:', req.body);
     try {
       const { email, event_id, ticket_type_id } = req.body;
       const result = await prisma.$transaction(async (tx) => {
         const event = await tx.event.findUnique({ where: { id: parseInt(event_id) } });
         if (!event) throw new Error('Event not found.');
 
-        // Read ticket_type with FOR UPDATE behavior
         const ticketTypes = await tx.$queryRaw<any[]>`SELECT * FROM "TicketType" WHERE id = ${parseInt(ticket_type_id)} FOR UPDATE`;
         const ticketType = ticketTypes[0];
         if (!ticketType || ticketType.event_id !== event.id) {
           throw new Error('Invalid ticket type for this event.');
         }
 
-        // Check availability
         if (ticketType.quantity_sold >= ticketType.quantity_total) {
           throw new Error('Overselling: Event is sold out for this ticket type.');
         }
@@ -2366,7 +2798,6 @@ async function startServer() {
           }
         });
 
-        // Automatically create a free order for the user if they exist
         const user = await tx.user.findUnique({ where: { email } });
         if (user) {
           const order = await tx.order.create({
@@ -2395,13 +2826,11 @@ async function startServer() {
             }
           });
 
-          // Update quantity_sold
           await tx.ticketType.update({
             where: { id: ticketType.id },
             data: { quantity_sold: { increment: 1 } }
           });
 
-          // Notify user
           await tx.notification.create({
             data: {
               user_id: user.id,
@@ -2416,16 +2845,26 @@ async function startServer() {
 
       res.status(201).json(result.invitation);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error('[API ERROR] /api/admin/invitations (POST):', error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
   app.delete('/api/admin/invitations/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+    const id = parseInt(req.params.id);
+    console.log(`[API] Admin: Deleting invitation ${id}`);
     try {
-      await db.deleteInvitation(parseInt(req.params.id));
+      await db.deleteInvitation(id);
       res.json({ message: 'Invitation deleted successfully.' });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error(`[API ERROR] /api/admin/invitations/${id} (DELETE):`, error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
     }
   });
 
