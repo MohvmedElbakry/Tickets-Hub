@@ -2869,13 +2869,7 @@ await seedAdmin();
   });
 
   app.get('/api/health', async (req, res) => {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      res.json({ status: 'ok', database: 'connected' });
-    } catch (error: any) {
-      console.error('[API] Health check failed:', error);
-      res.status(500).json({ status: 'error', database: 'disconnected', error: error.message });
-    }
+    res.json({ status: 'ok' });
   });
 
   // --- Vite / Production Serving ---
@@ -2895,8 +2889,7 @@ await seedAdmin();
     });
   }
 
-  // Start the server if not on Vercel
-  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  if (process.env.NODE_ENV !== 'production') {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
