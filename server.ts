@@ -973,51 +973,51 @@ class PrismaDB {
 
 const db = new PrismaDB();
 
-async function startServer() {
-  const app = express();
-  
-  // Global Request Logger
-  app.use((req, res, next) => {
-    console.log(`[REQUEST] ${req.method} ${req.url}`);
-    next();
-  });
+const app = express();
+export default app;
 
-  app.use(express.json({ limit: '50mb' }));
-  app.use(cors());
+// Global Request Logger
+app.use((req, res, next) => {
+  console.log(`[REQUEST] ${req.method} ${req.url}`);
+  next();
+});
 
-  try {
-    console.log('[Prisma] Connecting to database...');
-    await prisma.$connect();
-    console.log('[Prisma] Database connection established.');
-  } catch (error) {
-    console.error('[Prisma] Failed to connect to database:', error);
-    // Continue starting to allow health check to report error if needed
-  }
+app.use(express.json({ limit: '50mb' }));
+app.use(cors());
 
-  await db.init();
+try {
+  console.log('[Prisma] Connecting to database...');
+  await prisma.$connect();
+  console.log('[Prisma] Database connection established.');
+} catch (error) {
+  console.error('[Prisma] Failed to connect to database:', error);
+  // Continue starting to allow health check to report error if needed
+}
 
-  // Seed test admin user
-  const seedAdmin = async () => {
-    const adminEmail = 'admin@tkt.com';
-    const existingAdmin = await db.getUserByEmail(adminEmail);
-    if (!existingAdmin) {
-      const passwordHash = await bcrypt.hash('123123', 10);
-      try {
-        await db.addUser({
-          name: 'mohamed elbakry',
-          email: adminEmail,
-          password_hash: passwordHash,
-          phone: '123456789',
-          role: 'admin',
-          birthdate: '1990-01-01'
-        });
-        console.log('Test admin user seeded.');
-      } catch (error) {
-        console.error('Failed to seed admin user:', error);
-      }
+await db.init();
+
+// Seed test admin user
+const seedAdmin = async () => {
+  const adminEmail = 'admin@tkt.com';
+  const existingAdmin = await db.getUserByEmail(adminEmail);
+  if (!existingAdmin) {
+    const passwordHash = await bcrypt.hash('123123', 10);
+    try {
+      await db.addUser({
+        name: 'mohamed elbakry',
+        email: adminEmail,
+        password_hash: passwordHash,
+        phone: '123456789',
+        role: 'admin',
+        birthdate: '1990-01-01'
+      });
+      console.log('Test admin user seeded.');
+    } catch (error) {
+      console.error('Failed to seed admin user:', error);
     }
-  };
-  await seedAdmin();
+  }
+};
+await seedAdmin();
 
   // Auth Middleware
   const authenticateToken = (req: any, res: any, next: any) => {
@@ -2878,7 +2878,7 @@ async function startServer() {
     }
   });
 
-  // --- Vite Integration ---
+  // --- Vite / Production Serving ---
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -2886,7 +2886,8 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (!process.env.VERCEL) {
+    // Only serve static files if NOT on Vercel (Vercel handles static files natively)
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
@@ -2894,9 +2895,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
-
-startServer();
+  if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
