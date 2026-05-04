@@ -7,6 +7,8 @@ import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 
 declare global {
   namespace Express {
@@ -975,6 +977,29 @@ const db = new PrismaDB();
 
 const app = express();
 export default app;
+
+// Security: Add various HTTP headers (Helmet)
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "img-src": ["'self'", "data:", "https:", "blob:"],
+      "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Needed for Vite/some client libs
+    },
+  },
+}));
+
+// Rate Limiting: Prevent brute-force and abuse
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  message: { error: 'Too many requests, please try again later.' },
+  skip: (req) => process.env.NODE_ENV !== 'production', // Don't limit in dev
+});
+
+app.use('/api/', limiter);
 
 // Global Request Logger
 app.use((req, res, next) => {
