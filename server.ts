@@ -2895,7 +2895,8 @@ await seedAdmin();
     });
   }
 
-  if (process.env.NODE_ENV !== 'production') {
+  // Start the server if not on Vercel
+  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
