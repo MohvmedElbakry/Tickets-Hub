@@ -40,7 +40,7 @@ const generateTokens = (user: any) => {
   return { accessToken, refreshToken, user: payload };
 };
 
-import prisma from './src/lib/prisma.ts';
+import prisma from '../src/lib/prisma.ts';
 
 // --- Helper Functions ---
 const parseSafeDate = (input: any, required: boolean = false) => {
