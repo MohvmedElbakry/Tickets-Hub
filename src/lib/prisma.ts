@@ -1,19 +1,17 @@
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient({
-  log: [
-    { level: 'query', emit: 'event' },
-    { level: 'info', emit: 'stdout' },
-    { level: 'warn', emit: 'stdout' },
-    { level: 'error', emit: 'stdout' },
-  ],
-});
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
 
-// @ts-ignore
-prisma.$on('query', (e: any) => {
-  console.log(`[PRISMA QUERY] ${e.query}`);
-  console.log(`[PRISMA PARAMS] ${e.params}`);
-  console.log(`[PRISMA DURATION] ${e.duration}ms`);
-});
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: ['error', 'warn'],
+  });
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
+}
 
 export default prisma;

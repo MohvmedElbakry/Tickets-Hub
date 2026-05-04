@@ -994,8 +994,6 @@ try {
   // Continue starting to allow health check to report error if needed
 }
 
-await db.init();
-
 // Seed test admin user
 const seedAdmin = async () => {
   const adminEmail = 'admin@tkt.com';
@@ -1017,7 +1015,13 @@ const seedAdmin = async () => {
     }
   }
 };
-await seedAdmin();
+
+try {
+  await db.init();
+  await seedAdmin();
+} catch (error) {
+  console.error('[Startup] Failed to run database init or seeding:', error);
+}
 
   // Auth Middleware
   const authenticateToken = (req: any, res: any, next: any) => {
@@ -1140,9 +1144,9 @@ await seedAdmin();
       const { accessToken, refreshToken, user: userPayload } = generateTokens(user);
       res.json({ user: userPayload, accessToken, refreshToken });
     } catch (error: any) {
-      console.error('[LOGIN ERROR]', error);
+      console.error('LOGIN ERROR:', error);
       res.status(500).json({ 
-        error: 'Internal Server Error', 
+        error: 'Failed to login', 
         details: error.message 
       });
     }
@@ -1313,9 +1317,9 @@ await seedAdmin();
       console.log(`[API] Successfully served ${eventsWithTickets.length} events`);
       res.json(eventsWithTickets);
     } catch (error: any) {
-      console.error('[API ERROR] /api/events:', error);
+      console.error('EVENTS ERROR:', error);
       res.status(500).json({ 
-        error: 'Internal Server Error', 
+        error: 'Failed to fetch events', 
         details: error.message 
       });
     }
@@ -2730,9 +2734,9 @@ await seedAdmin();
       const settings = await db.getSettings();
       res.json(settings);
     } catch (error: any) {
-      console.error('[API ERROR] /api/settings:', error);
+      console.error('SETTINGS ERROR:', error);
       res.status(500).json({ 
-        error: 'Internal Server Error', 
+        error: 'Failed to fetch settings', 
         details: error.message 
       });
     }
@@ -2869,7 +2873,13 @@ await seedAdmin();
   });
 
   app.get('/api/health', async (req, res) => {
-    res.json({ status: 'ok' });
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ status: 'ok', database: 'connected' });
+    } catch (err: any) {
+      console.error('HEALTH ERROR:', err);
+      res.status(500).json({ status: 'error', database: 'disconnected', error: String(err.message || err) });
+    }
   });
 
   // --- Vite / Production Serving ---
