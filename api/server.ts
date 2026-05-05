@@ -1,3 +1,4 @@
+console.log('SERVER FILE LOADED');
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
