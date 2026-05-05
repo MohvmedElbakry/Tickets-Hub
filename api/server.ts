@@ -1,5 +1,7 @@
 console.log('SERVER FILE LOADED');
 console.log('SERVER STARTED');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('VERCEL:', process.env.VERCEL);
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
@@ -989,20 +991,24 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      "img-src": ["'self'", "data:", "https:", "blob:"],
-      "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Needed for Vite/some client libs
+      "img-src": ["'self'", "data:", "https:", "blob:", "*"],
+      "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'", "*"],
+      "connect-src": ["'self'", "*"],
+      "frame-ancestors": ["'self'", "*"],
     },
   },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: false,
 }));
 
 // Rate Limiting: Prevent brute-force and abuse
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  max: 1000, // Higher limit for development/preview
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' },
-  skip: (req) => process.env.NODE_ENV !== 'production', // Don't limit in dev
+  skip: (req) => process.env.NODE_ENV !== 'production' || !!process.env.AIS_PREVIEW, // Don't limit in AI Studio preview
 });
 
 app.use('/api/', limiter);
@@ -2911,6 +2917,15 @@ const startDB = async () => {
     }
   });
 
+  app.get('/health', (req, res) => {
+    console.log('GENERIC HEALTH HIT');
+    res.json({ 
+      status: 'alive', 
+      environment: process.env.NODE_ENV || 'development',
+      time: new Date().toISOString()
+    });
+  });
+
   app.get('/api/health', async (req, res) => {
     console.log('HEALTH CHECK HIT');
     try {
@@ -2925,11 +2940,17 @@ const startDB = async () => {
   // --- Vite / Production Serving ---
 
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
+    console.log('[Vite] Initializing Vite midleware...');
+    try {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+      console.log('[Vite] Vite middleware attached');
+    } catch (err) {
+      console.error('[Vite] Failed to initialize Vite:', err);
+    }
   } else if (!process.env.VERCEL) {
     // Only serve static files if NOT on Vercel (Vercel handles static files natively)
     const distPath = path.join(process.cwd(), 'dist');
