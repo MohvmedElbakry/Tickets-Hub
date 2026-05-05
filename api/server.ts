@@ -1,4 +1,5 @@
 console.log('SERVER FILE LOADED');
+console.log('SERVER STARTED');
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
@@ -25,15 +26,19 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = 3000;
-const JWT_SECRET = process.env.JWT_SECRET;
+const PORT = Number(process.env.PORT) || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_fallback_123';
+const DATABASE_URL = process.env.DATABASE_URL;
+
+if (!DATABASE_URL) {
+  console.warn('[Prisma] WARNING: DATABASE_URL is not set in environment. Prisma will fail to connect.');
+}
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || (JWT_SECRET + '_refresh');
 
-if (!JWT_SECRET) {
-  console.error('[Auth] JWT_SECRET is not set in environment');
-  process.exit(1); 
+if (!process.env.JWT_SECRET) {
+  console.warn('[Auth] WARNING: JWT_SECRET is not set in environment. Using fallback secret for development.');
 }
-console.log("[Auth] JWT_SECRET loaded:", !!JWT_SECRET);
+console.log("[Auth] JWT_SECRET loaded:", !!process.env.JWT_SECRET);
 console.log("[Auth] JWT_REFRESH_SECRET loaded:", !!JWT_REFRESH_SECRET);
 
 const generateTokens = (user: any) => {
@@ -43,7 +48,7 @@ const generateTokens = (user: any) => {
   return { accessToken, refreshToken, user: payload };
 };
 
-import prisma from '../src/lib/prisma.ts';
+import prisma from './lib/prisma';
 
 // --- Helper Functions ---
 const parseSafeDate = (input: any, required: boolean = false) => {
@@ -1011,22 +1016,13 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(cors());
 
-try {
-  console.log('[Prisma] Connecting to database...');
-  await prisma.$connect();
-  console.log('[Prisma] Database connection established.');
-} catch (error) {
-  console.error('[Prisma] Failed to connect to database:', error);
-  // Continue starting to allow health check to report error if needed
-}
-
 // Seed test admin user
 const seedAdmin = async () => {
-  const adminEmail = 'admin@tkt.com';
-  const existingAdmin = await db.getUserByEmail(adminEmail);
-  if (!existingAdmin) {
-    const passwordHash = await bcrypt.hash('123123', 10);
-    try {
+  try {
+    const adminEmail = 'admin@tkt.com';
+    const existingAdmin = await db.getUserByEmail(adminEmail);
+    if (!existingAdmin) {
+      const passwordHash = await bcrypt.hash('123123', 10);
       await db.addUser({
         name: 'mohamed elbakry',
         email: adminEmail,
@@ -1036,18 +1032,34 @@ const seedAdmin = async () => {
         birthdate: '1990-01-01'
       });
       console.log('Test admin user seeded.');
-    } catch (error) {
-      console.error('Failed to seed admin user:', error);
     }
+  } catch (error) {
+    console.error('Failed to seed admin user:', error);
   }
 };
 
 try {
-  await db.init();
-  await seedAdmin();
+  console.log('[Startup] DB Connection check postponed until listen...');
 } catch (error) {
-  console.error('[Startup] Failed to run database init or seeding:', error);
+  console.error('[Startup] Critical error during preparation:', error);
 }
+
+const startDB = async () => {
+  try {
+    console.log('[Startup] Connecting to DB via Prisma...');
+    const connectionPromise = prisma.$connect();
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('DB Connection Timeout')), 10000)
+    );
+    
+    await Promise.race([connectionPromise, timeoutPromise]);
+    console.log('[Startup] DB Connected.');
+    await db.init();
+    await seedAdmin();
+  } catch (error) {
+    console.error('[Startup] Non-fatal error during DB startup (check DB config):', error);
+  }
+};
 
   // Auth Middleware
   const authenticateToken = (req: any, res: any, next: any) => {
@@ -1332,7 +1344,7 @@ try {
   // --- Events API ---
 
   app.get('/api/events', async (req, res) => {
-    console.log('[API] Fetching all events');
+    console.log('[API] Processing GET /api/events');
     try {
       const events = await db.getEvents();
       const eventsWithTickets = await Promise.all(events.map(async (e) => {
@@ -2756,6 +2768,7 @@ try {
 
   // --- Settings API ---
   app.get('/api/settings', async (req, res) => {
+    console.log('[API] Processing GET /api/settings');
     try {
       const settings = await db.getSettings();
       res.json(settings);
@@ -2899,6 +2912,7 @@ try {
   });
 
   app.get('/api/health', async (req, res) => {
+    console.log('HEALTH CHECK HIT');
     try {
       await prisma.$queryRaw`SELECT 1`;
       res.json({ status: 'ok', database: 'connected' });
@@ -2919,14 +2933,24 @@ try {
   } else if (!process.env.VERCEL) {
     // Only serve static files if NOT on Vercel (Vercel handles static files natively)
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    const fs = await import('fs');
+    if (fs.existsSync(distPath)) {
+      console.log(`[Static] Serving files from ${distPath}`);
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    } else {
+      console.error(`[Static] WARNING: dist directory not found at ${distPath}. Front-end may not be available.`);
+      app.get('*', (req, res) => {
+        res.status(404).send('Frontend not built. Please run npm run build.');
+      });
+    }
   }
 
   if (!process.env.VERCEL) {
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`Server running on http://0.0.0.0:${PORT}`);
+      startDB();
     });
   }
