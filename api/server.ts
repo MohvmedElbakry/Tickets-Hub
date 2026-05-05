@@ -2373,7 +2373,7 @@ const startDB = async () => {
 
       // Security: Ensure the order belongs to the authenticated user
       if (order.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Unauthorized access to order' });
+        return res.status(403).json({ error: 'Unauthorized access to orderr' });
       }
 
       // Business Logic: Only approved orders (or pending if no approval required) can proceed to payment
