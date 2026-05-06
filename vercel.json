@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/[...all].ts": {
-      "includeFiles": "api/dist/**"
+      "includeFiles": ["api/dist/**", "prisma/**"]
     }
   }
 }

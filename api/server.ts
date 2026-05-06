@@ -3,7 +3,6 @@ console.log('SERVER STARTED');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('VERCEL:', process.env.VERCEL);
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
@@ -2939,9 +2938,10 @@ const startDB = async () => {
   // --- Vite / Production Serving ---
 
   if (process.env.NODE_ENV !== 'production') {
-    console.log('[Vite] Initializing Vite midleware...');
+    console.log('[Vite] Initializing Vite middleware...');
     try {
-      const vite = await createViteServer({
+      const { createServer } = await import('vite');
+      const vite = await createServer({
         server: { middlewareMode: true },
         appType: 'spa',
       });
