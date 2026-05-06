@@ -983,7 +983,7 @@ class PrismaDB {
 const db = new PrismaDB();
 
 const app = express();
-export default app;
+
 
 // Security: Add various HTTP headers (Helmet)
 app.use(helmet({
@@ -2974,3 +2974,10 @@ const startDB = async () => {
       startDB();
     });
   }
+
+  // Ensure DB connects for serverless cold starts
+  if (process.env.VERCEL) {
+    startDB();
+  }
+
+  export default app;
