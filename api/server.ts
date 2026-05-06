@@ -13,6 +13,7 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import prisma from './lib/prisma.js';
 
 declare global {
   namespace Express {
@@ -49,8 +50,6 @@ const generateTokens = (user: any) => {
   const refreshToken = jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: '7d' }); // Long-lived
   return { accessToken, refreshToken, user: payload };
 };
-
-import prisma from './lib/prisma.js';
 
 // --- Helper Functions ---
 const parseSafeDate = (input: any, required: boolean = false) => {
