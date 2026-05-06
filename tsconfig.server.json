@@ -1,15 +1,14 @@
 {
   "compilerOptions": {
     "outDir": "api-dist",
+    "rootDir": "api",
     "module": "ESNext",
     "target": "ES2020",
     "moduleResolution": "Node",
     "esModuleInterop": true,
     "strict": true,
-    "skipLibCheck": true,
-    "allowJs": true,
-    "resolveJsonModule": true
+    "skipLibCheck": true
   },
-  "include": ["api/**/*.ts"],
+  "include": ["api/**/*"],
   "exclude": ["api/[...all].ts"]
 }
