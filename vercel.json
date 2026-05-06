@@ -1,7 +1,8 @@
 {
+  "installCommand": "npm install --include=optional",
   "functions": {
     "api/[...all].ts": {
-      "includeFiles": "{api/dist/**,prisma/**}"
+      "includeFiles": "api/dist/** prisma/**"
     }
   }
 }

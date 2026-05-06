@@ -3,11 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "prisma generate && (prisma db push --accept-data-loss || echo 'Database push failed, check DATABASE_URL') && tsx api/server.ts",
     "build:server": "tsc -p tsconfig.server.json",
     "build": "npm run build:server && prisma generate && vite build",
-    "postinstall": "prisma generate && npm install --include=optional",
+    "postinstall": "prisma generate",
     "start": "tsx api/server.ts",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
