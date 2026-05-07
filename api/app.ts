@@ -58,11 +58,19 @@ app.get('/api/health', async (req, res) => {
 });
 
 app.use(helmet({ contentSecurityPolicy: { directives: { ...helmet.contentSecurityPolicy.getDefaultDirectives(), "img-src": ["'self'", "data:", "https:", "blob:", "*"], "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'", "*"], "connect-src": ["'self'", "*"], "frame-ancestors": ["'self'", "*"], }, }, crossOriginEmbedderPolicy: false, crossOriginResourcePolicy: false, }));
+
+// --- DIAGNOSTIC MIDDLEWARE ---
+app.use((req, res, next) => {
+  console.log('[API DIAGNOSTIC]', req.method, req.originalUrl || req.url, 'Headers:', JSON.stringify(req.headers));
+  next();
+});
+
+app.options('*', cors());
+app.use(cors());
+
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests, please try again later.' }, skip: (req) => process.env.NODE_ENV !== 'production' || !!process.env.AIS_PREVIEW, });
 app.use('/api/', limiter);
-app.use((req, res, next) => { console.log(`[REQUEST] ${req.method} ${req.url}`); next(); });
 app.use(express.json({ limit: '50mb' }));
-app.use(cors());
 
 const authenticateToken = (req: any, res: any, next: any) => {
   const authHeader = req.headers['authorization'];
@@ -103,7 +111,7 @@ app.post('/api/auth/signup', async (req, res) => {
 
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
-  console.log('[API] Login attempt:', email);
+  console.log('[API] Login hit! Email:', email, 'Method:', req.method, 'Path:', req.path);
   try {
     if (!email || !password) return res.status(400).json({ error: 'Required fields missing.' });
     const user = await db.getUserByEmail(email);
@@ -325,5 +333,16 @@ const listRoutes = () => {
 };
 
 listRoutes();
+
+// --- CATCH ALL 404 ---
+app.use((req, res) => {
+    console.log('[EXPRESS 404]', req.method, req.url);
+    res.status(404).json({ 
+        error: 'Route not found in Express', 
+        method: req.method, 
+        url: req.url,
+        timestamp: new Date().toISOString()
+    });
+});
 
 export default app;

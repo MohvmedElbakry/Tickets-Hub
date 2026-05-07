@@ -4,5 +4,16 @@
     "api/[...all].ts": {
       "includeFiles": "api/dist/** prisma/**"
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/[...all]"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ],
+  "trailingSlash": false
 }

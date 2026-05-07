@@ -25,8 +25,13 @@ const onTokenRefreshed = (token: string) => {
 export const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
   const token = localStorage.getItem('accessToken');
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
+  const method = options.method || 'GET';
 
-  console.log("🌍 API Request:", url, "Token:", token);
+  console.log(`🌍 [API CALL] ${method} ${url}`, {
+    origin: window.location.origin,
+    hostname: window.location.hostname,
+    hasToken: !!token
+  });
 
   if (!token && 
       !url.includes('/api/auth/login') && 
