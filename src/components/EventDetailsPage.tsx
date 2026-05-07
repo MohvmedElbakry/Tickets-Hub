@@ -24,8 +24,7 @@ export const EventDetailsPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { selectedEvent, setSelectedEvent } = useUI();
-  const { preRegistrations: authPreReg, isAuthReady } = useAuth();
-  const preRegistrations = Array.isArray(authPreReg) ? authPreReg : [];
+  const { isAuthReady } = useAuth();
   const { handlePreRegister, handlePurchase, purchaseLoading, purchaseError } = useEvents();
   
   const [ticketQuantities, setTicketQuantities] = useState<{[key: string]: number}>({});
@@ -295,9 +294,8 @@ export const EventDetailsPage = () => {
                       className="w-full py-5 text-button font-black uppercase tracking-widest shadow-card-glow" 
                       variant="accent"
                       onClick={() => handlePreRegister(selectedEvent.id!)}
-                      disabled={preRegistrations.some(pr => pr.event_id === selectedEvent.id)}
                     >
-                      {preRegistrations.some(pr => pr.event_id === selectedEvent.id) ? 'REGISTERED' : 'NOTIFY ME'}
+                      NOTIFY ME
                     </Button>
                   </div>
                 ) : (

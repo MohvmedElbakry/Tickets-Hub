@@ -16,10 +16,6 @@ export const preRegister = async (eventId: string | number): Promise<any> => {
   });
 };
 
-export const getPreRegistrations = async (): Promise<PreRegistration[]> => {
-  return await fetchWithAuth('/api/pre-registrations');
-};
-
 export const getSettings = async (): Promise<any> => {
   return await fetchWithAuth('/api/settings');
 };

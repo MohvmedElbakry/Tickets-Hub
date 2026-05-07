@@ -208,21 +208,60 @@ console.log('[App] Registering Order Routes...');
 app.post('/api/orders', authenticateToken, async (req: any, res) => {
   try {
     const { event_id, tickets, ...data } = req.body;
+    
+    if (!event_id) return res.status(400).json({ error: 'event_id is required' });
+    if (!Array.isArray(tickets)) return res.status(400).json({ error: 'tickets must be an array' });
+
+    const parsedEventId = parseInt(event_id.toString());
+    const normalizedTickets = tickets.map((t: any) => ({
+      ...t,
+      ticket_type_id: parseInt(t.ticket_type_id.toString()),
+      quantity: parseInt(t.quantity.toString())
+    }));
+
     const result = await prisma.$transaction(async (tx) => {
-       const event = await tx.event.findUnique({ where: { id: parseInt(event_id) } });
+       const event = await tx.event.findUnique({ where: { id: parsedEventId } });
        if (!event) throw new Error('Event not found');
+       
        let total = 0;
-       for (const t of tickets) {
+       for (const t of normalizedTickets) {
+         if (isNaN(t.ticket_type_id)) throw new Error('Invalid ticket_type_id provided');
          const tt = await tx.ticketType.findUnique({ where: { id: t.ticket_type_id } });
-         if (!tt) throw new Error('Ticket type not found');
+         if (!tt) throw new Error(`Ticket type ${t.ticket_type_id} not found`);
          total += tt.price * t.quantity;
        }
-       const order = await tx.order.create({ data: { user_id: req.user.id, event_id: parseInt(event_id), total_price: total, order_status: event.require_approval ? 'pending_approval' : 'pending', instagram_username: data.instagram_username, phone: data.phone, age: parseInt(data.age || '0'), is_paid: false, processing_payment: false } });
-       for (const t of tickets) await tx.orderTicket.create({ data: { order_id: order.id, ticket_type_id: t.ticket_type_id, quantity: t.quantity, price_each: 0 } });
+       
+       const order = await tx.order.create({ 
+         data: { 
+           user_id: parseInt(req.user.id.toString()), 
+           event_id: parsedEventId, 
+           total_price: total, 
+           order_status: event.require_approval ? 'pending_approval' : 'pending', 
+           instagram_username: data.instagram_username || null, 
+           phone: data.phone || null, 
+           age: parseInt(data.age?.toString() || '0'), 
+           is_paid: false, 
+           processing_payment: false 
+         } 
+       });
+
+       for (const t of normalizedTickets) {
+         await tx.orderTicket.create({ 
+           data: { 
+             order_id: order.id, 
+             ticket_type_id: t.ticket_type_id, 
+             quantity: t.quantity, 
+             price_each: 0 // Will be set during actual payment calculation if needed
+           } 
+         });
+       }
        return order;
     });
     res.status(201).json(result);
-  } catch (error: any) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { 
+    console.error('[Order Error]', error);
+    res.status(500).json({ error: error.message }); 
+  }
 });
 
 app.get('/api/orders', authenticateToken, async (req: any, res) => {

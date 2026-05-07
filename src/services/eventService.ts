@@ -22,16 +22,8 @@ export const eventService = {
     return await eventsApi.getSettings();
   },
 
-  async getPreRegistrations() {
-    return await eventsApi.getPreRegistrations();
-  },
-
   async preRegister(eventId: string | number) {
     return await eventsApi.preRegister(eventId);
-  },
-
-  async getPreRegistrationsForUser() {
-    return await authApi.getUserPreRegistrations();
   },
 
   async adminDeleteEvent(id: string | number) {

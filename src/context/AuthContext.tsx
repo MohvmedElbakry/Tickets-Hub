@@ -16,8 +16,6 @@ interface AuthContextType {
   notifications: AppNotification[];
   refreshNotifications: () => Promise<void>;
   markNotificationRead: (id: number) => Promise<void>;
-  preRegistrations: PreRegistration[];
-  refreshPreRegistrations: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,7 +30,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [preRegistrations, setPreRegistrations] = useState<PreRegistration[]>([]);
   const hasInitializedRef = useRef(false);
   const hasFetchedInitialDataRef = useRef(false);
 
@@ -60,7 +57,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRefreshToken(null);
     setUser(null);
     setNotifications([]);
-    setPreRegistrations([]);
     hasFetchedInitialDataRef.current = false;
     // Dispatch global event for full app reset
     window.dispatchEvent(new CustomEvent('app-logout'));
@@ -74,7 +70,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRefreshToken(null);
       setUser(null);
       setNotifications([]);
-      setPreRegistrations([]);
       hasFetchedInitialDataRef.current = false;
     };
     window.addEventListener('app-logout', handleLogoutSync);
@@ -137,18 +132,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [accessToken]);
 
-  const refreshPreRegistrations = useCallback(async () => {
-    if (!accessToken) return;
-    try {
-      const data = await eventService.getPreRegistrations();
-      if (data && Array.isArray(data)) setPreRegistrations(data);
-    } catch (err: any) {
-      if (err.status !== 401) {
-        console.error('Failed to fetch pre-registrations in AuthContext', err);
-      }
-    }
-  }, [accessToken]);
-
   const markNotificationRead = useCallback(async (id: number) => {
     try {
       const res = await notificationService.markAsRead(id);
@@ -173,10 +156,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     hasFetchedInitialDataRef.current = true;
 
     refreshNotifications();
-    refreshPreRegistrations();
     const interval = setInterval(refreshNotifications, 30000);
     return () => clearInterval(interval);
-  }, [accessToken, refreshNotifications, refreshPreRegistrations]);
+  }, [accessToken, refreshNotifications]);
 
   // Handle unauthorized API calls globally
   useEffect(() => {
@@ -199,9 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAuthReady,
       notifications, 
       refreshNotifications, 
-      markNotificationRead,
-      preRegistrations,
-      refreshPreRegistrations
+      markNotificationRead
     }}>
       {children}
     </AuthContext.Provider>

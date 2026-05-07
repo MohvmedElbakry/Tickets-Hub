@@ -32,10 +32,6 @@ export const refreshTokens = async (refreshToken: string): Promise<{ accessToken
   return res.json();
 };
 
-export const getUserPreRegistrations = async (): Promise<any[]> => {
-  return await fetchWithAuth('/api/pre-registrations');
-};
-
 export const getUserPoints = async (): Promise<any> => {
   return await fetchWithAuth('/api/user/points');
 };

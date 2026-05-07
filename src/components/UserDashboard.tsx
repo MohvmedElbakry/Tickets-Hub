@@ -20,7 +20,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/Button';
 import { 
   Order, 
-  PreRegistration, 
   PointsHistory, 
   OrderTicket
 } from '../types';
@@ -38,7 +37,6 @@ export const UserDashboard = () => {
   const navigate = useNavigate();
   const { user, logout: handleLogout } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [myPreRegistrations, setMyPreRegistrations] = useState<PreRegistration[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [points, setPoints] = useState({ balance: 0, history: [] as PointsHistory[] });
@@ -46,8 +44,8 @@ export const UserDashboard = () => {
   const [selectedTicket, setSelectedTicket] = useState<OrderTicket | null>(null);
   const [payoutMethod, setPayoutMethod] = useState<'instapay' | 'vodafone'>('instapay');
   const [payoutAddress, setPayoutAddress] = useState('');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tickets' | 'rewards' | 'profile' | 'payments' | 'pre-registrations'>('dashboard');
-  const [ticketFilter, setTicketFilter] = useState<'all' | 'pre_registered' | 'pending' | 'paid' | 'invited'>('all');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'tickets' | 'rewards' | 'profile' | 'payments'>('dashboard');
+  const [ticketFilter, setTicketFilter] = useState<'all' | 'pending' | 'paid' | 'invited'>('all');
   const [viewingTicket, setViewingTicket] = useState<Order | null>(null);
   
   // Phase 3.2.4: Use single source of truth for the viewing ticket
@@ -65,9 +63,8 @@ export const UserDashboard = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [ordersData, preRegData, pointsData] = await Promise.all([
+        const [ordersData, pointsData] = await Promise.all([
           orderService.getOrders(),
-          eventService.getPreRegistrationsForUser(),
           authService.getUserPoints()
         ]);
         if (ordersData && Array.isArray(ordersData)) {
@@ -78,7 +75,6 @@ export const UserDashboard = () => {
           }));
           setOrders(normalizedOrders);
         }
-        if (preRegData && Array.isArray(preRegData)) setMyPreRegistrations(preRegData);
         if (pointsData) setPoints(pointsData);
       } catch (err: any) {
         if (err.status !== 401) {
@@ -94,20 +90,13 @@ export const UserDashboard = () => {
   const filteredTickets = useMemo(() => {
     // Ultra-defensive check to prevent "map is not a function"
     const ordersList = Array.isArray(orders) ? orders : [];
-    const preRegList = Array.isArray(myPreRegistrations) ? myPreRegistrations : [];
 
     const orderItems = ordersList.map(o => ({ 
       ...o, 
       type: 'order' as const 
     }));
     
-    const preRegItems = preRegList.map(pr => ({ 
-      ...pr, 
-      type: 'pre_reg' as const, 
-      displayStatus: 'pre_registered' as const 
-    }));
-
-    const allItems = [...orderItems, ...preRegItems];
+    const allItems = [...orderItems];
 
     if (ticketFilter === 'all') return allItems;
     if (ticketFilter === 'paid') return allItems.filter(item => item.is_paid);
@@ -270,7 +259,6 @@ export const UserDashboard = () => {
                 <div className="flex bg-bg-card p-1 rounded-pill border border-bg-border overflow-x-auto no-scrollbar shadow-card">
                   {[
                     { id: 'all', label: 'All' },
-                    { id: 'pre_registered', label: 'Pre-Reg' },
                     { id: 'pending', label: 'Pending' },
                     { id: 'paid', label: 'Paid' },
                     { id: 'invited', label: 'Invited' }
