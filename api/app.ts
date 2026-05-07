@@ -10,6 +10,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import crypto from 'crypto';
 import prisma from './lib/prisma.js';
 import { db } from './lib/db-service.js';
 
@@ -328,33 +329,275 @@ app.delete('/api/admin/invitations/:id', authenticateToken, authorizeRole(['admi
     catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-// --- KASHIER / PAYMENT LOGIC ---
-console.log('[App] Registering Payment Routes...');
-app.get('/api/kashier_callback', async (req, res) => {
-  const { merchantOrderId, orderStatus, transactionId } = req.query;
-  console.log('[Kashier Callback] Data:', req.query);
-  if (orderStatus === 'SUCCESS' && merchantOrderId && transactionId) {
-    try {
-      const orderId = parseInt(merchantOrderId.toString().split('-')[1]);
-      await db.markOrderAsPaid(orderId, transactionId.toString(), merchantOrderId.toString());
-      res.redirect(`${process.env.APP_URL || ''}/order-success?orderId=${orderId}`);
-    } catch (err) { res.redirect(`${process.env.APP_URL || ''}/order-failure`); }
-  } else { res.redirect(`${process.env.APP_URL || ''}/order-failure`); }
-});
-
-app.post('/api/kashier_webhook', async (req, res) => {
-    const payload = req.body;
-    console.log('[Kashier Webhook] Payload:', JSON.stringify(payload));
-    if (payload.event === 'order.paid' && payload.data && payload.data.order) {
-        try {
-            const kashierOrderId = payload.data.order.merchantOrderId;
-            const transactionId = payload.data.order.transactionId;
-            const orderId = parseInt(kashierOrderId.split('-')[1]);
-            await db.markOrderAsPaid(orderId, transactionId, kashierOrderId);
-        } catch (err) { console.error('[Webhook Error]', err); }
+  // --- Kashier Payment API (Payment Sessions) ---
+  app.post('/api/payments/create-session', authenticateToken, async (req: any, res) => {
+    console.log('[Payment] Create session request received');
+    console.log('[Payment] Headers:', req.headers);
+    console.log('[Payment] Body type:', typeof req.body);
+    console.log('[Payment] Body:', req.body);
+    
+    // FIX 1: REMOVE req.body.amount to prevent client-side price manipulation
+    const { order_id, currency = 'EGP' } = req.body;
+    
+    if (!order_id) {
+      return res.status(400).json({ error: 'order_id is required' });
     }
-    res.status(200).send('OK');
-});
+
+    try {
+      // Fetch order with user relation to dynamically extract customer data
+      const order = await db.getOrderById(parseInt(order_id));
+
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      // Security: Ensure the order belongs to the authenticated user
+      if (order.user_id !== req.user.id) {
+        return res.status(403).json({ error: 'Unauthorized access to order' });
+      }
+
+      // Business Logic: Only approved orders (or pending if no approval required) can proceed to payment
+      const event = await db.getEventById(order.event_id);
+      const isAllowedToPay = order.order_status === 'approved' || (order.order_status === 'pending' && !event?.require_approval);
+
+      if (!isAllowedToPay) {
+        return res.status(400).json({ 
+          error: order.order_status === 'pending' 
+            ? `Your booking for ${event?.title} is pending admin approval.` 
+            : `Payment not allowed for status: ${order.order_status}.`
+        });
+      }
+
+      // FIX 1 (Cont.): SECURE AMOUNT SOURCE
+      // Dynamically calculate total amount from DB price + service fees from settings
+      const settings = await db.getSettings();
+      const serviceFeePercent = settings?.service_fee_percent ?? 10;
+      const basePrice = order.total_price || 0;
+      const finalAmount = Number((basePrice * (1 + serviceFeePercent / 100)).toFixed(2));
+
+      const KASHIER_API_KEY = process.env.KASHIER_API_KEY;
+      const KASHIER_SECRET_KEY = process.env.KASHIER_SECRET_KEY;
+      const KASHIER_MERCHANT_ID = process.env.KASHIER_MERCHANT_ID;
+      const KASHIER_TEST_MODE = process.env.KASHIER_TEST_MODE === 'true';
+      
+      // Dynamic URL detection for redirects
+      const protocol = req.get('x-forwarded-proto') || req.protocol;
+      const host = req.get('host');
+      const APP_URL = process.env.APP_URL || `${protocol}://${host}`;
+
+      if (!KASHIER_API_KEY || !KASHIER_SECRET_KEY || !KASHIER_MERCHANT_ID) {
+        console.error('[Kashier] Configuration missing (API Key, Secret Key, or Merchant ID)');
+        return res.status(500).json({ error: 'Kashier configuration missing. Please contact support.' });
+      }
+
+      const kashierApiUrl = KASHIER_TEST_MODE 
+        ? 'https://test-api.kashier.io/v3/payment/sessions' 
+        : 'https://api.kashier.io/v3/payment/sessions';
+
+      const expireAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+      console.log('[Payment] Creating Kashier session for order:', order_id);
+      console.log(`[Payment] URL: ${kashierApiUrl}`);
+      console.log(`[Payment] Merchant ID: ${KASHIER_MERCHANT_ID}`);
+      console.log(`[Payment] Amount: ${finalAmount}`);
+
+      const response = await fetch(kashierApiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': KASHIER_SECRET_KEY,
+          'api-key': KASHIER_API_KEY
+        },
+        body: JSON.stringify({
+          amount: finalAmount.toString(),
+          currency: 'EGP',
+          order: order_id.toString(),
+          merchantId: KASHIER_MERCHANT_ID,
+          merchantRedirect: `${APP_URL}/payment-return?order_id=${order_id}&origin=kashier`,
+          expireAt: expireAt,
+          display: 'en',
+          type: 'one-time',
+          customer: {
+            email: req.user.email,
+            reference: req.user.id.toString()
+          }
+        })
+      });
+
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error('[Payment] Kashier API returned non-JSON response:', responseText);
+        return res.status(500).json({ error: 'Invalid response from payment gateway.' });
+      }
+
+      console.log('[Kashier FULL response]:', data);
+      
+      if (response.ok && data.sessionUrl) {
+        console.log(`[Payment] Session created successfully for order #${order_id}.`);
+        
+        // FIX 1: Store Kashier's UUID orderID in our DB for reliable webhook matching
+        const kashierOrderId = data.orderId || (data.session && data.session.orderId);
+        if (kashierOrderId) {
+          console.log(`[Payment] Mapping internal #${order_id} to Kashier UUID: ${kashierOrderId}`);
+          await db.updateOrder(order_id, { kashier_order_id: kashierOrderId });
+        }
+
+        res.json({ payment_url: data.sessionUrl });
+      } else {
+        console.error('[Kashier ERROR]:', data);
+        res.status(500).json({ 
+          error: 'Kashier session creation failed',
+          details: data
+        });
+      }
+    } catch (error: any) {
+      console.error('[Kashier] Internal Error:', error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
+    }
+  });
+
+  app.get('/api/payments/verify/:orderId', async (req: any, res) => {
+    const orderIdParam = req.params.orderId;
+    console.log(`[API] Checking payment verify state for order identifier: ${orderIdParam}`);
+
+    try {
+      // 1. Try numeric internal ID
+      let order: any = null;
+      if (!isNaN(Number(orderIdParam))) {
+        order = await db.getOrderById(Number(orderIdParam));
+      }
+
+      // 2. Fallback to Kashier UUID
+      if (!order) {
+        order = await db.getOrderByKashierOrderId(orderIdParam);
+      }
+
+      if (!order) {
+        console.warn(`[API] Order for verification not found: ${orderIdParam}`);
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      // 3. RULE: Return current DB state ONLY (Read-only)
+      console.log(`[API] Returning payment state for order #${order.id}: ${order.is_paid ? 'PAID' : 'NOT PAID'}`);
+      return res.json({ 
+        success: order.is_paid, 
+        is_paid: order.is_paid,
+        status: order.is_paid ? 'paid' : order.order_status,
+        order: order 
+      });
+
+    } catch (error: any) {
+      console.error(`[API ERROR] /api/payments/verify/${orderIdParam}:`, error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
+    }
+  });
+
+  app.post('/api/payments/confirm-from-return', async (req, res) => {
+    const { orderId, transactionId, status } = req.body;
+    
+    console.log(`[API] Confirm from return signal received for order ${orderId}, status ${status}, transaction ${transactionId}`);
+
+    if (status !== 'SUCCESS') {
+      console.log(`[API FAILED] Invalid status from kashier return: ${status}`);
+      return res.status(400).json({ error: 'Invalid status for confirmation.' });
+    }
+
+    try {
+      // 1. Resolve order
+      let order: any = null;
+      if (!isNaN(Number(orderId))) {
+        order = await db.getOrderById(Number(orderId));
+      }
+      if (!order) {
+        order = await db.getOrderByKashierOrderId(orderId);
+      }
+
+      if (!order) {
+        console.warn(`[API] Order for confirm-from-return not found: ${orderId}`);
+        return res.status(404).json({ error: 'Order not found.' });
+      }
+
+      // FIX 2: BACKEND IDEMPOTENCY (MANDATORY)
+      if (order.is_paid) {
+        console.log(`[API] Order #${order.id} already marked as paid. Returning cached success.`);
+        return res.json({ success: true, is_paid: true, order });
+      }
+
+      // 2. Trigger idempotent payment finalization
+      const result = await db.markOrderAsPaid(order.id, transactionId);
+      
+      // 3. RULE: Return success if the order is now paid (or was already paid)
+      if (result.success) {
+        console.log(`[API SUCCESS] Order #${order.id} confirmed via return.`);
+        return res.json({ success: true, is_paid: true, order: result.order });
+      } else {
+        console.warn(`[API FAILED] Order #${order.id} confirmation failed: ${result.reason}`);
+        return res.status(400).json({ success: false, error: result.reason });
+      }
+    } catch (error: any) {
+      console.error(`[API ERROR] /api/payments/confirm-from-return:`, error);
+      res.status(500).json({ 
+        error: 'Internal Server Error', 
+        details: error.message 
+      });
+    }
+  });
+
+  app.post('/api/payments/webhook', express.raw({ type: 'application/json' }) as any, async (req: any, res: any) => {
+    console.log('[Webhook] Receive trigger');
+    try {
+      const rawBody = req.body;
+      if (!rawBody || rawBody.length === 0) return res.status(200).send();
+
+      const payload = JSON.parse(rawBody.toString());
+      const signature = req.headers['x-kashier-signature'] as string;
+      const KASHIER_API_KEY = process.env.KASHIER_API_KEY;
+
+      if (!KASHIER_API_KEY) return res.status(200).send(); // Always 200 to Kashier unless strictly auth/sig fail
+
+      if (signature) {
+        const expectedSignature = crypto.createHmac('sha256', KASHIER_API_KEY).update(rawBody).digest('hex');
+        if (signature !== expectedSignature) return res.status(200).send();
+      }
+
+      const transactionId = payload.transactionId || payload.referenceNumber;
+      const orderIdStr = payload.orderId || payload.merchantOrderId;
+      const status = payload.status || (payload.response && payload.response.status);
+      
+      if (!orderIdStr || !transactionId || status !== 'SUCCESS') {
+        console.log('[Webhook] Skipping incomplete or non-success payload');
+        return res.status(200).send();
+      }
+
+      // Resolve order and trigger markOrderAsPaid
+      let order: any = null;
+      if (!isNaN(Number(orderIdStr))) {
+        order = await db.getOrderById(Number(orderIdStr));
+      }
+      if (!order) {
+        order = await db.getOrderByKashierOrderId(orderIdStr);
+      }
+
+      if (order) {
+        console.log(`[Webhook] Triggering markOrderAsPaid for order #${order.id}`);
+        await db.markOrderAsPaid(order.id, transactionId);
+      }
+
+      return res.status(200).send();
+    } catch (error) {
+      console.error('[Webhook] Error:', error);
+      return res.status(200).send(); // Always converge to 200 for webhooks
+    }
+  });
 
 // --- FINALIZATION ---
 console.log('[App] All routes registered synchronously.');

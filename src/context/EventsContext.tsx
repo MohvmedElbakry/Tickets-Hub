@@ -150,10 +150,10 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           try {
             const session = await orderService.createPaymentSession(order.id);
             localStorage.removeItem('last_payment_order_id');
-            localStorage.setItem('last_payment_order_id', order.id);
-            if (session && session.payment_url) {
+            localStorage.setItem('last_payment_order_id', order.id.toString());
+            if (session && session.checkoutUrl) {
               setPaymentFlowActive(true); // START PAYMENT FLOW FLAG
-              window.location.href = session.payment_url;
+              window.location.href = session.checkoutUrl;
             } else {
               navigate(`/checkout/${order.id}`);
               setIsBookingModalOpen(false);

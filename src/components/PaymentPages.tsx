@@ -145,7 +145,7 @@ export const CheckoutPage = () => {
               onClick={handlePay}
               disabled={paymentLoading}
             >
-              <CreditCard size={22} className="opacity-80" /> {paymentLoading ? 'INITIALIZING...' : 'Pay with HUB-PAY'}
+              <CreditCard size={22} className="opacity-80" /> {paymentLoading ? 'INITIALIZING...' : 'Pay Now'}
             </Button>
             <div className="flex flex-col items-center gap-6 mt-10">
               <div className="flex items-center gap-8 filter grayscale opacity-40 hover:grayscale-0 hover:opacity-100 transition-all duration-medium">
