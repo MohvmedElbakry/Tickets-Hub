@@ -983,6 +983,57 @@ const db = new PrismaDB();
 
 const app = express();
 
+app.set('trust proxy', 1);
+
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbUrl = process.env.DATABASE_URL || '';
+    const maskedUrl = dbUrl.replace(/:([^:@]+)@/, ':****@');
+    
+    // Parse parts to see what Prisma sees
+    let host = 'n/a';
+    let port = 'n/a';
+    try {
+      if (dbUrl) {
+        // Simple regex to extract host and port from postgresql URL
+        const match = dbUrl.match(/@([^:\/]+):?(\d+)?/);
+        if (match) {
+          host = match[1];
+          port = match[2] || '5432 (default)';
+        }
+      }
+    } catch (e) {}
+
+    // Check DB connection with a short timeout
+    const connectTest = prisma.$queryRaw`SELECT 1`.catch(e => { throw e; });
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Query Timeout')), 5000));
+    
+    await Promise.race([connectTest, timeout]);
+    
+    res.json({ 
+      status: 'ok', 
+      database: 'connected', 
+      env: process.env.NODE_ENV,
+      vercel: !!process.env.VERCEL,
+      db_host: host,
+      db_port: port,
+      url_masked: maskedUrl,
+      time: new Date().toISOString()
+    });
+  } catch (err: any) {
+    console.error('[Health Check] DB Failure:', err.message);
+    const dbUrl = process.env.DATABASE_URL || '';
+    const maskedUrl = dbUrl.replace(/:([^:@]+)@/, ':****@');
+    res.status(503).json({ 
+      status: 'error', 
+      database: 'disconnected', 
+      url_masked: maskedUrl,
+      error: err.message,
+      help: "Ensure DATABASE_URL is correct in Vercel settings and includes sslmode=require and port 6543 for Supabase pooler."
+    });
+  }
+});
+
 
 // Security: Add various HTTP headers (Helmet)
 app.use(helmet({
@@ -1050,18 +1101,48 @@ try {
 
 const startDB = async () => {
   try {
+    console.log('[Startup] [INFO] Starting DB check...');
+    const dbUrl = process.env.DATABASE_URL || '';
+    
+    if (!dbUrl) {
+      console.error('[Startup] [CRITICAL] DATABASE_URL is missing!');
+      return;
+    }
+
+    const maskedUrl = dbUrl.replace(/:([^:@]+)@/, ':****@');
+    console.log('[Startup] [INFO] Connection string (masked):', maskedUrl);
+    
+    // Parse parts to see what Prisma sees
+    try {
+      const match = dbUrl.match(/@([^:\/]+):?(\d+)?/);
+      if (match) {
+        const host = match[1];
+        const port = match[2] || '5432 (default)';
+        console.log(`[Startup] Target DB Host: ${host}, Port: ${port}`);
+      }
+    } catch (e) {}
+    
+    // Warn if using default port 5432 with Supabase in a serverless environment
+    if (dbUrl.includes('supabase.co') && !dbUrl.includes(':6543')) {
+      console.warn('[Startup] [WARNING] Connecting to Supabase on port 5432. For serverless, consider using the transaction pooler on port 6543 with ?pgbouncer=true');
+    }
+
     console.log('[Startup] Connecting to DB via Prisma...');
     const connectionPromise = prisma.$connect();
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('DB Connection Timeout')), 10000)
+      setTimeout(() => reject(new Error('DB Connection Timeout after 20s. Check if Supabase IP whitelisting allows Vercel or if DATABASE_URL is valid.')), 20000)
     );
     
     await Promise.race([connectionPromise, timeoutPromise]);
-    console.log('[Startup] DB Connected.');
+    console.log('[Startup] [SUCCESS] DB Connected.');
     await db.init();
     await seedAdmin();
-  } catch (error) {
-    console.error('[Startup] Non-fatal error during DB startup (check DB config):', error);
+  } catch (error: any) {
+    console.error('[Startup] [CRITICAL] DB Connection Error:', error.message);
+    if (error.message.includes('Can\'t reach database server')) {
+      console.error('[Startup] Recommendation: Ensure the database is awake and that your network/firewall allows access. Use port 6543 for Supabase pooler.');
+    }
+    console.error('[Startup] Full error context:', error);
   }
 };
 
@@ -2912,26 +2993,6 @@ const startDB = async () => {
         error: 'Internal Server Error', 
         details: error.message 
       });
-    }
-  });
-
-  app.get('/health', (req, res) => {
-    console.log('GENERIC HEALTH HIT');
-    res.json({ 
-      status: 'alive', 
-      environment: process.env.NODE_ENV || 'development',
-      time: new Date().toISOString()
-    });
-  });
-
-  app.get('/api/health', async (req, res) => {
-    console.log('HEALTH CHECK HIT');
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      res.json({ status: 'ok', database: 'connected' });
-    } catch (err: any) {
-      console.error('HEALTH ERROR:', err);
-      res.status(500).json({ status: 'error', database: 'disconnected', error: String(err.message || err) });
     }
   });
 
