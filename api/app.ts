@@ -104,7 +104,29 @@ app.post('/api/auth/signup', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const users = await db.getUsers();
     const userRole = users.length === 0 ? 'admin' : (role || 'user');
-    const newUser = await db.addUser({ name, email, password_hash: passwordHash, phone, role: userRole, birthdate: birthdate || '2000-01-01', gender });
+
+    const calculateAge = (dateString: string) => {
+      if (!dateString) return 0;
+      const today = new Date();
+      const birthDate = new Date(dateString);
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const m = today.getMonth() - birthDate.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      return age;
+    };
+
+    const newUser = await db.addUser({ 
+      name, 
+      email, 
+      password_hash: passwordHash, 
+      phone, 
+      role: userRole, 
+      birthdate: birthdate || '2000-01-01', 
+      age: calculateAge(birthdate || '2000-01-01'),
+      gender 
+    });
     const { accessToken, refreshToken, user } = generateTokens(newUser);
     res.status(201).json({ user, accessToken, refreshToken });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
@@ -208,55 +230,105 @@ app.delete('/api/events/:id', authenticateToken, authorizeRole(['admin']), async
 console.log('[App] Registering Order Routes...');
 app.post('/api/orders', authenticateToken, async (req: any, res) => {
   try {
-    const { event_id, tickets, ...data } = req.body;
-    
-    if (!event_id) return res.status(400).json({ error: 'event_id is required' });
-    if (!Array.isArray(tickets)) return res.status(400).json({ error: 'tickets must be an array' });
-
-    const parsedEventId = parseInt(event_id.toString());
-    const normalizedTickets = tickets.map((t: any) => ({
-      ...t,
-      ticket_type_id: parseInt(t.ticket_type_id.toString()),
-      quantity: parseInt(t.quantity.toString())
-    }));
+    await db.cleanupExpiredReservations();
+    const { event_id, tickets, instagram_username, phone, age, voucher_code, ticket_holders } = req.body;
+    if (!event_id || !tickets || !Array.isArray(tickets) || tickets.length === 0) return res.status(400).json({ error: 'Event ID and tickets are required.' });
 
     const result = await prisma.$transaction(async (tx) => {
-       const event = await tx.event.findUnique({ where: { id: parsedEventId } });
-       if (!event) throw new Error('Event not found');
-       
-       let total = 0;
-       for (const t of normalizedTickets) {
-         if (isNaN(t.ticket_type_id)) throw new Error('Invalid ticket_type_id provided');
-         const tt = await tx.ticketType.findUnique({ where: { id: t.ticket_type_id } });
-         if (!tt) throw new Error(`Ticket type ${t.ticket_type_id} not found`);
-         total += tt.price * t.quantity;
-       }
-       
-       const order = await tx.order.create({ 
-         data: { 
-           user_id: parseInt(req.user.id.toString()), 
-           event_id: parsedEventId, 
-           total_price: total, 
-           order_status: event.require_approval ? 'pending_approval' : 'pending', 
-           instagram_username: data.instagram_username || null, 
-           phone: data.phone || null, 
-           age: parseInt(data.age?.toString() || '0'), 
-           is_paid: false, 
-           processing_payment: false 
-         } 
-       });
+      const event = await tx.event.findUnique({ where: { id: parseInt(event_id) } });
+      if (!event) throw new Error('Event not found.');
 
-       for (const t of normalizedTickets) {
-         await tx.orderTicket.create({ 
-           data: { 
-             order_id: order.id, 
-             ticket_type_id: t.ticket_type_id, 
-             quantity: t.quantity, 
-             price_each: 0 // Will be set during actual payment calculation if needed
-           } 
-         });
-       }
-       return order;
+      let totalPrice = 0;
+      let discountPercent = 0;
+      let voucherId = null;
+
+      if (voucher_code) {
+        const vs = await tx.$queryRaw<any[]>`SELECT * FROM "Voucher" WHERE code = ${voucher_code} FOR UPDATE`;
+        const v = vs[0];
+        if (!v) throw new Error('Invalid voucher.');
+        if (new Date(v.expiration_date) < new Date()) throw new Error('Expired voucher.');
+        if (v.current_uses >= v.max_uses) throw new Error('Voucher limit reached.');
+        discountPercent = v.discount_percent;
+        voucherId = v.id;
+      }
+
+      const orderItems = [];
+      for (const item of tickets) {
+        const ttList = await tx.$queryRaw<any[]>`SELECT * FROM "TicketType" WHERE id = ${parseInt(item.ticket_type_id)} FOR UPDATE`;
+        const tt = ttList[0];
+        if (!tt || tt.event_id !== event.id) throw new Error(`Invalid ticket type: ${item.ticket_type_id}`);
+
+        const now = new Date();
+        if (tt.sale_start && new Date(tt.sale_start) > now) throw new Error(`Sale for ${tt.name} not started.`);
+        if (tt.sale_end && new Date(tt.sale_end) < now) throw new Error(`Sale for ${tt.name} ended.`);
+
+        const available = (tt.quantity_total - tt.quantity_sold) + (tt.resale_queue || 0);
+        if (item.quantity > available) throw new Error(`Unavailable: ${tt.name}`);
+
+        totalPrice += tt.price * item.quantity;
+        orderItems.push({
+          ticket_type_id: tt.id,
+          quantity: item.quantity,
+          price_each: tt.price,
+          name: tt.name,
+          is_resale: (tt.quantity_total - tt.quantity_sold) < item.quantity
+        });
+      }
+
+      if (discountPercent > 0) totalPrice *= (1 - discountPercent / 100);
+
+      const order = await tx.order.create({
+        data: {
+          user_id: req.user.id,
+          event_id: event.id,
+          total_price: totalPrice,
+          order_status: event.require_approval ? 'pending_approval' : 'pending',
+          reserved_at: new Date(),
+          instagram_username,
+          phone,
+          age: parseInt(age || '0'),
+          voucher_id: voucherId,
+          is_paid: false,
+          processing_payment: false,
+          points_awarded: false
+        }
+      });
+
+      if (voucherId) await tx.voucher.update({ where: { id: voucherId }, data: { current_uses: { increment: 1 } } });
+
+      let hIdx = 0;
+      for (const it of orderItems) {
+        const tt = await tx.ticketType.findUnique({ where: { id: it.ticket_type_id } });
+        if (!tt) throw new Error('Missing TT');
+        const qtyOrg = Math.min(it.quantity, tt.quantity_total - tt.quantity_sold);
+        const qtyRes = it.quantity - qtyOrg;
+        const holders = ticket_holders ? ticket_holders.slice(hIdx, hIdx + it.quantity) : [];
+        hIdx += it.quantity;
+        const hNames = holders.map((h: any) => (typeof h === 'string' ? h : ([h.first_name, h.last_name].filter(Boolean).join(' ') || 'Guest'))).join(', ');
+
+        await tx.orderTicket.create({
+          data: {
+            order_id: order.id,
+            ticket_type_id: it.ticket_type_id,
+            quantity: it.quantity,
+            price_each: it.price_each,
+            qty_original: qtyOrg,
+            qty_resale: qtyRes,
+            holder_name: hNames
+          }
+        });
+
+        await tx.ticketType.update({
+          where: { id: tt.id },
+          data: { quantity_sold: { increment: qtyOrg }, resale_queue: { decrement: qtyRes } }
+        });
+
+        if (qtyRes > 0) {
+          const resales = await tx.resellRequest.findMany({ where: { status: 'pending', ticket_type_id: tt.id }, orderBy: { created_at: 'asc' }, take: qtyRes });
+          for (const rr of resales) await tx.resellRequest.update({ where: { id: rr.id }, data: { status: 'resold' } });
+        }
+      }
+      return { ...order, items: orderItems, event };
     });
     res.status(201).json(result);
   } catch (error: any) { 
@@ -266,13 +338,58 @@ app.post('/api/orders', authenticateToken, async (req: any, res) => {
 });
 
 app.get('/api/orders', authenticateToken, async (req: any, res) => {
-  try { res.json(await db.getOrdersByUserId(req.user.id)); }
-  catch (error: any) { res.status(500).json({ error: error.message }); }
+  try {
+    const orders = await db.getOrdersByUserId(req.user.id);
+    const now = new Date();
+    const result = await Promise.all(orders.map(async (o: any) => {
+      if (o.order_status === 'approved' && o.payment_deadline && new Date(o.payment_deadline) < now) {
+        await db.updateOrder(o.id, { order_status: 'expired' });
+        o.order_status = 'expired';
+        const items = await db.getOrderTicketsByOrderId(o.id);
+        for (const it of items) {
+          const tt = (await db.getTicketTypes()).find((t: any) => t.id === it.ticket_type_id);
+          if (tt) await db.updateTicketType(tt.id, { quantity_sold: Math.max(0, tt.quantity_sold - (it.qty_original || 0)), resale_queue: (tt.resale_queue || 0) + (it.qty_resale || 0) });
+        }
+      }
+      const items = await db.getOrderTicketsByOrderId(o.id);
+      const event = await db.getEventById(o.event_id);
+      return { ...o, items, event };
+    }));
+    res.json(result);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/admin/orders', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+  try {
+    const orders = await db.getOrders();
+    const now = new Date();
+    const result = await Promise.all(orders.map(async (o: any) => {
+      if (o.order_status === 'approved' && o.payment_deadline && new Date(o.payment_deadline) < now) {
+        await db.updateOrder(o.id, { order_status: 'expired' });
+        o.order_status = 'expired';
+        const items = await db.getOrderTicketsByOrderId(o.id);
+        for (const it of items) {
+          const tt = (await db.getTicketTypes()).find((t: any) => t.id === it.ticket_type_id);
+          if (tt) await db.updateTicketType(tt.id, { quantity_sold: Math.max(0, tt.quantity_sold - (it.qty_original || 0)), resale_queue: (tt.resale_queue || 0) + (it.qty_resale || 0) });
+        }
+      }
+      const items = await db.getOrderTicketsByOrderId(o.id);
+      const event = await db.getEventById(o.event_id);
+      const user = await db.getUserById(o.user_id);
+      return { ...o, items, event, user: user ? { name: user.name, email: user.email, phone: user.phone } : null };
+    }));
+    res.json(result);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
 app.get('/api/orders/:id', async (req: any, res) => {
-  try { res.json(await db.getOrderById(parseInt(req.params.id))); }
-  catch (error: any) { res.status(500).json({ error: error.message }); }
+  try {
+    const order = await db.getOrderById(parseInt(req.params.id));
+    if (!order) return res.status(404).json({ error: 'Not found' });
+    const items = await db.getOrderTicketsByOrderId(order.id);
+    const event = await db.getEventById(order.event_id);
+    res.json({ ...order, items, event });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
 // --- SETTINGS ROUTES ---
@@ -285,48 +402,6 @@ app.get('/api/settings', async (req, res) => {
 app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
   try { res.json(await db.updateSettings(req.body)); }
   catch (error: any) { res.status(500).json({ error: error.message }); }
-});
-
-// --- ADMIN ROUTES ---
-console.log('[App] Registering Admin Routes...');
-app.get('/api/admin/orders', authenticateToken, authorizeRole(['admin']), async (req, res) => {
-    try { res.json(await db.getOrders()); }
-    catch (error: any) { res.status(500).json({ error: error.message }); }
-});
-
-app.get('/api/admin/vouchers', authenticateToken, authorizeRole(['admin']), async (req, res) => {
-    try { res.json(await db.getVouchers()); }
-    catch (error: any) { res.status(500).json({ error: error.message }); }
-});
-
-app.post('/api/admin/vouchers', authenticateToken, authorizeRole(['admin']), async (req, res) => {
-    try { res.json(await db.addVoucher(req.body)); }
-    catch (error: any) { res.status(500).json({ error: error.message }); }
-});
-
-app.delete('/api/admin/vouchers/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
-    try { await db.deleteVoucher(parseInt(req.params.id)); res.json({ message: 'Deleted' }); }
-    catch (error: any) { res.status(500).json({ error: error.message }); }
-});
-
-app.get('/api/admin/invitations', authenticateToken, authorizeRole(['admin']), async (req, res) => {
-    try { res.json(await db.getInvitations()); }
-    catch (error: any) { res.status(500).json({ error: error.message }); }
-});
-
-app.post('/api/admin/invitations', authenticateToken, authorizeRole(['admin']), async (req, res) => {
-    try { res.json(await db.addInvitation(req.body)); }
-    catch (error: any) { res.status(500).json({ error: error.message }); }
-});
-
-app.put('/api/admin/invitations/:id', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
-    try { res.json(await db.updateInvitation(parseInt(req.params.id), req.body)); }
-    catch (error: any) { res.status(500).json({ error: error.message }); }
-});
-
-app.delete('/api/admin/invitations/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
-    try { await db.deleteInvitation(parseInt(req.params.id)); res.json({ message: 'Deleted' }); }
-    catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
   // --- Kashier Payment API (Payment Sessions) ---
@@ -598,6 +673,440 @@ app.delete('/api/admin/invitations/:id', authenticateToken, authorizeRole(['admi
       return res.status(200).send(); // Always converge to 200 for webhooks
     }
   });
+
+// --- USER MANAGEMENT API (Admin) ---
+app.get('/api/users', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+  try {
+    const users = await db.getUsers();
+    res.json(users.map(({ password_hash, ...u }: any) => u));
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/users/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    if (req.user.role !== 'admin' && req.user.id !== userId) return res.status(403).json({ error: 'Access denied.' });
+    const user = await db.getUserById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    const { password_hash, ...u } = user;
+    res.json(u);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/users/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    if (req.user.role !== 'admin' && req.user.id !== userId) return res.status(403).json({ error: 'Access denied.' });
+    const updated = await db.updateUser(userId, req.body);
+    if (!updated) return res.status(404).json({ error: 'User not found.' });
+    const { password_hash, ...u } = updated;
+    res.json(u);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/users/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+  try {
+    const success = await db.deleteUser(parseInt(req.params.id));
+    if (!success) return res.status(404).json({ error: 'User not found.' });
+    res.json({ message: 'User deleted.' });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/users/:id/role', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+  try {
+    const updated = await db.updateUser(parseInt(req.params.id), { role: req.body.role });
+    if (!updated) return res.status(404).json({ error: 'User not found.' });
+    const { password_hash, ...u } = updated;
+    res.json(u);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+// --- TICKET TYPES API ---
+app.get('/api/ticket-types/:eventId', async (req, res) => {
+  try { res.json(await db.getTicketTypesByEventId(parseInt(req.params.eventId))); }
+  catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/ticket-types', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+  try { res.status(201).json(await db.addTicketType(req.body)); }
+  catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/ticket-types/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+  try {
+    const updated = await db.updateTicketType(parseInt(req.params.id), req.body);
+    if (!updated) return res.status(404).json({ error: 'Not found' });
+    res.json(updated);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/ticket-types/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+  try {
+    await db.deleteTicketType(parseInt(req.params.id));
+    res.json({ message: 'Deleted' });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+// --- PRE-REGISTRATION ROUTES ---
+app.get('/api/pre-registrations', authenticateToken, async (req: any, res) => {
+  try {
+    const registrations = await db.getPreRegistrationsByUserId(req.user.id);
+    const result = await Promise.all(registrations.map(async (r: any) => {
+      const event = await db.getEventById(r.event_id);
+      return { ...r, event };
+    }));
+    res.json(result);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/events/:id/pre-register', authenticateToken, async (req: any, res) => {
+  try {
+    const eventId = parseInt(req.params.id);
+    const existing = await db.getPreRegistrationsByUserId(req.user.id);
+    if (existing.find((r: any) => r.event_id === eventId)) return res.status(400).json({ error: 'Already pre-registered.' });
+    res.status(201).json(await db.addPreRegistration({ user_id: req.user.id, event_id: eventId }));
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/events/:id/pre-register', authenticateToken, async (req: any, res) => {
+  try {
+    await db.removePreRegistration(req.user.id, parseInt(req.params.id));
+    res.json({ message: 'Removed' });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+// --- REWARD POINTS API ---
+app.get('/api/user/points', authenticateToken, async (req: any, res) => {
+  try {
+    const user = await db.getUserById(req.user.id);
+    const history = await db.getPointsHistoryByUserId(req.user.id);
+    res.json({ balance: user?.points || 0, history });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/user/redeem', authenticateToken, async (req: any, res) => {
+  try {
+    const { points_to_redeem } = req.body;
+    const user = await db.getUserById(req.user.id);
+    if (!user || (user.points || 0) < points_to_redeem) return res.status(400).json({ error: 'Insufficient points.' });
+    if (points_to_redeem < 100) return res.status(400).json({ error: 'Min 100 required.' });
+
+    const discount = Math.min(Math.floor(points_to_redeem / 10), 50);
+    const code = `REWARD-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const expirationDate = new Date();
+    expirationDate.setMonth(expirationDate.getMonth() + 1);
+
+    const voucher = await db.addVoucher({
+      code,
+      discount_percent: discount,
+      max_uses: 1,
+      current_uses: 0,
+      expiration_date: expirationDate.toISOString(),
+      created_by_type: 'points',
+      created_by_id: user.id
+    });
+
+    await db.updateUser(user.id, { points: user.points - points_to_redeem });
+    await db.addPointsHistory({
+      user_id: user.id,
+      points: -points_to_redeem,
+      type: 'redeem',
+      description: `Redeemed for ${code}`
+    });
+    res.json({ message: 'Redeemed', voucher });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+// --- TICKET RESALE API ---
+app.post('/api/tickets/resale', authenticateToken, async (req: any, res) => {
+  try {
+    const { ticket_id } = req.body;
+    const result = await prisma.$transaction(async (tx) => {
+      const tickets = await tx.$queryRaw<any[]>`SELECT * FROM "OrderTicket" WHERE id = ${parseInt(ticket_id)} FOR UPDATE`;
+      const ticket = tickets[0];
+      if (!ticket) throw new Error('Ticket not found.');
+      const order = await tx.order.findUnique({ where: { id: ticket.order_id } });
+      if (!order || order.user_id !== req.user.id) throw new Error('Unauthorized.');
+      if (order.order_status !== 'paid') throw new Error('Not paid.');
+      if (ticket.status === 'reselling' || ticket.status === 'resold') throw new Error('Already reselling.');
+
+      await tx.orderTicket.update({ where: { id: ticket.id }, data: { status: 'reselling' } });
+      const ttList = await tx.$queryRaw<any[]>`SELECT * FROM "TicketType" WHERE id = ${ticket.ticket_type_id} FOR UPDATE`;
+      const tt = ttList[0];
+      if (tt) {
+        await tx.ticketType.update({
+          where: { id: tt.id },
+          data: {
+            quantity_sold: Math.max(0, tt.quantity_sold - 1),
+            resale_queue: (tt.resale_queue || 0) + 1
+          }
+        });
+      }
+      return await tx.resellRequest.create({
+        data: {
+          user_id: req.user.id,
+          order_ticket_id: ticket.id,
+          ticket_type_id: ticket.ticket_type_id,
+          order_id: order.id,
+          status: 'pending'
+        }
+      });
+    });
+    res.json({ message: 'Submitted', resaleRequest: result });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/admin/resale', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const reqs = await db.getResellRequests();
+    const users = await db.getUsers();
+    res.json(reqs.map((r: any) => ({ ...r, userName: users.find((u: any) => u.id === r.user_id)?.name || 'Unknown' })));
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/admin/resale/:id/payout', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    await db.updateResellRequest(parseInt(req.params.id), { status: 'paid', paid_at: new Date().toISOString() });
+    res.json({ message: 'Paid' });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+// --- VOUCHER MANAGEMENT API ---
+app.get('/api/admin/vouchers', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const vouchers = await db.getVouchers();
+    const users = await db.getUsers();
+    const enriched = vouchers.map((v: any) => {
+      let creatorName = v.name || 'System';
+      if (v.created_by_type === 'points') {
+        const user = users.find((u: any) => u.id === v.created_by_id);
+        creatorName = user ? user.name : 'Unknown';
+      }
+      const now = new Date();
+      const status = new Date(v.expiration_date) < now ? 'expired' : (v.current_uses >= v.max_uses ? 'redeemed' : 'active');
+      return { ...v, creatorName, status };
+    });
+    res.json(enriched);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/admin/vouchers', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const { code, discount_percent, max_uses, expiration_date, name } = req.body;
+    res.status(201).json(await db.addVoucher({
+      code,
+      discount_percent: parseFloat(discount_percent),
+      max_uses: parseInt(max_uses),
+      current_uses: 0,
+      expiration_date,
+      name: name || null,
+      created_by_type: 'admin',
+      created_by_id: req.user.id
+    }));
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/orders/:id/status', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const { status } = req.body;
+    const result = await prisma.$transaction(async (tx) => {
+      const orders = await tx.$queryRaw<any[]>`SELECT * FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+      const order = orders[0];
+      if (!order) throw new Error('Order not found.');
+      const oldStatus = order.order_status;
+      const updates: any = { order_status: status };
+      if (status === 'approved') {
+        const deadline = new Date();
+        deadline.setHours(deadline.getHours() + 24);
+        updates.payment_deadline = deadline;
+      }
+      const isReserved = (s: string) => ['pending', 'approved', 'paid', 'pending_approval', 'invited'].includes(s);
+      const isNotReserved = (s: string) => ['rejected', 'cancelled'].includes(s);
+
+      if (isReserved(oldStatus) && isNotReserved(status)) {
+        const items = await tx.orderTicket.findMany({ where: { order_id: orderId } });
+        for (const item of items) {
+          const ttList = await tx.$queryRaw<any[]>`SELECT * FROM "TicketType" WHERE id = ${item.ticket_type_id} FOR UPDATE`;
+          const tt = ttList[0];
+          if (tt) {
+            await tx.ticketType.update({
+              where: { id: tt.id },
+              data: {
+                quantity_sold: Math.max(0, tt.quantity_sold - (item.qty_original || 0)),
+                resale_queue: (tt.resale_queue || 0) + (item.qty_resale || 0)
+              }
+            });
+          }
+        }
+      }
+      if (isNotReserved(oldStatus) && isReserved(status)) {
+        const items = await tx.orderTicket.findMany({ where: { order_id: orderId } });
+        for (const item of items) {
+          const ttList = await tx.$queryRaw<any[]>`SELECT * FROM "TicketType" WHERE id = ${item.ticket_type_id} FOR UPDATE`;
+          const tt = ttList[0];
+          if (tt && tt.quantity_sold + (item.qty_original || 0) > tt.quantity_total) throw new Error('Overselling risk');
+          if (tt) {
+            await tx.ticketType.update({
+              where: { id: tt.id },
+              data: {
+                quantity_sold: tt.quantity_sold + (item.qty_original || 0),
+                resale_queue: Math.max(0, (tt.resale_queue || 0) - (item.qty_resale || 0))
+              }
+            });
+          }
+        }
+      }
+      return await tx.order.update({ where: { id: orderId }, data: updates });
+    });
+    res.json(result);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/orders/:id/approve', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const order = await db.getOrderById(orderId);
+    if (!order) return res.status(404).json({ error: 'Not found' });
+    const deadline = new Date();
+    deadline.setHours(deadline.getHours() + 24);
+    const updated = await db.updateOrder(orderId, { order_status: 'approved', payment_deadline: deadline });
+    const event = await db.getEventById(order.event_id);
+    await db.addNotification({ 
+      user_id: order.user_id, 
+      title: 'Approved!', 
+      message: `Your booking for ${event?.title} was approved. Payload valid for 24h.`, 
+      type: 'success' 
+    });
+    res.json(updated);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/orders/:id/reject', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const order = await db.getOrderById(orderId);
+    if (!order) return res.status(404).json({ error: 'Not found' });
+    const updated = await db.updateOrder(orderId, { order_status: 'rejected' });
+    const event = await db.getEventById(order.event_id);
+    await db.addNotification({ 
+      user_id: order.user_id, 
+      title: 'Rejected', 
+      message: `Your booking for ${event?.title} was rejected.`, 
+      type: 'error' 
+    });
+    res.json(updated);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/orders/:id/pay', authenticateToken, async (req: any, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const order = await db.getOrderById(orderId);
+    if (!order) return res.status(404).json({ error: 'Not found' });
+    if (order.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
+    res.json(await db.updateOrder(orderId, { order_status: 'paid', is_paid: true, paid_at: new Date() }));
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/admin/scan', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const { ticket_id, event_id } = req.body;
+    const ticket = await db.getOrderTicketById(parseInt(ticket_id));
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+    const order = await db.getOrderById(ticket.order_id);
+    if (!order || order.event_id !== parseInt(event_id)) return res.status(400).json({ error: 'Mismatch event' });
+    if (order.order_status !== 'paid') return res.status(400).json({ error: 'Not paid' });
+    if (ticket.is_used) return res.status(400).json({ error: 'Already scanned', scanned_count: ticket.scanned_count });
+    await db.updateOrderTicket(ticket.id, { is_used: true, scanned_count: 1 });
+    res.json({ message: 'Approved', ticket });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/orders/:id/qr-status', async (req: any, res) => {
+  try {
+    const order = await db.getOrderById(parseInt(req.params.id));
+    if (!order) return res.status(404).json({ error: 'Not found' });
+    const event = await db.getEventById(order.event_id);
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+    if (!order.is_paid || !order.qr_code_token) return res.json({ visible: false, reason: 'Payment pending' });
+    if (event.qr_enabled_manual === true) return res.json({ visible: true, qr_data: `TicketsHub-Order-${order.qr_code_token}` });
+    
+    const eventDate = event.event_date;
+    if (!eventDate) return res.json({ visible: false, reason: 'Event date not set' });
+    const eventTime = new Date(eventDate).getTime();
+    if (Date.now() >= eventTime - (60 * 60 * 1000)) return res.json({ visible: true, qr_data: `TicketsHub-Order-${order.qr_code_token}` });
+    res.json({ visible: false, reason: 'Available 1h before event' });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/events/:id/toggle-qr', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const updated = await db.updateEvent(parseInt(req.params.id), { qr_enabled_manual: req.body.enabled });
+    if (!updated) return res.status(404).json({ error: 'Not found' });
+    res.json(updated);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/admin/invitations', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try { res.json(await db.getInvitations()); }
+  catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/admin/invitations', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const { email, event_id, ticket_type_id } = req.body;
+    const result = await prisma.$transaction(async (tx) => {
+      const event = await tx.event.findUnique({ where: { id: parseInt(event_id) } });
+      if (!event) throw new Error('Event not found.');
+      const ttList = await tx.$queryRaw<any[]>`SELECT * FROM "TicketType" WHERE id = ${parseInt(ticket_type_id)} FOR UPDATE`;
+      const tt = ttList[0];
+      if (!tt || tt.event_id !== event.id) throw new Error('Invalid ticket type.');
+      if (tt.quantity_sold >= tt.quantity_total) throw new Error('Sold out.');
+
+      const invitation = await tx.invitation.create({
+        data: { email, event_id: parseInt(event_id), ticket_type_id: parseInt(ticket_type_id), status: 'pending' }
+      });
+
+      const user = await tx.user.findUnique({ where: { email } });
+      if (user) {
+        const order = await tx.order.create({
+          data: {
+            user_id: user.id,
+            event_id: parseInt(event_id),
+            total_price: 0,
+            order_status: 'invited',
+            instagram_username: 'invited',
+            phone: user.phone || 'N/A',
+            age: user.age || 0,
+            is_paid: true,
+            processing_payment: false,
+            points_awarded: false
+          }
+        });
+        await tx.orderTicket.create({
+          data: { order_id: order.id, ticket_type_id: parseInt(ticket_type_id), quantity: 1, price_each: 0, qty_original: 1, qty_resale: 0 }
+        });
+        await tx.ticketType.update({ where: { id: tt.id }, data: { quantity_sold: { increment: 1 } } });
+        await tx.notification.create({
+          data: { user_id: user.id, title: 'Invitation!', message: `You are invited to ${event.title}.`, type: 'info' }
+        });
+      }
+      return invitation;
+    });
+    res.status(201).json(result);
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/admin/invitations/:id', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try { res.json(await db.updateInvitation(parseInt(req.params.id), req.body)); }
+  catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/admin/invitations/:id', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try { await db.deleteInvitation(parseInt(req.params.id)); res.json({ message: 'Deleted' }); }
+  catch (error: any) { res.status(500).json({ error: error.message }); }
+});
 
 // --- FINALIZATION ---
 console.log('[App] All routes registered synchronously.');

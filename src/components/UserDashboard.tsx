@@ -103,7 +103,7 @@ export const UserDashboard = () => {
     if (ticketFilter === 'pending') return allItems.filter(item => !item.is_paid && (item.displayStatus === 'approved' || item.displayStatus === 'pending'));
 
     return allItems.filter(item => item.displayStatus === ticketFilter);
-  }, [orders, myPreRegistrations, ticketFilter]);
+  }, [orders, ticketFilter]);
 
   const handleResaleRequest = async () => {
     if (!selectedTicket || !payoutAddress) return;
