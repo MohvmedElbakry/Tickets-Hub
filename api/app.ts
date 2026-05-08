@@ -35,6 +35,28 @@ app.set('trust proxy', 1);
 // --- Initialization Logging ---
 console.log('[App] Registering core middleware...');
 
+// Helper to log all registered routes
+function logRoutes(app: express.Application) {
+  console.log('--- REGISTERED ROUTES ---');
+  app._router.stack.forEach((middleware: any) => {
+    if (middleware.route) { // routes registered directly on the app
+      const path = middleware.route.path;
+      const methods = Object.keys(middleware.route.methods).join(',').toUpperCase();
+      console.log(`[Route] ${methods.padEnd(7)} ${path}`);
+    } else if (middleware.name === 'router') { // router middleware
+      middleware.handle.stack.forEach((handler: any) => {
+        const route = handler.route;
+        if (route) {
+          const path = route.path;
+          const methods = Object.keys(route.methods).join(',').toUpperCase();
+          console.log(`[Route] ${methods.padEnd(7)} ${path}`);
+        }
+      });
+    }
+  });
+  console.log('-------------------------');
+}
+
 // Diagnostic: Log connection target at startup
 (async () => {
   const dbUrl = process.env.DATABASE_URL || '';
@@ -749,14 +771,14 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
   });
 
 // --- USER MANAGEMENT API (Admin) ---
-app.get('/api/users', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+app.get('/api/admin/users', authenticateToken, authorizeRole(['admin']), async (req, res) => {
   try {
     const users = await db.getUsers();
     res.json(users.map(({ password_hash, ...u }: any) => u));
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/users/:id', authenticateToken, async (req: any, res) => {
+app.get('/api/admin/users/:id', authenticateToken, async (req: any, res) => {
   try {
     const userId = parseInt(req.params.id);
     if (req.user.role !== 'admin' && req.user.id !== userId) return res.status(403).json({ error: 'Access denied.' });
@@ -767,7 +789,7 @@ app.get('/api/users/:id', authenticateToken, async (req: any, res) => {
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.put('/api/users/:id', authenticateToken, async (req: any, res) => {
+app.put('/api/admin/users/:id', authenticateToken, async (req: any, res) => {
   try {
     const userId = parseInt(req.params.id);
     if (req.user.role !== 'admin' && req.user.id !== userId) return res.status(403).json({ error: 'Access denied.' });
@@ -778,7 +800,7 @@ app.put('/api/users/:id', authenticateToken, async (req: any, res) => {
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.delete('/api/users/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+app.delete('/api/admin/users/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
   try {
     const success = await db.deleteUser(parseInt(req.params.id));
     if (!success) return res.status(404).json({ error: 'User not found.' });
@@ -786,7 +808,7 @@ app.delete('/api/users/:id', authenticateToken, authorizeRole(['admin']), async 
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.put('/api/users/:id/role', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+app.put('/api/admin/users/:id/role', authenticateToken, authorizeRole(['admin']), async (req, res) => {
   try {
     const updated = await db.updateUser(parseInt(req.params.id), { role: req.body.role });
     if (!updated) return res.status(404).json({ error: 'User not found.' });
@@ -938,6 +960,13 @@ app.get('/api/admin/resale', authenticateToken, authorizeRole(['admin']), async 
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
+app.put('/api/admin/resale/:id/status', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    await db.updateResellRequest(parseInt(req.params.id), { status: req.body.status });
+    res.json({ message: 'Status updated' });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
 app.put('/api/admin/resale/:id/payout', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
   try {
     await db.updateResellRequest(parseInt(req.params.id), { status: 'paid', paid_at: new Date().toISOString() });
@@ -980,7 +1009,7 @@ app.post('/api/admin/vouchers', authenticateToken, authorizeRole(['admin']), asy
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.put('/api/orders/:id/status', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+app.put('/api/admin/orders/:id/status', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
   try {
     const orderId = parseInt(req.params.id);
     const { status } = req.body;
@@ -1186,13 +1215,22 @@ app.delete('/api/admin/invitations/:id', authenticateToken, authorizeRole(['admi
 console.log('[App] All routes registered synchronously.');
 
 const listRoutes = () => {
-    const registered: string[] = [];
-    app._router.stack.forEach((middleware: any) => {
-        if (middleware.route) {
-            registered.push(`${Object.keys(middleware.route.methods).join(',').toUpperCase()} ${middleware.route.path}`);
-        }
-    });
     console.log('--- FINAL REGISTERED ROUTES ---');
+    const registered: string[] = [];
+    
+    function processStack(stack: any[], prefix = '') {
+        stack.forEach((middleware: any) => {
+            if (middleware.route) {
+                const methods = Object.keys(middleware.route.methods).join(',').toUpperCase();
+                registered.push(`${methods.padEnd(7)} ${prefix}${middleware.route.path}`);
+            } else if (middleware.name === 'router') {
+                const newPrefix = prefix + (middleware.regexp.source.replace('^\\', '').replace('\\/?(?=\\/|$)', '') || '');
+                processStack(middleware.handle.stack, newPrefix);
+            }
+        });
+    }
+
+    processStack(app._router.stack);
     registered.sort().forEach(r => console.log(r));
     console.log('-------------------------------');
 };
