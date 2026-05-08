@@ -212,7 +212,7 @@ export const EventDetailsPage = () => {
                       </div>
                       <div className="md:text-right content-stack gap-1">
                         <div className="text-price text-teal text-h3 transform group-hover:scale-110 transition-transform origin-right">{ticket.price} <span className="text-body-xs font-normal opacity-60">EGP</span></div>
-                        <div className="text-label text-text-muted font-black uppercase tracking-widest">PER PERSON</div>
+                        <div className="text-label text-text-muted font-black uppercase tracking-widest">PER TICKET HOLDER</div>
                       </div>
                     </div>
 
@@ -302,7 +302,7 @@ export const EventDetailsPage = () => {
                   <div className="content-stack gap-8">
                     <div className="content-stack gap-6">
                       <div className="flex items-center justify-between">
-                        <p className="text-label font-black text-text-muted uppercase tracking-widest">Transaction Summary</p>
+                        <p className="text-label font-black text-text-primary uppercase tracking-widest">Order Details</p>
                         {selectedTickets.length > 0 && <span className="w-2 h-2 bg-teal rounded-full animate-pulse shadow-teal"></span>}
                       </div>
 
@@ -317,9 +317,15 @@ export const EventDetailsPage = () => {
                               </div>
                             );
                           })}
-                          <div className="flex justify-between items-center text-body-xs text-text-muted pt-4 border-t border-bg-border/30 italic">
-                            <span>Service Surcharge (10%)</span>
-                            <span className="font-mono">{(totalPrice * 0.1).toFixed(2)} EGP</span>
+                          <div className="flex flex-col gap-2 pt-4 border-t border-bg-border/30 italic">
+                            <div className="flex justify-between items-center text-body-xs text-text-muted">
+                              <span>Platform Service Fee ({settings.service_fee_percent}%)</span>
+                              <span className="font-mono">{(totalPrice * (settings.service_fee_percent / 100)).toFixed(2)} EGP</span>
+                            </div>
+                            <div className="flex justify-between items-center text-body-xs text-text-muted">
+                              <span>Processing Fee (2.75% + 3 EGP)</span>
+                              <span className="font-mono">{(totalPrice * 0.0275 + 3).toFixed(2)} EGP</span>
+                            </div>
                           </div>
                         </div>
                       ) : (
@@ -331,8 +337,8 @@ export const EventDetailsPage = () => {
 
                     <div className="pt-8 border-t border-bg-border content-stack gap-8">
                       <div className="flex justify-between items-center bg-bg-elevated/50 p-4 rounded-card border border-bg-border/30">
-                        <span className="text-label font-black text-text-muted tracking-widest">TOTAL INVESTED</span>
-                        <span className="text-h2 text-teal drop-shadow-teal">{(totalPrice * 1.1).toFixed(2)} <span className="text-body-xs font-normal text-text-muted">EGP</span></span>
+                        <span className="text-label font-black text-text-muted tracking-widest">Total Price</span>
+                        <span className="text-h2 text-teal drop-shadow-teal">{(totalPrice > 0 ? (totalPrice + (totalPrice * (settings.service_fee_percent / 100)) + (totalPrice * 0.0275 + 3)) : 0).toFixed(2)} <span className="text-body-xs font-normal text-text-muted">EGP</span></span>
                       </div>
                       
                       <Button 
@@ -341,20 +347,15 @@ export const EventDetailsPage = () => {
                         disabled={selectedTickets.length === 0 || purchaseLoading || selectedEvent.status === 'closed'}
                         onClick={() => handlePurchase(selectedEvent.id!, selectedTickets)}
                       >
-                        {selectedEvent.status === 'closed' ? 'EVENT CLOSED' : (purchaseLoading ? 'PROCESSING...' : (selectedTickets.length > 0 ? 'INITIALIZE BOOKING' : 'SELECT TICKETS'))}
+                        {selectedEvent.status === 'closed' ? 'EVENT CLOSED' : (purchaseLoading ? 'PROCESSING...' : (selectedTickets.length > 0 ? (selectedTickets.reduce((sum, item) => sum + item.quantity, 0) === 1 ? 'BOOK TICKET' : 'BOOK TICKETS') : 'SELECT TICKETS'))}
                       </Button>
                     </div>
                   </div>
                 )}
                 
-                <div className="flex flex-col items-center gap-1.5 opacity-40">
-                  <p className="text-[9px] font-black tracking-widest uppercase flex items-center gap-1 justify-center">
-                    <ShieldCheck size={10} className="text-teal" /> Secure Protocol v2.4
-                  </p>
-                  <p className="text-[8px] text-text-muted tracking-widest uppercase">Encryption: AES-256 GCM</p>
+                  <div className="py-4"></div>
                 </div>
               </div>
-            </div>
           </aside>
         </div>
       </div>

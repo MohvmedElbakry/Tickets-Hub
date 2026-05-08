@@ -13,12 +13,14 @@ import { motion } from 'motion/react';
 import { Button } from './ui/Button';
 import { orderService } from '../services/orderService';
 import { useUI } from '../context/UIContext';
+import { useEvents } from '../context/EventsContext';
 import { Order } from '../types';
 
 export const CheckoutPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { lastOrder, setLastOrder } = useUI();
+  const { settings } = useEvents();
   const [order, setOrder] = useState<Order | null>(lastOrder && lastOrder.id.toString() === id ? lastOrder : null);
   const [loading, setLoading] = useState(!order);
   const [error, setError] = useState<string | null>(null);
@@ -133,7 +135,7 @@ export const CheckoutPage = () => {
 
         <div className="p-10 layout-stack gap-10">
           <div className="content-stack gap-6">
-            <h3 className="text-h4">Order Summary</h3>
+            <h3 className="text-h4">Order Details</h3>
             <div className="layout-stack gap-4">
               {order.items?.map((item, idx) => (
                 <div key={idx} className="flex justify-between items-center p-5 bg-bg-elevated rounded-card border border-bg-border/50 group hover:border-teal/30 transition-colors">
@@ -150,15 +152,19 @@ export const CheckoutPage = () => {
           <div className="pt-10 border-t border-bg-border layout-stack gap-4">
             <div className="flex justify-between items-center text-text-muted">
               <span className="text-label font-bold tracking-widest">SUBTOTAL</span>
-              <span className="text-body-base font-mono">{(order.total_price / 1.1).toFixed(2)} EGP</span>
+              <span className="text-body-base font-mono">{order.total_price.toFixed(2)} EGP</span>
             </div>
             <div className="flex justify-between items-center text-text-muted">
-              <span className="text-label font-bold tracking-widest">SERVICE FEE (10%)</span>
-              <span className="text-body-base font-mono">{(order.total_price - (order.total_price / 1.1)).toFixed(2)} EGP</span>
+              <span className="text-label font-bold tracking-widest">Platform Service Fee ({settings.service_fee_percent}%)</span>
+              <span className="text-body-base font-mono">{(order.total_price * (settings.service_fee_percent / 100)).toFixed(2)} EGP</span>
+            </div>
+            <div className="flex justify-between items-center text-text-muted">
+              <span className="text-label font-bold tracking-widest">Processing Fee (2.75% + 3 EGP)</span>
+              <span className="text-body-base font-mono">{(order.total_price * 0.0275 + 3).toFixed(2)} EGP</span>
             </div>
             <div className="flex justify-between items-center pt-6 mt-4 border-t border-bg-border/30">
-              <span className="text-h3">Total Amount</span>
-              <span className="text-h2 text-teal shadow-teal/5">{order.total_price.toFixed(2)} <span className="text-body-sm font-normal text-text-muted">EGP</span></span>
+              <span className="text-h3">Total Price</span>
+              <span className="text-h2 text-teal shadow-teal/5">{(order.total_price + (order.total_price * (settings.service_fee_percent / 100)) + (order.total_price * 0.0275 + 3)).toFixed(2)} <span className="text-body-sm font-normal text-text-muted">EGP</span></span>
             </div>
           </div>
 
@@ -169,7 +175,7 @@ export const CheckoutPage = () => {
               onClick={handlePay}
               disabled={paymentLoading}
             >
-              <CreditCard size={22} className="opacity-80" /> {paymentLoading ? 'INITIALIZING...' : 'Pay Now'}
+              <CreditCard size={22} className="opacity-80" /> {paymentLoading ? 'Loading...' : 'Pay Now'}
             </Button>
             <div className="flex flex-col items-center gap-6 mt-10">
               <div className="flex items-center gap-8 filter grayscale opacity-40 hover:grayscale-0 hover:opacity-100 transition-all duration-medium">
@@ -177,10 +183,6 @@ export const CheckoutPage = () => {
                 <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="MasterCard" className="h-8" />
                 <p className="text-label font-black opacity-60">FAWRY</p>
               </div>
-              <p className="text-center text-[10px] text-text-muted flex items-center justify-center gap-2 font-black tracking-widest uppercase bg-bg-elevated py-2 px-6 rounded-pill border border-bg-border/50">
-                <ShieldCheck size={14} className="text-status-success" /> 
-                Secure 256-bit SSL Encrypted Transaction
-              </p>
             </div>
           </div>
         </div>

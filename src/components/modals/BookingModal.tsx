@@ -253,7 +253,6 @@ export const BookingModal = () => {
                 >
                   {purchaseLoading ? 'Processing Order...' : 'Confirm & Proceed to Payment'}
                 </Button>
-                <p className="text-center text-[10px] text-text-muted mt-4 uppercase tracking-widest font-bold">Secure Checkout Powered by HUB-PAY</p>
               </div>
             </form>
           </motion.div>
