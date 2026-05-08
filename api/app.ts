@@ -457,6 +457,16 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
         return res.status(403).json({ error: 'Unauthorized access to order' });
       }
 
+      // CHECK FOR EXISTING SESSION
+      if (order.kashier_url && !order.is_paid) {
+        console.log(`[Payment] REUSING existing Kashier session for order: ${order_id}`);
+        return res.json({ 
+          payment_url: order.kashier_url, 
+          checkoutUrl: order.kashier_url,
+          reused: true 
+        });
+      }
+
       // Business Logic: Only approved orders (or pending if no approval required) can proceed to payment
       const event = await db.getEventById(order.event_id);
       const isAllowedToPay = order.order_status === 'approved' || (order.order_status === 'pending' && !event?.require_approval);
@@ -539,14 +549,18 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
       if (response.ok && data.sessionUrl) {
         console.log(`[Payment] Session created successfully for order #${order_id}.`);
         
-        // FIX 1: Store Kashier's UUID orderID in our DB for reliable webhook matching
+        // Store Kashier's UUID orderID and sessionUrl in our DB
         const kashierOrderId = data.orderId || (data.session && data.session.orderId);
-        if (kashierOrderId) {
-          console.log(`[Payment] Mapping internal #${order_id} to Kashier UUID: ${kashierOrderId}`);
-          await db.updateOrder(order_id, { kashier_order_id: kashierOrderId });
-        }
+        console.log(`[Payment] Persisting session data for #${order_id}`);
+        await db.updateOrder(order_id, { 
+          kashier_order_id: kashierOrderId || undefined,
+          kashier_url: data.sessionUrl 
+        });
 
-        res.json({ payment_url: data.sessionUrl });
+        res.json({ 
+          payment_url: data.sessionUrl,
+          checkoutUrl: data.sessionUrl
+        });
       } else {
         console.error('[Kashier ERROR]:', data);
         res.status(500).json({ 
