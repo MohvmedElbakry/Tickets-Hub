@@ -13,14 +13,14 @@ import { motion } from 'motion/react';
 import { Button } from './ui/Button';
 import { orderService } from '../services/orderService';
 import { useUI } from '../context/UIContext';
-import { useEvents } from '../context/EventsContext';
+import { useEvents, useSettings } from '../context/EventsContext';
 import { Order } from '../types';
 
 export const CheckoutPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { lastOrder, setLastOrder } = useUI();
-  const { settings } = useEvents();
+  const { settings } = useSettings();
   const [order, setOrder] = useState<Order | null>(lastOrder && lastOrder.id.toString() === id ? lastOrder : null);
   const [loading, setLoading] = useState(!order);
   const [error, setError] = useState<string | null>(null);
@@ -159,12 +159,12 @@ export const CheckoutPage = () => {
               <span className="text-body-base font-mono">{(order.total_price * (settings.service_fee_percent / 100)).toFixed(2)} EGP</span>
             </div>
             <div className="flex justify-between items-center text-text-muted">
-              <span className="text-label font-bold tracking-widest">Processing Fee (2.75% + 3 EGP)</span>
-              <span className="text-body-base font-mono">{(order.total_price * 0.0275 + 3).toFixed(2)} EGP</span>
+              <span className="text-label font-bold tracking-widest">Processing Fee ({settings.processing_fee_percent}% + {settings.fixed_fee_egp} EGP)</span>
+              <span className="text-body-base font-mono">{(order.total_price * (settings.processing_fee_percent / 100) + settings.fixed_fee_egp).toFixed(2)} EGP</span>
             </div>
             <div className="flex justify-between items-center pt-6 mt-4 border-t border-bg-border/30">
               <span className="text-h3">Total Price</span>
-              <span className="text-h2 text-teal shadow-teal/5">{(order.total_price + (order.total_price * (settings.service_fee_percent / 100)) + (order.total_price * 0.0275 + 3)).toFixed(2)} <span className="text-body-sm font-normal text-text-muted">EGP</span></span>
+              <span className="text-h2 text-teal shadow-teal/5">{(order.total_price + (order.total_price * (settings.service_fee_percent / 100)) + (order.total_price * (settings.processing_fee_percent / 100) + settings.fixed_fee_egp)).toFixed(2)} <span className="text-body-sm font-normal text-text-muted">EGP</span></span>
             </div>
           </div>
 

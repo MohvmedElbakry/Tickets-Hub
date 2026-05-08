@@ -19,15 +19,32 @@ class PrismaDB {
     try {
       let settings = await prisma.setting.findFirst();
       if (!settings) {
-        settings = await prisma.setting.create({ data: { service_fee_percent: 10 } });
+        settings = await prisma.setting.create({ 
+          data: { 
+            service_fee_percent: 10,
+            processing_fee_percent: 2.75,
+            fixed_fee_egp: 3
+          } 
+        });
         console.log('[DB SUCCESS] Settings created');
       } else {
         console.log('[DB SUCCESS] Settings fetched');
       }
-      return settings;
+      return {
+        ...settings,
+        service_fee_percent: settings.service_fee_percent ?? 10,
+        processing_fee_percent: settings.processing_fee_percent ?? 2.75,
+        fixed_fee_egp: settings.fixed_fee_egp ?? 3
+      };
     } catch (err) {
       console.error('[DB ERROR] getSettings:', err);
-      throw err;
+      // Critical fallback for production stability
+      return {
+        id: 0,
+        service_fee_percent: 10,
+        processing_fee_percent: 2.75,
+        fixed_fee_egp: 3
+      };
     }
   }
 

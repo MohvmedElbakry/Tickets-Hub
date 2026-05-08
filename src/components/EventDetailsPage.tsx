@@ -15,7 +15,7 @@ import {
 import { Button } from './ui/Button';
 import { Event, TicketType } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { useEvents } from '../context/EventsContext';
+import { useEvents, useSettings } from '../context/EventsContext';
 import { useUI } from '../context/UIContext';
 import { eventService } from '../services/eventService';
 import { formatEventTime } from '../lib/utils';
@@ -26,6 +26,7 @@ export const EventDetailsPage = () => {
   const { selectedEvent, setSelectedEvent } = useUI();
   const { isAuthReady } = useAuth();
   const { handlePreRegister, handlePurchase, purchaseLoading, purchaseError } = useEvents();
+  const { settings } = useSettings();
   
   const [ticketQuantities, setTicketQuantities] = useState<{[key: string]: number}>({});
   const [loading, setLoading] = useState(true);
@@ -323,8 +324,8 @@ export const EventDetailsPage = () => {
                               <span className="font-mono">{(totalPrice * (settings.service_fee_percent / 100)).toFixed(2)} EGP</span>
                             </div>
                             <div className="flex justify-between items-center text-body-xs text-text-muted">
-                              <span>Processing Fee (2.75% + 3 EGP)</span>
-                              <span className="font-mono">{(totalPrice * 0.0275 + 3).toFixed(2)} EGP</span>
+                              <span>Processing Fee ({settings.processing_fee_percent}% + {settings.fixed_fee_egp} EGP)</span>
+                              <span className="font-mono">{(totalPrice * (settings.processing_fee_percent / 100) + settings.fixed_fee_egp).toFixed(2)} EGP</span>
                             </div>
                           </div>
                         </div>
@@ -338,7 +339,7 @@ export const EventDetailsPage = () => {
                     <div className="pt-8 border-t border-bg-border content-stack gap-8">
                       <div className="flex justify-between items-center bg-bg-elevated/50 p-4 rounded-card border border-bg-border/30">
                         <span className="text-label font-black text-text-muted tracking-widest">Total Price</span>
-                        <span className="text-h2 text-teal drop-shadow-teal">{(totalPrice > 0 ? (totalPrice + (totalPrice * (settings.service_fee_percent / 100)) + (totalPrice * 0.0275 + 3)) : 0).toFixed(2)} <span className="text-body-xs font-normal text-text-muted">EGP</span></span>
+                        <span className="text-h2 text-teal drop-shadow-teal">{(totalPrice > 0 ? (totalPrice + (totalPrice * (settings.service_fee_percent / 100)) + (totalPrice * (settings.processing_fee_percent / 100) + settings.fixed_fee_egp)) : 0).toFixed(2)} <span className="text-body-xs font-normal text-text-muted">EGP</span></span>
                       </div>
                       
                       <Button 

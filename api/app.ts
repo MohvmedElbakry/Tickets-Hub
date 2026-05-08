@@ -594,12 +594,15 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
       // Dynamically calculate total amount from DB price + service fees from settings
       const settings = await db.getSettings();
       const serviceFeePercent = settings?.service_fee_percent ?? 10;
+      const processingFeePercent = settings?.processing_fee_percent ?? 2.75;
+      const fixedFeeEgp = settings?.fixed_fee_egp ?? 3;
+
       const basePrice = order.total_price || 0;
       // New Fee Structure:
       // 1. Dynamic platform fee (%)
-      // 2. Gateway fee (2.75% of base + 3 EGP)
+      // 2. Gateway fee (from settings)
       const dynamicFee = basePrice * (serviceFeePercent / 100);
-      const gatewayFee = (basePrice * 0.0275) + 3;
+      const gatewayFee = (basePrice * (processingFeePercent / 100)) + fixedFeeEgp;
       const finalAmount = Number((basePrice + dynamicFee + gatewayFee).toFixed(2));
 
       const KASHIER_API_KEY = process.env.KASHIER_API_KEY;

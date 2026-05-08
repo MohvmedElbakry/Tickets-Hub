@@ -204,6 +204,8 @@ model Notification {
 }
 
 model Setting {
-  id                  Int @id @default(autoincrement())
-  service_fee_percent Int @default(10)
+  id                      Int   @id @default(autoincrement())
+  service_fee_percent     Float @default(10)
+  processing_fee_percent  Float @default(2.75)
+  fixed_fee_egp           Float @default(3)
 }

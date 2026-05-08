@@ -11,8 +11,16 @@ interface EventsContextType {
   events: Event[];
   loading: boolean;
   refreshEvents: () => Promise<void>;
-  settings: { service_fee_percent: number };
-  setSettings: React.Dispatch<React.SetStateAction<{ service_fee_percent: number }>>;
+  settings: { 
+    service_fee_percent: number;
+    processing_fee_percent: number;
+    fixed_fee_egp: number;
+  };
+  setSettings: React.Dispatch<React.SetStateAction<{ 
+    service_fee_percent: number;
+    processing_fee_percent: number;
+    fixed_fee_egp: number;
+  }>>;
   setEvents: React.Dispatch<React.SetStateAction<Event[]>>;
   handlePreRegister: (eventId: string | number) => Promise<void>;
   handlePurchase: (eventId: string | number, tickets: any[], additionalInfo?: any) => Promise<void>;
@@ -36,7 +44,11 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const EVENTS_TTL_MS = 60000; // 60 seconds
   const eventsInFlightRef = useRef<Promise<void> | null>(null);
 
-  const [settings, setSettings] = useState({ service_fee_percent: 10 });
+  const [settings, setSettings] = useState({ 
+    service_fee_percent: 10,
+    processing_fee_percent: 2.75,
+    fixed_fee_egp: 3
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string>('All');
   const [maxPrice, setMaxPrice] = useState<number>(50000);
@@ -229,4 +241,17 @@ export const useEvents = () => {
     throw new Error('useEvents must be used within an EventsProvider');
   }
   return context;
+};
+
+export const useSettings = () => {
+  const { settings, loading } = useEvents();
+  
+  // Safe fallback pattern
+  const safeSettings = useMemo(() => ({
+    service_fee_percent: settings?.service_fee_percent ?? 10,
+    processing_fee_percent: settings?.processing_fee_percent ?? 2.75,
+    fixed_fee_egp: settings?.fixed_fee_egp ?? 3
+  }), [settings]);
+
+  return { settings: safeSettings, loading };
 };
