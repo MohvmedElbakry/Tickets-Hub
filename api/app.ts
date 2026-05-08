@@ -109,6 +109,18 @@ const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, standardHeaders
 app.use('/api/', limiter);
 app.use(express.json({ limit: '50mb' }));
 
+// Start tracing
+if (process.env.NODE_ENV !== 'production') {
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      console.log(`[API TRACE] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+    });
+    next();
+  });
+}
+
 const authenticateToken = (req: any, res: any, next: any) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -398,7 +410,6 @@ app.get('/api/orders', authenticateToken, async (req: any, res) => {
     res.json(result);
     
     // Background check for expirations to avoid blocking the response
-    // and potentially launching parallel updates if needed
     (async () => {
       for (const o of orders) {
         if (o.order_status === 'approved' && o.payment_deadline && new Date(o.payment_deadline) < now) {
@@ -773,9 +784,13 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
 // --- USER MANAGEMENT API (Admin) ---
 app.get('/api/admin/users', authenticateToken, authorizeRole(['admin']), async (req, res) => {
   try {
+    console.log('[API] Admin: Fetching all users');
     const users = await db.getUsers();
     res.json(users.map(({ password_hash, ...u }: any) => u));
-  } catch (error: any) { res.status(500).json({ error: error.message }); }
+  } catch (error: any) { 
+    console.error('[API ERROR] /api/admin/users:', error);
+    res.status(500).json({ error: error.message }); 
+  }
 });
 
 app.get('/api/admin/users/:id', authenticateToken, async (req: any, res) => {
@@ -882,7 +897,7 @@ app.get('/api/user/points', authenticateToken, async (req: any, res) => {
 
 app.post('/api/user/redeem', authenticateToken, async (req: any, res) => {
   try {
-    const { points_to_redeem } = req.body;
+    const points_to_redeem = req.body.points_to_redeem || req.body.points;
     const user = await db.getUserById(req.user.id);
     if (!user || (user.points || 0) < points_to_redeem) return res.status(400).json({ error: 'Insufficient points.' });
     if (points_to_redeem < 100) return res.status(400).json({ error: 'Min 100 required.' });
@@ -911,6 +926,12 @@ app.post('/api/user/redeem', authenticateToken, async (req: any, res) => {
     });
     res.json({ message: 'Redeemed', voucher });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+// Alias for frontend compatibility
+app.post('/api/user/points/redeem', authenticateToken, async (req: any, res) => {
+  // Directly forward to the same logic
+  return app.handle(req, res);
 });
 
 // --- TICKET RESALE API ---
@@ -1006,6 +1027,13 @@ app.post('/api/admin/vouchers', authenticateToken, authorizeRole(['admin']), asy
       created_by_type: 'admin',
       created_by_id: req.user.id
     }));
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/admin/vouchers/:id', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    await db.deleteVoucher(parseInt(req.params.id));
+    res.json({ success: true, message: 'Voucher deleted.' });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
