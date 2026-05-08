@@ -121,6 +121,11 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const handlePurchase = useCallback(async (eventId: string | number, tickets: any[], additionalInfo?: any) => {
+    if (purchaseLoading) {
+      console.warn('[EventsContext] handlePurchase already in progress, ignoring duplicate call');
+      return;
+    }
+
     if (!accessToken) {
       setIsLoginModalOpen(true);
       return;
@@ -148,18 +153,38 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } else {
           // Try to create payment session
           try {
+            console.log(`[EventsContext] handlePurchase calling createPaymentSession for order #${order.id}`);
+            
+            // Check if backend already provided a URL in the order object
+            if (order.kashier_url) {
+               console.log(`[EventsContext] REUSING kashier_url from newly created order: ${order.kashier_url}`);
+               setPaymentFlowActive(true);
+               localStorage.setItem('last_payment_order_id', order.id.toString());
+               window.location.href = order.kashier_url;
+               return;
+            }
+
             const session = await orderService.createPaymentSession(order.id);
+            
+            if (session?.reused) {
+              console.log(`[EventsContext] Backend reported session REUSE for order #${order.id}`);
+            }
+
             localStorage.removeItem('last_payment_order_id');
             localStorage.setItem('last_payment_order_id', order.id.toString());
-            if (session && session.checkoutUrl) {
+            
+            const checkoutUrl = session?.checkoutUrl || session?.payment_url;
+            if (checkoutUrl) {
+              console.log(`[EventsContext] Redirecting to checkoutUrl: ${checkoutUrl}`);
               setPaymentFlowActive(true); // START PAYMENT FLOW FLAG
-              window.location.href = session.checkoutUrl;
+              window.location.href = checkoutUrl;
             } else {
+              console.warn('[EventsContext] No checkoutUrl in session, falling back to /checkout page', session);
               navigate(`/checkout/${order.id}`);
               setIsBookingModalOpen(false);
             }
           } catch (err) {
-            console.error('Failed to create payment session', err);
+            console.error('[EventsContext] Failed to create payment session in handlePurchase', err);
             navigate(`/checkout/${order.id}`);
             setIsBookingModalOpen(false);
           }

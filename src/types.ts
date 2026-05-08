@@ -46,6 +46,7 @@ export interface Order {
   payment_deadline?: string;
   reserved_at?: string;
   qr_code_token?: string | null;
+  kashier_url?: string;
   is_paid?: boolean;
 }
 

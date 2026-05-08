@@ -45,23 +45,47 @@ export const CheckoutPage = () => {
 
   const handlePay = async () => {
     if (!order || paymentLoading) return;
+    
+    console.log(`[CheckoutPage] handlePay triggered for order #${order.id}`);
+    
+    // REUSE existing session URL if available from the order object
+    if (order.kashier_url) {
+      console.log(`[CheckoutPage] REUSING existing kashier_url found in order object: ${order.kashier_url}`);
+      localStorage.setItem('last_payment_order_id', order.id.toString());
+      localStorage.setItem('last_payment_time', Date.now().toString());
+      window.location.href = order.kashier_url;
+      return;
+    }
+
     setPaymentLoading(true);
     try {
+      console.log(`[CheckoutPage] Initiating createPaymentSession for order #${order.id}`);
       // Clear any existing session locks before starting a new payment session
       sessionStorage.removeItem("payment_redirect_done");
       sessionStorage.removeItem("payment_navigation_lock");
 
       const data = await orderService.createPaymentSession(order.id);
-      if (data?.checkoutUrl) {
+      
+      if (data?.reused) {
+        console.log(`[CheckoutPage] Backend reported session REUSE for order #${order.id}`);
+      } else {
+        console.log(`[CheckoutPage] New session created for order #${order.id}`);
+      }
+
+      const checkoutUrl = data?.checkoutUrl || data?.payment_url;
+      
+      if (checkoutUrl) {
+        console.log(`[CheckoutPage] Redirecting to: ${checkoutUrl}`);
         localStorage.setItem('last_payment_order_id', order.id.toString());
         localStorage.setItem('last_payment_time', Date.now().toString());
-        window.location.href = data.checkoutUrl;
+        window.location.href = checkoutUrl;
       } else {
+        console.error('[CheckoutPage] No checkout URL returned from backend', data);
         setError('Failed to create payment session. Please try again.');
         setPaymentLoading(false);
       }
     } catch (err) {
-      console.error('Payment error:', err);
+      console.error('[CheckoutPage] Payment initialization error:', err);
       setError('Payment initialization failed. Please contact support.');
       setPaymentLoading(false);
     }
