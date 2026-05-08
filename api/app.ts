@@ -66,6 +66,24 @@ function logRoutes(app: express.Application) {
     const start = Date.now();
     await prisma.$queryRaw`SELECT 1`;
     console.log(`[Startup] Prisma connection verified in ${Date.now() - start}ms`);
+    
+    // Diagnostic: Check for Event table columns
+    const columns = await prisma.$queryRaw<any[]>`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'Event'
+    `;
+    const colNames = columns.map(c => c.column_name);
+    console.log('[Startup] Event table columns:', colNames.join(', '));
+    const criticalCols = ['is_featured', 'featured_order', 'kashier_url'];
+    criticalCols.forEach(col => {
+      if (colNames.includes(col)) {
+        console.log(`[Startup] Column check: ${col} EXISTS`);
+      } else {
+        console.warn(`[Startup] Column check: ${col} MISSING!`);
+      }
+    });
+
   } catch (err: any) {
     console.error(`[Startup] Database connection failed: ${err.message}`);
   }
@@ -264,14 +282,40 @@ app.post('/api/events', authenticateToken, authorizeRole(['admin']), async (req:
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.put('/api/events/:id', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+app.put('/api/events/:id', authenticateToken, authorizeRole(['admin']), async (req: any, res: any) => {
+  const id = parseInt(req.params.id);
+  console.log(`[EVENT UPDATE] Starting update for event #${id}`);
   try {
-    const id = parseInt(req.params.id);
     const { ticket_types, ...data } = req.body;
+    
+    // Log payload for debugging (omitting large image data if too big)
+    const logData = { ...data };
+    if (logData.image_url && typeof logData.image_url === 'string' && logData.image_url.length > 500) {
+      logData.image_url = `[TRUNCATED BASE64, length: ${logData.image_url.length}]`;
+    }
+    console.log(`[EVENT UPDATE] Payload:`, JSON.stringify(logData, null, 2));
+
     const updated = await db.updateEvent(id, data);
-    if (ticket_types) await db.setTicketTypesForEvent(id, ticket_types);
-    res.json({ ...updated, ticket_types: await db.getTicketTypesByEventId(id) });
-  } catch (error: any) { res.status(500).json({ error: error.message }); }
+    console.log(`[EVENT UPDATE] Event record updated successfully`);
+
+    if (ticket_types) {
+      console.log(`[EVENT UPDATE] Syncing ${ticket_types.length} ticket types`);
+      await db.setTicketTypesForEvent(id, ticket_types);
+      console.log(`[EVENT UPDATE] Ticket types synced successfully`);
+    }
+
+    const finalEvent = { ...updated, ticket_types: await db.getTicketTypesByEventId(id) };
+    res.json(finalEvent);
+  } catch (error: any) { 
+    console.error(`[EVENT UPDATE ERROR] Failed for event #${id}:`, error);
+    if (error.code === 'P2002') {
+      res.status(400).json({ error: 'Unique constraint failed', details: error.meta });
+    } else if (error.message && error.message.includes('Unknown argument')) {
+      res.status(400).json({ error: 'Schema mismatch error. Please contact developer.', details: error.message });
+    } else {
+      res.status(500).json({ error: error.message || 'Internal server error during update' }); 
+    }
+  }
 });
 
 app.delete('/api/events/:id', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {

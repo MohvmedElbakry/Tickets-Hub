@@ -42,6 +42,8 @@ model Event {
   google_maps_url   String?
   image_url         String?
   is_published      Boolean           @default(false)
+  is_featured       Boolean           @default(false)
+  featured_order    Int               @default(0)
   government        String            @default("Other")
   require_approval  Boolean           @default(false)
   qr_enabled_manual Boolean           @default(false)

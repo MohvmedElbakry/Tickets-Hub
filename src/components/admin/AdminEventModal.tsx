@@ -61,12 +61,23 @@ export const AdminEventModal: React.FC = () => {
   useEffect(() => {
     if (isOpen) {
       if (editingEvent) {
+        const formatDateForInput = (date: any) => {
+          if (!date) return '';
+          try {
+            const d = new Date(date);
+            if (isNaN(d.getTime())) return typeof date === 'string' ? date.split('T')[0] : '';
+            return d.toISOString().split('T')[0];
+          } catch (e) {
+            return typeof date === 'string' ? date.split('T')[0] : '';
+          }
+        };
+
         setFormData({
           title: editingEvent.title || '',
           description: editingEvent.description || '',
           location: editingEvent.location || '',
           venue: editingEvent.venue || '',
-          date: editingEvent.event_date || editingEvent.date || '',
+          date: formatDateForInput(editingEvent.event_date || editingEvent.date),
           time: editingEvent.event_time || editingEvent.time || '',
           imageUrl: editingEvent.image_url || editingEvent.image || '',
           companyName: editingEvent.company_name || '',
@@ -78,7 +89,11 @@ export const AdminEventModal: React.FC = () => {
           require_approval: editingEvent.require_approval || false,
           is_featured: editingEvent.is_featured || false,
           featured_order: editingEvent.featured_order || 0,
-          ticketTypes: editingEvent.ticket_types || []
+          ticketTypes: (editingEvent.ticket_types || []).map((tt: any) => ({
+            ...tt,
+            sale_start: formatDateForInput(tt.sale_start),
+            sale_end: formatDateForInput(tt.sale_end)
+          }))
         });
       } else {
         setFormData({
