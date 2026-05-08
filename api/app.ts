@@ -895,7 +895,7 @@ app.get('/api/user/points', authenticateToken, async (req: any, res) => {
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/user/redeem', authenticateToken, async (req: any, res) => {
+app.post(['/api/user/redeem', '/api/user/points/redeem'], authenticateToken, async (req: any, res: any) => {
   try {
     const points_to_redeem = req.body.points_to_redeem || req.body.points;
     const user = await db.getUserById(req.user.id);
@@ -926,12 +926,6 @@ app.post('/api/user/redeem', authenticateToken, async (req: any, res) => {
     });
     res.json({ message: 'Redeemed', voucher });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
-});
-
-// Alias for frontend compatibility
-app.post('/api/user/points/redeem', authenticateToken, async (req: any, res) => {
-  // Directly forward to the same logic
-  return app.handle(req, res);
 });
 
 // --- TICKET RESALE API ---
