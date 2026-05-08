@@ -44,18 +44,6 @@ console.log('[App] Registering core middleware...');
     const start = Date.now();
     await prisma.$queryRaw`SELECT 1`;
     console.log(`[Startup] Prisma connection verified in ${Date.now() - start}ms`);
-    
-    // Check for schema sync confirmation
-    const colCheck = await prisma.$queryRaw<any[]>`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'Order' AND column_name = 'kashier_url'
-    `;
-    if (colCheck.length > 0) {
-      console.log('[Startup] Schema sync confirmed: Order.kashier_url exists.');
-    } else {
-      console.warn('[Startup] SCHEMA MISMATCH: Order.kashier_url is MISSING in database!');
-    }
   } catch (err: any) {
     console.error(`[Startup] Database connection failed: ${err.message}`);
   }
@@ -207,10 +195,10 @@ console.log('[App] Registering Event Routes...');
 app.get('/api/events', async (req, res) => {
   try {
     const events = await db.getEvents();
-    const result = await Promise.all(events.map(async (e) => {
-      const tt = await db.getTicketTypesByEventId(e.id);
-      const pr = await db.getPreRegistrationsByEventId(e.id);
-      return { ...e, ticket_types: tt, pre_registration_count: pr.length };
+    const result = events.map((e: any) => ({
+      ...e,
+      ticket_types: e.ticket_types || [],
+      pre_registration_count: (e.pre_registrations || []).length
     }));
     res.json(result);
   } catch (error: any) { res.status(500).json({ error: error.message }); }
@@ -219,12 +207,17 @@ app.get('/api/events', async (req, res) => {
 app.get('/api/events/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await db.cleanupExpiredReservations();
-    const event = await db.getEventById(id);
+    // Background cleanup
+    db.cleanupExpiredReservations().catch(err => console.error('[Cleanup Error]', err));
+    
+    const event: any = await db.getEventById(id);
     if (!event) return res.status(404).json({ error: 'Not found' });
-    const tt = await db.getTicketTypesByEventId(id);
-    const pr = await db.getPreRegistrationsByEventId(id);
-    res.json({ ...event, ticket_types: tt, pre_registration_count: pr.length });
+    
+    res.json({
+      ...event,
+      ticket_types: event.ticket_types || [],
+      pre_registration_count: (event.pre_registrations || []).length
+    });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
@@ -256,7 +249,10 @@ app.delete('/api/events/:id', authenticateToken, authorizeRole(['admin']), async
 console.log('[App] Registering Order Routes...');
 app.post('/api/orders', authenticateToken, async (req: any, res) => {
   try {
-    await db.cleanupExpiredReservations();
+    // Background cleanup - randomized to prevent every order from triggering it simultaneously
+    if (Math.random() < 0.2) {
+      db.cleanupExpiredReservations().catch(err => console.error('[Cleanup Error]', err));
+    }
     const { event_id, tickets, instagram_username, phone, age, voucher_code, ticket_holders } = req.body;
     if (!event_id || !tickets || !Array.isArray(tickets) || tickets.length === 0) return res.status(400).json({ error: 'Event ID and tickets are required.' });
 
@@ -367,21 +363,41 @@ app.get('/api/orders', authenticateToken, async (req: any, res) => {
   try {
     const orders = await db.getOrdersByUserId(req.user.id);
     const now = new Date();
-    const result = await Promise.all(orders.map(async (o: any) => {
-      if (o.order_status === 'approved' && o.payment_deadline && new Date(o.payment_deadline) < now) {
-        await db.updateOrder(o.id, { order_status: 'expired' });
-        o.order_status = 'expired';
-        const items = await db.getOrderTicketsByOrderId(o.id);
-        for (const it of items) {
-          const tt = (await db.getTicketTypes()).find((t: any) => t.id === it.ticket_type_id);
-          if (tt) await db.updateTicketType(tt.id, { quantity_sold: Math.max(0, tt.quantity_sold - (it.qty_original || 0)), resale_queue: (tt.resale_queue || 0) + (it.qty_resale || 0) });
+    
+    // Map to result format
+    const result = orders.map((o: any) => {
+      return { 
+        ...o, 
+        items: o.order_tickets || [], 
+        event: o.event 
+      };
+    });
+    
+    res.json(result);
+    
+    // Background check for expirations to avoid blocking the response
+    // and potentially launching parallel updates if needed
+    (async () => {
+      for (const o of orders) {
+        if (o.order_status === 'approved' && o.payment_deadline && new Date(o.payment_deadline) < now) {
+          try {
+            await db.updateOrder(o.id, { order_status: 'expired' });
+            const items = o.order_tickets || [];
+            for (const it of items) {
+              if (it.ticket_type) {
+                const tt = it.ticket_type;
+                await db.updateTicketType(tt.id, { 
+                  quantity_sold: Math.max(0, tt.quantity_sold - (it.qty_original || 0)), 
+                  resale_queue: (tt.resale_queue || 0) + (it.qty_resale || 0) 
+                });
+              }
+            }
+          } catch (e: any) {
+            console.error(`[Background Expiration] Failed for order #${o.id}:`, e.message);
+          }
         }
       }
-      const items = await db.getOrderTicketsByOrderId(o.id);
-      const event = await db.getEventById(o.event_id);
-      return { ...o, items, event };
-    }));
-    res.json(result);
+    })();
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
@@ -389,22 +405,40 @@ app.get('/api/admin/orders', authenticateToken, authorizeRole(['admin']), async 
   try {
     const orders = await db.getOrders();
     const now = new Date();
-    const result = await Promise.all(orders.map(async (o: any) => {
-      if (o.order_status === 'approved' && o.payment_deadline && new Date(o.payment_deadline) < now) {
-        await db.updateOrder(o.id, { order_status: 'expired' });
-        o.order_status = 'expired';
-        const items = await db.getOrderTicketsByOrderId(o.id);
-        for (const it of items) {
-          const tt = (await db.getTicketTypes()).find((t: any) => t.id === it.ticket_type_id);
-          if (tt) await db.updateTicketType(tt.id, { quantity_sold: Math.max(0, tt.quantity_sold - (it.qty_original || 0)), resale_queue: (tt.resale_queue || 0) + (it.qty_resale || 0) });
+    
+    const result = orders.map((o: any) => {
+      return { 
+        ...o, 
+        items: o.order_tickets || [], 
+        event: o.event,
+        user: o.user ? { name: o.user.name, email: o.user.email, phone: o.user.phone } : null
+      };
+    });
+    
+    res.json(result);
+
+    // Background expiration process
+    (async () => {
+      for (const o of orders) {
+        if (o.order_status === 'approved' && o.payment_deadline && new Date(o.payment_deadline) < now) {
+          try {
+            await db.updateOrder(o.id, { order_status: 'expired' });
+            const items = o.order_tickets || [];
+            for (const it of items) {
+              if (it.ticket_type) {
+                const tt = it.ticket_type;
+                await db.updateTicketType(tt.id, { 
+                  quantity_sold: Math.max(0, tt.quantity_sold - (it.qty_original || 0)), 
+                  resale_queue: (tt.resale_queue || 0) + (it.qty_resale || 0) 
+                });
+              }
+            }
+          } catch (e: any) {
+             console.error(`[Admin Background Expiration] Failed for order #${o.id}:`, e.message);
+          }
         }
       }
-      const items = await db.getOrderTicketsByOrderId(o.id);
-      const event = await db.getEventById(o.event_id);
-      const user = await db.getUserById(o.user_id);
-      return { ...o, items, event, user: user ? { name: user.name, email: user.email, phone: user.phone } : null };
-    }));
-    res.json(result);
+    })();
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 

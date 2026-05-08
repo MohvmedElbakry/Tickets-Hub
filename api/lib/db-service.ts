@@ -48,7 +48,7 @@ class PrismaDB {
 
   async getUsers() {
     try {
-      const result = await prisma.user.findMany();
+      const result = await prisma.user.findMany({ include: { points_history: true } });
       console.log(`[DB SUCCESS] Fetched ${result.length} users`);
       return result;
     } catch (err) {
@@ -59,7 +59,10 @@ class PrismaDB {
 
   async getUserById(id: number) {
     try {
-      const result = await prisma.user.findUnique({ where: { id } });
+      const result = await prisma.user.findUnique({ 
+        where: { id },
+        include: { points_history: true }
+      });
       console.log(`[DB SUCCESS] User fetched by ID ${id}:`, !!result);
       return result;
     } catch (err) {
@@ -115,8 +118,13 @@ class PrismaDB {
 
   async getEvents() {
     try {
-      const result = await prisma.event.findMany();
-      console.log(`[DB SUCCESS] Fetched ${result.length} events`);
+      const result = await prisma.event.findMany({
+        include: { 
+          ticket_types: true,
+          pre_registrations: true
+        }
+      });
+      console.log(`[DB SUCCESS] Fetched ${result.length} events enriched`);
       return result;
     } catch (err) {
       console.error('[DB ERROR] getEvents:', err);
@@ -126,7 +134,13 @@ class PrismaDB {
 
   async getEventById(id: number) {
     try {
-      const result = await prisma.event.findUnique({ where: { id } });
+      const result = await prisma.event.findUnique({ 
+        where: { id },
+        include: {
+          ticket_types: true,
+          pre_registrations: true
+        }
+      });
       console.log(`[DB SUCCESS] Event fetched by ID ${id}:`, !!result);
       return result;
     } catch (err) {
@@ -567,7 +581,9 @@ class PrismaDB {
 
   async getOrders() {
     try {
-      const result = await prisma.order.findMany();
+      const result = await prisma.order.findMany({
+        include: { user: true, event: true, order_tickets: { include: { ticket_type: true } } }
+      });
       console.log(`[DB SUCCESS] Fetched ${result.length} orders`);
       return result;
     } catch (err) {
@@ -578,7 +594,10 @@ class PrismaDB {
 
   async getOrdersByUserId(userId: number) {
     try {
-      const result = await prisma.order.findMany({ where: { user_id: userId } });
+      const result = await prisma.order.findMany({ 
+        where: { user_id: userId },
+        include: { user: true, event: true, order_tickets: { include: { ticket_type: true } } }
+      });
       console.log(`[DB SUCCESS] Fetched ${result.length} orders for user ${userId}`);
       return result;
     } catch (err) {
