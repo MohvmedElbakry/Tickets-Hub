@@ -35,6 +35,32 @@ app.set('trust proxy', 1);
 // --- Initialization Logging ---
 console.log('[App] Registering core middleware...');
 
+// Diagnostic: Log connection target at startup
+(async () => {
+  const dbUrl = process.env.DATABASE_URL || '';
+  const maskedUrl = dbUrl.replace(/:([^:@]+)@/, ':****@');
+  console.log(`[Startup] Target DATABASE_URL: ${maskedUrl}`);
+  try {
+    const start = Date.now();
+    await prisma.$queryRaw`SELECT 1`;
+    console.log(`[Startup] Prisma connection verified in ${Date.now() - start}ms`);
+    
+    // Check for schema sync confirmation
+    const colCheck = await prisma.$queryRaw<any[]>`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'Order' AND column_name = 'kashier_url'
+    `;
+    if (colCheck.length > 0) {
+      console.log('[Startup] Schema sync confirmed: Order.kashier_url exists.');
+    } else {
+      console.warn('[Startup] SCHEMA MISMATCH: Order.kashier_url is MISSING in database!');
+    }
+  } catch (err: any) {
+    console.error(`[Startup] Database connection failed: ${err.message}`);
+  }
+})();
+
 app.get('/api/health', async (req, res) => {
   try {
     const dbUrl = process.env.DATABASE_URL || '';
@@ -423,25 +449,12 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
       const order = await db.getOrderById(parseInt(order_id));
 
       if (!order) {
-        console.warn(`[Payment] Order ${order_id} not found`);
         return res.status(404).json({ error: 'Order not found' });
       }
 
       // Security: Ensure the order belongs to the authenticated user
       if (order.user_id !== req.user.id) {
-        console.warn(`[Payment] Unauthorized access attempt for order ${order_id} by user ${req.user.id}`);
         return res.status(403).json({ error: 'Unauthorized access to order' });
-      }
-
-      // CHECK FOR EXISTING SESSION
-      if (order.kashier_url && !order.is_paid) {
-        console.log(`[Payment] REUSING existing Kashier session for order: ${order_id}`);
-        console.log(`[Payment] Existing URL: ${order.kashier_url}`);
-        return res.json({ 
-          payment_url: order.kashier_url, 
-          checkoutUrl: order.kashier_url,
-          reused: true 
-        });
       }
 
       // Business Logic: Only approved orders (or pending if no approval required) can proceed to payment
@@ -528,18 +541,12 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
         
         // FIX 1: Store Kashier's UUID orderID in our DB for reliable webhook matching
         const kashierOrderId = data.orderId || (data.session && data.session.orderId);
-        if (kashierOrderId || data.sessionUrl) {
-          console.log(`[Payment] Persisting session data for #${order_id}`);
-          await db.updateOrder(order_id, { 
-            kashier_order_id: kashierOrderId || undefined,
-            kashier_url: data.sessionUrl 
-          });
+        if (kashierOrderId) {
+          console.log(`[Payment] Mapping internal #${order_id} to Kashier UUID: ${kashierOrderId}`);
+          await db.updateOrder(order_id, { kashier_order_id: kashierOrderId });
         }
 
-        res.json({ 
-          payment_url: data.sessionUrl,
-          checkoutUrl: data.sessionUrl
-        });
+        res.json({ payment_url: data.sessionUrl });
       } else {
         console.error('[Kashier ERROR]:', data);
         res.status(500).json({ 
