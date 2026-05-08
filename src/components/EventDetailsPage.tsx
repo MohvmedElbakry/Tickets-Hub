@@ -130,8 +130,8 @@ export const EventDetailsPage = () => {
     .map(([id, qty]) => ({ ticket_type_id: id, quantity: qty as number }));
 
   const totalPrice = selectedTickets.reduce((sum, item) => {
-    const tt = selectedEvent.ticket_types?.find(t => t.id === item.ticket_type_id);
-    return sum + (tt?.price || 0) * (item.quantity as number);
+    const tt = selectedEvent.ticket_types?.find(t => t.id?.toString() === item.ticket_type_id);
+    return sum + (Number(tt?.price) || 0) * (item.quantity as number);
   }, 0);
 
   return (
