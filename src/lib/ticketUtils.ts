@@ -29,7 +29,7 @@ export const isQRCodeVisible = (eventDate: string, eventTime: string, qrEnabledM
  * specifically for export. This guarantees that html2canvas NEVER sees
  * Tailwind v4 color tokens (oklab/oklch) which cause parser crashes.
  */
-export const handleDownloadPDF = async (order: Order, qrData?: string) => {
+export const handleDownloadPDF = async (order: Order, qrData?: string, qrVisible?: boolean, qrReason?: string) => {
   if (!order) return;
 
   // 1. Create a NEW detached export container
@@ -49,17 +49,14 @@ export const handleDownloadPDF = async (order: Order, qrData?: string) => {
   const root = createRoot(exportContainer);
 
   try {
-    // 2. Determine QR visibility for the fresh render
-    const event = order.event;
-    const qrVisible = event ? isQRCodeVisible(event.event_date || event.date, event.event_time || event.time) : false;
-
-    // 3. Render the isolated ticket subtree
+    // 2. Render the isolated ticket subtree
     // We pass isPdf={true} to force the component into its self-contained rendering mode
     root.render(
       React.createElement(TicketCard, {
         order,
         qrData,
         qrVisible,
+        qrReason,
         isPdf: true
       })
     );

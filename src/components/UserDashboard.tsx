@@ -66,7 +66,12 @@ export const UserDashboard = () => {
     if (exportingOrder && !loadingExportingQr) {
       // Small delay to ensure render
       const timer = setTimeout(() => {
-        handleDownloadPDF(exportingOrder, exportingQrStatus?.qr_data).then(() => setExportingOrder(null));
+        handleDownloadPDF(
+          exportingOrder, 
+          exportingQrStatus?.qr_data,
+          exportingQrStatus?.visible,
+          exportingQrStatus?.reason
+        ).then(() => setExportingOrder(null));
       }, 500);
       return () => clearTimeout(timer);
     }

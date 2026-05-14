@@ -99,7 +99,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
     textHeading: {
       color: '#F3F7F6',
       fontFamily: 'system-ui, -apple-system, sans-serif',
-      fontSize: '32px',
+      fontSize: '28px',
       fontWeight: '900',
       letterSpacing: '-0.02em',
       lineHeight: '1.2',
@@ -112,7 +112,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
     textLabel: {
       color: 'rgba(167, 181, 178, 0.5)',
       fontFamily: 'ui-monospace, monospace',
-      fontSize: '9px',
+      fontSize: '8px',
       fontWeight: '900',
       letterSpacing: '0.15em',
       textTransform: 'uppercase' as const,
@@ -124,7 +124,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
       flexDirection: 'row' as const,
       alignItems: 'center',
       gap: '8px',
-      fontSize: '12px',
+      fontSize: '11px',
       fontWeight: '700',
       color: '#A7B5B2'
     },
@@ -144,9 +144,9 @@ export const TicketCard: React.FC<TicketCardProps> = ({
     },
     attendeeGrid: {
       display: 'flex',
-      flexDirection: 'row' as const,
-      flexWrap: 'wrap' as const,
-      gap: '12px'
+      flexDirection: 'column' as const,
+      alignItems: 'stretch' as const,
+      gap: '10px'
     },
     itemContainer: {
       backgroundColor: 'rgba(22, 31, 29, 0.4)',
@@ -157,7 +157,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
       alignItems: 'center',
       gap: '12px',
       padding: '12px',
-      width: 'calc(50% - 6px)'
+      width: '100%'
     },
     itemIcon: {
       backgroundColor: 'rgba(0, 201, 177, 0.12)',
@@ -199,7 +199,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
   return (
     <div 
       id={isPdf ? undefined : `ticket-card-${order.id}`}
-      className={isPdf ? '' : 'border rounded-card-xl overflow-hidden relative bg-bg-page border-bg-border w-full shadow-ticket hover:shadow-card-glow transition-all duration-slow'}
+      className={isPdf ? '' : 'border rounded-card-xl overflow-hidden relative bg-bg-card border-bg-border w-full shadow-ticket hover:shadow-card-glow transition-all duration-slow'}
       style={isPdf ? styles?.card : undefined}
     >
       {/* Cinematic Top Border */}
