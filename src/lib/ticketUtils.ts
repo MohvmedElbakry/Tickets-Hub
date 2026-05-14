@@ -23,23 +23,30 @@ export const handleDownloadPDF = async (order: Order) => {
   const element = document.getElementById(`ticket-card-${order.id}`);
   if (!element) return;
 
+  const style = document.createElement('style');
+  style.innerHTML = `
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+    }
+  `;
+  
   try {
-    // Create a style element to override modern color functions that html2canvas doesn't support
-    const style = document.createElement('style');
-    style.innerHTML = `
-      * {
-        color-interpolation-filters: auto !important;
-        color-rendering: auto !important;
-      }
-    `;
     document.head.appendChild(style);
 
     const canvas = await html2canvas(element, {
-      scale: 2,
+      scale: 3,
       useCORS: true,
       backgroundColor: '#0f0f13',
+      logging: false,
+      allowTaint: true,
+      scrollX: 0,
+      scrollY: -window.scrollY,
+      windowWidth: element.scrollWidth,
+      windowHeight: element.scrollHeight,
       onclone: (clonedDoc) => {
-        // Aggressively strip modern color functions from the cloned document's stylesheets
+        // Sanitize modern CSS to avoid html2canvas failures
         const styleSheets = Array.from(clonedDoc.styleSheets);
         styleSheets.forEach((sheet) => {
           try {
@@ -51,7 +58,7 @@ export const handleDownloadPDF = async (order: Order) => {
               }
             }
           } catch (e) {
-            console.warn('Could not access stylesheet for stripping modern colors', e);
+            // Non-destructive skip for restricted stylesheets
           }
         });
 
@@ -66,20 +73,54 @@ export const handleDownloadPDF = async (order: Order) => {
             }
           }
         }
+
+        // Force PDF rendering mode properties on the cloned element
+        const clonedElement = clonedDoc.getElementById(`ticket-card-${order.id}`);
+        if (clonedElement) {
+          clonedElement.style.width = '500px';
+          clonedElement.style.transform = 'none';
+          clonedElement.style.transition = 'none';
+          clonedElement.style.animation = 'none';
+          clonedElement.style.boxShadow = 'none';
+          
+          // Inject a style to handle nested elements in the clone
+          const cloneStyle = clonedDoc.createElement('style');
+          cloneStyle.innerHTML = `
+            #ticket-card-${order.id} *, 
+            #ticket-card-${order.id} {
+              transition: none !important;
+              animation: none !important;
+              transform: none !important;
+              box-shadow: none !important;
+              text-shadow: none !important;
+            }
+            .custom-scrollbar {
+              overflow: visible !important;
+              max-height: none !important;
+            }
+          `;
+          clonedDoc.head.appendChild(cloneStyle);
+        }
       }
     });
+
+    const imgWidth = canvas.width / 3;
+    const imgHeight = canvas.height / 3;
     
-    document.head.removeChild(style);
-    const imgData = canvas.toDataURL('image/png');
     const pdf = new jsPDF({
-      orientation: 'portrait',
+      orientation: imgWidth > imgHeight ? 'landscape' : 'portrait',
       unit: 'px',
-      format: [canvas.width, canvas.height]
+      format: [imgWidth, imgHeight]
     });
-    pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+
+    pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, imgWidth, imgHeight, undefined, 'FAST');
     pdf.save(`TicketsHub-Ticket-${order.id}.pdf`);
   } catch (error) {
     console.error('PDF generation failed', error);
     alert('Failed to generate PDF. Please try again.');
+  } finally {
+    if (document.head.contains(style)) {
+      document.head.removeChild(style);
+    }
   }
 };

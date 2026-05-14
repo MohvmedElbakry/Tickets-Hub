@@ -16,6 +16,7 @@ import { Order } from '../types';
 import { orderService } from '../services/orderService';
 import { useUI } from '../context/UIContext';
 import { handleDownloadPDF } from '../lib/ticketUtils';
+import { TicketCard } from './tickets';
 import { useQRStatus } from '../hooks/useQRStatus';
 import { useOrder } from '../hooks/useOrder';
 import { updateOrderCache, getOrderCached } from '../lib/orderCache';
@@ -138,70 +139,32 @@ export const ConfirmationPage = () => {
         )}
       </div>
 
-      <div id={`ticket-card-${order.id}`} className="bg-bg-card p-8 rounded-card-2xl border border-bg-border mb-4 relative overflow-hidden shadow-ticket transition-all duration-slow hover:shadow-card-glow group">
-        <div className={`absolute top-0 left-0 w-full h-1.5 ${isPaid ? 'bg-status-success shadow-status-success/20 shadow-lg' : 'bg-status-warning animate-pulse'}`}></div>
+      <div className="layout-stack gap-4">
+        <TicketCard 
+          order={order}
+          qrData={qrStatus?.qr_data}
+          qrVisible={qrStatus?.visible}
+          qrReason={qrStatus?.reason}
+          loadingQr={loadingQr}
+        />
         
-        <div className="flex flex-col md:flex-row gap-8 items-center text-left">
-          <div className="w-48 h-48 bg-white p-4 rounded-card relative flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform duration-slow">
-            {loadingQr ? (
-              <RefreshCw className="animate-spin text-bg-page" size={32} />
-            ) : qrStatus?.visible ? (
-              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${qrStatus.qr_data}`} alt="QR Code" className="w-full h-full" />
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-bg-page text-center p-2">
-                <Lock size={32} className="mb-2 opacity-60" />
-                <p className="text-[10px] font-black uppercase tracking-widest leading-tight">QR Code Locked</p>
-                <p className="text-[8px] font-bold mt-1 max-w-[120px]">{qrStatus?.reason || 'Waiting for entry window'}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1 content-stack gap-4">
-            <div className="flex flex-col gap-2">
-              <div className="flex justify-between items-start">
-                <span className={`px-2.5 py-1 rounded-tag text-[10px] font-black uppercase tracking-wider ${isPaid ? 'bg-status-success/10 text-status-success border border-status-success/20' : 'bg-status-warning/10 text-status-warning border border-status-warning/20'}`}>
-                  {isPaid ? 'CONFIRMED' : 'PENDING'}
-                </span>
-                {isPaid && <p className="text-label text-text-muted font-bold">DIGITAL PASS</p>}
-              </div>
-              <h3 className="text-h3 leading-tight">{order.event?.title}</h3>
-            </div>
-
-            <div className="content-stack gap-2 text-text-muted text-body-sm font-medium">
-              <p className="flex items-center gap-2">
-                <Calendar size={16} className="text-teal" /> 
-                {order.event?.event_date || (order.event?.date ? new Date(order.event.date).toLocaleDateString() : 'Date TBD')} at {formatEventTime(order.event?.event_date || order.event?.date, order.event?.event_time || order.event?.time)}
-              </p>
-              <p className="flex items-center gap-2"><MapPin size={16} className="text-teal" /> {order.event?.location || 'Location TBD'}</p>
-              
-              <div className="mt-4 pt-4 border-t border-bg-border flex flex-col gap-2">
-                {order.items?.map((item: any, index: number) => (
-                  <p key={item.id || index} className="flex items-center gap-2 text-body-xs font-black uppercase tracking-widest text-text-primary">
-                    <Ticket size={14} className="text-teal" /> {item.quantity}x {item.name || (item.ticket_type ? item.ticket_type.name : 'Ticket')}
-                  </p>
-                ))}
+        {isPaid && (
+          <div className="flex flex-wrap justify-center gap-3">
+            <Button 
+              variant="accent" 
+              className="px-8 py-4 text-button font-black uppercase tracking-widest flex items-center gap-3 shadow-card-glow"
+              onClick={() => handleDownloadPDF(order)}
+            >
+              <Download size={18} /> Download PDF Ticket
+            </Button>
+            <div className="relative group/tooltip">
+              <Button variant="outline" className="px-8 py-4 text-button font-black uppercase tracking-widest opacity-50 cursor-not-allowed">Add to Wallet</Button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-4 py-2 bg-bg-elevated text-text-primary text-body-xs rounded-tag opacity-0 group-hover/tooltip:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-bg-border z-10 font-bold tracking-widest shadow-2xl">
+                NATIVE WALLET COMING SOON
               </div>
             </div>
-
-            {isPaid && (
-              <div className="mt-4 flex flex-wrap gap-3">
-                <Button 
-                  variant="accent" 
-                  className="px-5 py-2 text-label font-black uppercase tracking-widest flex items-center gap-2"
-                  onClick={() => handleDownloadPDF(order)}
-                >
-                  <Download size={14} /> Download PDF
-                </Button>
-                <div className="relative group/tooltip">
-                  <Button variant="outline" className="px-5 py-2 text-label font-black uppercase tracking-widest opacity-50 cursor-not-allowed">Add to Wallet</Button>
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1 bg-bg-elevated text-text-primary text-[10px] rounded-tag opacity-0 group-hover/tooltip:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-bg-border z-10 font-bold tracking-widest">
-                    COMING SOON
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
-        </div>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row justify-center gap-4 border-t border-bg-border pt-12">

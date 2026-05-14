@@ -29,6 +29,7 @@ import { eventService } from '../services/eventService';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { handleDownloadPDF } from '../lib/ticketUtils';
+import { TicketCard } from './tickets';
 import { useQRStatus } from '../hooks/useQRStatus';
 import { useOrder } from '../hooks/useOrder';
 import { formatEventTime } from '../lib/utils';
@@ -673,118 +674,14 @@ export const UserDashboard = () => {
                   </div>
                 </div>
 
-                <div id={`ticket-card-${(freshOrder || viewingTicket).id}`} className="p-8 content-stack gap-8">
-                  {/* Event Details Grid */}
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="content-stack gap-1.5">
-                      <p className="text-label text-text-muted font-black uppercase tracking-widest">Date & Time</p>
-                      <div className="content-stack gap-0.5">
-                        <p className="text-body-sm font-bold text-text-primary flex items-center gap-2">
-                          <Calendar size={14} className="text-teal" />
-                          {(freshOrder || viewingTicket).event?.event_date}
-                        </p>
-                        <p className="text-body-xs text-text-muted pl-5">
-                          {formatEventTime((freshOrder || viewingTicket).event?.event_date || (freshOrder || viewingTicket).event?.date, (freshOrder || viewingTicket).event?.event_time || (freshOrder || viewingTicket).event?.time)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="content-stack gap-1.5">
-                      <p className="text-label text-text-muted font-black uppercase tracking-widest">Location</p>
-                      <div className="content-stack gap-0.5">
-                        <p className="text-body-sm font-bold text-text-primary flex items-center gap-2">
-                          <MapPin size={14} className="text-teal" />
-                          {(freshOrder || viewingTicket).event?.location}
-                        </p>
-                        <p className="text-body-xs text-text-muted pl-5 line-clamp-1">{(freshOrder || viewingTicket).event?.venue}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Ticket Holders Section */}
-                  <div className="content-stack gap-4">
-                    <p className="text-label text-text-muted font-black uppercase tracking-widest">Ticket Holders</p>
-                    <div className="content-stack gap-2 max-h-36 overflow-y-auto pr-2 custom-scrollbar">
-                      {loadingFullOrder && !(freshOrder || viewingTicket).items ? (
-                        <div className="flex justify-center py-6">
-                          <RefreshCw className="animate-spin text-teal" size={28} />
-                        </div>
-                      ) : (freshOrder || viewingTicket).items?.map((item, idx) => (
-                        <div key={item.id || idx} className="flex justify-between items-center p-4 bg-bg-page rounded-card border border-bg-border hover:border-teal/20 transition-colors">
-                          <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-teal/10 rounded-card flex items-center justify-center text-teal text-label font-black">
-                              {idx + 1}
-                            </div>
-                            <div className="content-stack gap-0">
-                              <p className="text-body-sm font-bold text-text-primary">{item.name || 'Ticket Holder'}</p>
-                              <p className="text-body-xs text-text-muted font-mono">#{item.id}</p>
-                            </div>
-                          </div>
-                          <span className={`px-2.5 py-0.5 rounded-tag text-label font-bold uppercase border ${
-                            item.is_used ? 'bg-status-error/10 text-status-error border-status-error/20' : 'bg-status-success/10 text-status-success border-status-success/20'
-                          }`}>
-                            {item.is_used ? 'Used' : 'Valid'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* QR Code Section */}
-                  <div className="flex flex-col items-center justify-center py-8 border-y border-dashed border-bg-border">
-                    {(() => {
-                      if (!(freshOrder || viewingTicket).is_paid) {
-                        return (
-                          <div className="text-center p-8 bg-status-warning/5 rounded-card-xl border border-status-warning/10 w-full content-stack gap-3">
-                            <Clock size={32} className="mx-auto text-status-warning" />
-                            <div className="content-stack gap-1">
-                              <p className="text-body-base font-bold text-status-warning">
-                                {(freshOrder || viewingTicket).displayStatus === 'approved' ? 'Payment Required' : 'Pending Approval'}
-                              </p>
-                              <p className="text-body-xs text-text-muted max-w-[240px] mx-auto">
-                                {(freshOrder || viewingTicket).displayStatus === 'approved' ? 'Complete payment to activate your QR entry code.' : 'Your reservation is being reviewed. Active for 1 hour.'}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      if (loadingViewingQr) {
-                        return (
-                          <div className="p-16">
-                            <RefreshCw className="animate-spin text-teal" size={40} />
-                          </div>
-                        );
-                      }
-
-                      if (viewingTicketQrStatus?.visible) {
-                        return (
-                          <div className="layout-stack items-center gap-6">
-                            <div className="bg-text-primary p-6 rounded-card-2xl shadow-card-glow transform hover:scale-105 transition-transform duration-slow">
-                              <img 
-                                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${viewingTicketQrStatus.qr_data}`} 
-                                alt="QR Code" 
-                                className="w-44 h-44" 
-                              />
-                            </div>
-                            <div className="text-center content-stack gap-1">
-                              <p className="text-label text-text-muted font-black uppercase tracking-widest">Scan for entry at gate</p>
-                              <p className="text-body-xs font-bold text-teal font-mono">Order: #{(freshOrder || viewingTicket).id}</p>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div className="text-center p-8 bg-teal/5 rounded-card-xl border border-teal/10 w-full content-stack gap-3">
-                          <Clock size={32} className="mx-auto text-teal" />
-                          <div className="content-stack gap-1">
-                            <p className="text-body-base font-bold text-teal">QR Code Locked</p>
-                            <p className="text-body-xs text-text-muted max-w-[240px] mx-auto">{viewingTicketQrStatus?.reason || 'QR codes are activated 1 hour before the event starts.'}</p>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
+                <div className="p-8 content-stack gap-8">
+                  <TicketCard 
+                    order={freshOrder || viewingTicket}
+                    qrData={viewingTicketQrStatus?.qr_data}
+                    qrVisible={viewingTicketQrStatus?.visible}
+                    qrReason={viewingTicketQrStatus?.reason}
+                    loadingQr={loadingViewingQr}
+                  />
 
                   {/* Action Buttons */}
                   <div className="flex gap-4">
