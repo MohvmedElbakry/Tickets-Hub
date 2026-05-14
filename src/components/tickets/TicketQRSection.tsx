@@ -97,8 +97,8 @@ export const TicketQRSection: React.FC<TicketQRSectionProps> = ({
       >
         {!isPdf && <div className="absolute inset-0 bg-gradient-to-br from-teal/5 to-transparent"></div>}
         <Lock size={32} style={isPdf ? { color: '#00C9B1', opacity: 0.4, marginBottom: '8px' } : undefined} />
-        <p style={isPdf ? { ...styleProps?.textPrimary, fontSize: '9px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.12em', lineHeight: '1.1', marginBottom: '3px' } : undefined}>Pass Locked</p>
-        <p style={isPdf ? { ...styleProps?.textMuted, fontSize: '7.5px', fontWeight: 700, lineHeight: '1.2', padding: '0 8px' } : undefined}>
+        <p style={isPdf ? { ...styleProps?.textPrimary, fontSize: '8px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.12em', lineHeight: '1.1', marginBottom: '3px' } : undefined}>Pass Locked</p>
+        <p style={isPdf ? { ...styleProps?.textMuted, fontSize: '7px', fontWeight: 700, lineHeight: '1.2', padding: '0 8px' } : undefined}>
           {qrReason || 'Activated before entry window'}
         </p>
       </div>

@@ -30,6 +30,7 @@ export const TicketStatusBadge: React.FC<TicketStatusBadgeProps> = ({ status = '
         letterSpacing: '0.15em',
         padding: '0 10px',
         height: '22px',
+        minHeight: '22px',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
