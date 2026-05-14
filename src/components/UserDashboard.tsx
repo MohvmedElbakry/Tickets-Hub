@@ -48,9 +48,29 @@ export const UserDashboard = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'tickets' | 'rewards' | 'profile' | 'payments'>('dashboard');
   const [ticketFilter, setTicketFilter] = useState<'all' | 'pending' | 'paid' | 'invited'>('all');
   const [viewingTicket, setViewingTicket] = useState<Order | null>(null);
+  const [exportingOrder, setExportingOrder] = useState<Order | null>(null);
   
   // Phase 3.2.4: Use single source of truth for the viewing ticket
   const { order: freshOrder, loading: loadingFullOrder } = useOrder(viewingTicket?.id);
+
+  // QR status for export
+  const { 
+    qrStatus: exportingQrStatus, 
+    loading: loadingExportingQr 
+  } = useQRStatus(
+    exportingOrder?.id?.toString(), 
+    exportingOrder?.is_paid === true
+  );
+
+  useEffect(() => {
+    if (exportingOrder && !loadingExportingQr) {
+      // Small delay to ensure render
+      const timer = setTimeout(() => {
+        handleDownloadPDF(exportingOrder).then(() => setExportingOrder(null));
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [exportingOrder, loadingExportingQr]);
 
   const { 
     qrStatus: viewingTicketQrStatus, 
@@ -688,9 +708,9 @@ export const UserDashboard = () => {
                     <Button 
                       variant="outline" 
                       className="flex-1 py-6 rounded-card text-label gap-2 font-bold" 
-                      onClick={() => handleDownloadPDF(freshOrder || viewingTicket)}
+                      onClick={() => setExportingOrder(freshOrder || viewingTicket)}
                     >
-                      <Download size={16} /> PDF Ticket
+                      <Download size={16} /> {exportingOrder ? 'Generating...' : 'PDF Ticket'}
                     </Button>
                     
                     {(freshOrder || viewingTicket).is_paid && (
@@ -729,6 +749,20 @@ export const UserDashboard = () => {
             </div>
           )}
         </AnimatePresence>
+
+        {/* Isolated Export Render Tree - rendered off-screen strictly for html2canvas capture */}
+        {exportingOrder && (
+          <div className="pdf-export-container">
+             <TicketCard 
+               order={exportingOrder}
+               qrData={exportingQrStatus?.qr_data}
+               qrVisible={exportingQrStatus?.visible}
+               qrReason={exportingQrStatus?.reason}
+               loadingQr={loadingExportingQr}
+               isPdf={true}
+             />
+          </div>
+        )}
 
         {/* Resale Modal */}
         <AnimatePresence>
