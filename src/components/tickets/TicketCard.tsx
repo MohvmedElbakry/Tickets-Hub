@@ -198,7 +198,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
 
   return (
     <div 
-      id={`ticket-card-${order.id}`}
+      id={isPdf ? undefined : `ticket-card-${order.id}`}
       className={isPdf ? '' : 'border rounded-card-xl overflow-hidden relative bg-bg-page border-bg-border w-full shadow-ticket hover:shadow-card-glow transition-all duration-slow'}
       style={isPdf ? styles?.card : undefined}
     >
@@ -230,8 +230,8 @@ export const TicketCard: React.FC<TicketCardProps> = ({
             isPdf={isPdf}
           />
           <div className={isPdf ? '' : 'text-center'} style={isPdf ? { textAlign: 'center' } : undefined}>
-            <p className={isPdf ? '' : 'opacity-60 text-[10px] font-black uppercase tracking-widest text-text-muted'} style={styles?.textLabel}>Order Reference</p>
-            <p className={isPdf ? '' : 'font-mono font-bold text-body-xs text-teal'} style={isPdf ? { ...styles?.teal, fontWeight: 700, margin: '4px 0 0 0' } : undefined}>#{order.id}</p>
+            <p className={isPdf ? '' : 'opacity-60 text-[10px] font-black uppercase tracking-widest text-text-muted'} style={isPdf ? styles?.textLabel : undefined}>Order Reference</p>
+            <p className={isPdf ? '' : 'font-mono font-bold text-body-xs text-teal'} style={isPdf ? { ...styles?.teal, fontWeight: '700', margin: '4px 0 0 0' } : undefined}>#{order.id}</p>
           </div>
         </div>
 
@@ -256,13 +256,13 @@ export const TicketCard: React.FC<TicketCardProps> = ({
               style={isPdf ? { display: 'flex', flexDirection: 'column', gap: '4px' } : undefined}
             >
               <TicketStatusBadge status={isPaid ? 'CONFIRMED' : orderStatus} isPdf={isPdf} />
-              <p className={isPdf ? '' : 'mt-1 text-[10px] font-black uppercase tracking-widest text-text-muted'} style={styles?.textLabel}>Access Credential</p>
+              <p className={isPdf ? '' : 'mt-1 text-[10px] font-black uppercase tracking-widest text-text-muted'} style={isPdf ? styles?.textLabel : undefined}>Access Credential</p>
             </div>
             <div 
               className={isPdf ? '' : 'text-right flex flex-col content-stack gap-1'}
               style={isPdf ? { textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' } : undefined}
             >
-               <p className={isPdf ? '' : 'text-[10px] font-black uppercase tracking-widest text-text-muted'} style={styles?.textLabel}>Event ID</p>
+               <p className={isPdf ? '' : 'text-[10px] font-black uppercase tracking-widest text-text-muted'} style={isPdf ? styles?.textLabel : undefined}>Event ID</p>
                <p className={isPdf ? '' : 'font-mono font-bold text-body-xs text-text-primary'} style={isPdf ? { ...styles?.textPrimary, fontWeight: '700' } : undefined}>E-{event?.id || '---'}</p>
             </div>
           </div>
@@ -274,7 +274,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
           >
             <h2 
               className={isPdf ? '' : 'leading-tight font-black tracking-tight line-clamp-2 text-h3 text-text-primary group-hover:text-teal transition-colors duration-base'}
-              style={styles?.textHeading}
+              style={isPdf ? styles?.textHeading : undefined}
             >
               {event?.title || 'Unknown Event'}
             </h2>
@@ -284,14 +284,14 @@ export const TicketCard: React.FC<TicketCardProps> = ({
                 style={isPdf ? styles?.metaItem : undefined}
               >
                 <Calendar size={12} style={isPdf ? styles?.teal : undefined} />
-                <span>{event?.event_date || 'Date TBD'}</span>
+                <span style={isPdf ? styles?.textMuted : undefined}>{event?.event_date || 'Date TBD'}</span>
               </div>
               <div 
                 className={isPdf ? '' : 'flex items-center gap-1.5 font-bold text-body-xs text-text-muted'}
                 style={isPdf ? styles?.metaItem : undefined}
               >
                 <Clock size={12} style={isPdf ? styles?.teal : undefined} />
-                <span>{formatEventTime(event?.event_date || event?.date, event?.event_time || event?.time)}</span>
+                <span style={isPdf ? styles?.textMuted : undefined}>{formatEventTime(event?.event_date || event?.date, event?.event_time || event?.time)}</span>
               </div>
             </div>
             <div 
@@ -299,7 +299,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
               style={isPdf ? { ...styles?.metaItem, marginTop: '4px' } : undefined}
             >
               <MapPin size={12} style={isPdf ? styles?.teal : undefined} />
-              <span>{event?.location || 'Location TBD'}</span>
+              <span style={isPdf ? styles?.textMuted : undefined}>{event?.location || 'Location TBD'}</span>
             </div>
           </div>
 
@@ -308,7 +308,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
             className={isPdf ? '' : 'flex flex-col pt-4 border-t content-stack gap-3 border-bg-border/40'} 
             style={isPdf ? styles?.attendeeSection : undefined}
           >
-            <p className={isPdf ? '' : 'text-[10px] font-black uppercase tracking-widest text-text-muted'} style={styles?.textLabel}>Entry Details</p>
+            <p className={isPdf ? '' : 'text-[10px] font-black uppercase tracking-widest text-text-muted'} style={isPdf ? styles?.textLabel : undefined}>Entry Details</p>
             <div 
               className={isPdf ? '' : 'grid grid-cols-1 sm:grid-cols-2 gap-3 pr-2 custom-scrollbar max-h-32 overflow-y-auto'}
               style={isPdf ? styles?.attendeeGrid : undefined}
@@ -353,7 +353,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
           className={isPdf ? '' : 'flex flex-col content-stack gap-1'}
           style={isPdf ? { display: 'flex', flexDirection: 'column', gap: '4px' } : undefined}
         >
-          <p className={isPdf ? '' : 'text-[8px] font-black uppercase tracking-[0.2em] leading-none text-text-muted'} style={styles?.textLabel}>Authentication Seal</p>
+          <p className={isPdf ? '' : 'text-[8px] font-black uppercase tracking-[0.2em] leading-none text-text-muted'} style={isPdf ? styles?.textLabel : undefined}>Authentication Seal</p>
           <p 
             className={isPdf ? '' : 'font-mono font-bold truncate text-[10px] text-teal/40 max-w-[200px]'}
             style={isPdf ? styles?.authSeal : undefined}

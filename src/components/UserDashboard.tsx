@@ -50,7 +50,7 @@ export const UserDashboard = () => {
   const [viewingTicket, setViewingTicket] = useState<Order | null>(null);
   const [exportingOrder, setExportingOrder] = useState<Order | null>(null);
   
-  // Phase 3.2.4: Use single source of truth for the viewing ticket
+      // Phase 3.2.4: Use single source of truth for the viewing ticket
   const { order: freshOrder, loading: loadingFullOrder } = useOrder(viewingTicket?.id);
 
   // QR status for export
@@ -66,11 +66,11 @@ export const UserDashboard = () => {
     if (exportingOrder && !loadingExportingQr) {
       // Small delay to ensure render
       const timer = setTimeout(() => {
-        handleDownloadPDF(exportingOrder).then(() => setExportingOrder(null));
+        handleDownloadPDF(exportingOrder, exportingQrStatus?.qr_data).then(() => setExportingOrder(null));
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [exportingOrder, loadingExportingQr]);
+  }, [exportingOrder, loadingExportingQr, exportingQrStatus?.qr_data]);
 
   const { 
     qrStatus: viewingTicketQrStatus, 
@@ -749,20 +749,6 @@ export const UserDashboard = () => {
             </div>
           )}
         </AnimatePresence>
-
-        {/* Isolated Export Render Tree - rendered off-screen strictly for html2canvas capture */}
-        {exportingOrder && (
-          <div className="pdf-export-container">
-             <TicketCard 
-               order={exportingOrder}
-               qrData={exportingQrStatus?.qr_data}
-               qrVisible={exportingQrStatus?.visible}
-               qrReason={exportingQrStatus?.reason}
-               loadingQr={loadingExportingQr}
-               isPdf={true}
-             />
-          </div>
-        )}
 
         {/* Resale Modal */}
         <AnimatePresence>
