@@ -24,18 +24,18 @@ export const TicketStatusBadge: React.FC<TicketStatusBadgeProps> = ({ status = '
       style={isPdf ? { 
         ...style, 
         borderRadius: '6px', 
-        fontSize: '9px',
+        fontSize: '7px',
         fontWeight: 900,
         textTransform: 'uppercase',
         letterSpacing: '0.15em',
-        padding: '0 10px',
-        height: '22px',
-        minHeight: '22px',
+        padding: '3px 10px 2px',
+        minHeight: '18px',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        lineHeight: '1',
         verticalAlign: 'middle',
+        lineHeight: '1',
+        boxSizing: 'border-box' as const,
         whiteSpace: 'nowrap',
         fontFamily: 'system-ui, sans-serif'
       } : style}
