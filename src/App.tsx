@@ -6,6 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 import { useAuth } from './context/AuthContext';
 import { useEvents } from './context/EventsContext';
@@ -148,6 +149,7 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
       <SignupModal />
       <AdminEventModal />
       <BookingModal />
+      <SpeedInsights />
       
       <main className="flex-grow">
         <AnimatePresence mode="wait">
