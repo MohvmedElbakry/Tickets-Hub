@@ -114,19 +114,21 @@ export const TicketCard: React.FC<TicketCardProps> = ({
       fontFamily: 'ui-monospace, monospace',
       fontSize: '8px',
       fontWeight: '900',
-      letterSpacing: '0.15em',
+      letterSpacing: '0.12em',
       textTransform: 'uppercase' as const,
-      margin: '0 0 4px 0'
+      margin: '0 0 4px 0',
+      lineHeight: '1'
     },
     teal: { color: '#00C9B1' },
     metaItem: {
       display: 'flex',
       flexDirection: 'row' as const,
       alignItems: 'center',
-      gap: '8px',
-      fontSize: '11px',
+      gap: '6px',
+      fontSize: '10px',
       fontWeight: '700',
-      color: '#A7B5B2'
+      color: '#A7B5B2',
+      lineHeight: '1'
     },
     metaGrid: {
       display: 'flex',
@@ -156,8 +158,9 @@ export const TicketCard: React.FC<TicketCardProps> = ({
       flexDirection: 'row' as const,
       alignItems: 'center',
       gap: '12px',
-      padding: '12px',
-      width: '100%'
+      padding: '10px 12px',
+      width: '100%',
+      minHeight: '52px'
     },
     itemIcon: {
       backgroundColor: 'rgba(0, 201, 177, 0.12)',
@@ -170,7 +173,8 @@ export const TicketCard: React.FC<TicketCardProps> = ({
       justifyContent: 'center',
       fontSize: '10px',
       fontWeight: '900',
-      flexShrink: 0
+      flexShrink: 0,
+      lineHeight: '1'
     },
     footer: {
       padding: '16px 40px',
@@ -199,7 +203,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
   return (
     <div 
       id={isPdf ? undefined : `ticket-card-${order.id}`}
-      className={isPdf ? '' : 'border rounded-card-xl overflow-hidden relative bg-bg-card border-bg-border w-full shadow-ticket hover:shadow-card-glow transition-all duration-slow'}
+      className={isPdf ? '' : 'border rounded-card-xl overflow-hidden relative bg-bg-page border-bg-border w-full shadow-ticket hover:shadow-card-glow transition-all duration-slow'}
       style={isPdf ? styles?.card : undefined}
     >
       {/* Cinematic Top Border */}

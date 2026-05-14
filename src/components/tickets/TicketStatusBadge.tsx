@@ -28,11 +28,13 @@ export const TicketStatusBadge: React.FC<TicketStatusBadgeProps> = ({ status = '
         fontWeight: 900,
         textTransform: 'uppercase',
         letterSpacing: '0.15em',
-        padding: '4px 10px',
+        padding: '0 10px',
+        height: '22px',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        lineHeight: 1,
+        lineHeight: '1',
+        verticalAlign: 'middle',
         whiteSpace: 'nowrap',
         fontFamily: 'system-ui, sans-serif'
       } : style}
