@@ -93,6 +93,59 @@ export const handleDownloadPDF = async (order: Order) => {
         if (clonedElement) {
           clonedElement.style.width = '500px';
           clonedElement.style.display = 'block';
+
+          // 3. Computed Style Sanitization
+          // html2canvas crashes when it encounters oklab/oklch in computed styles.
+          // We traverse the cloned tree and override problematic properties with safe fallbacks.
+          const allElements = clonedElement.querySelectorAll('*');
+          allElements.forEach((el) => {
+            const htmlEl = el as HTMLElement;
+            const style = window.getComputedStyle(htmlEl);
+            
+            // List of properties prone to having modern color functions
+            const colorProps = [
+              'color', 'background-color', 'border-color', 
+              'border-top-color', 'border-right-color', 
+              'border-bottom-color', 'border-left-color',
+              'outline-color', 'fill', 'stroke'
+            ];
+
+            colorProps.forEach(prop => {
+              const value = style.getPropertyValue(prop);
+              if (value.includes('oklch') || value.includes('oklab')) {
+                // Apply a deterministic fallback based on the property type
+                // This ensures html2canvas doesn't crash while maintaining cinematic contrast
+                if (prop === 'color' || prop === 'fill' || prop === 'stroke') {
+                  // Fallback for primary text
+                  htmlEl.style.setProperty(prop, '#E8F5F3', 'important');
+                } else {
+                  // Fallback for backgrounds/borders
+                  htmlEl.style.setProperty(prop, '#1A2422', 'important');
+                }
+              }
+            });
+
+            // Sanitize complex properties like gradients and shadows
+            const background = style.getPropertyValue('background');
+            const backgroundImage = style.getPropertyValue('background-image');
+            if (background.includes('oklch') || background.includes('oklab')) {
+              htmlEl.style.setProperty('background', '#111918', 'important');
+            }
+            if (backgroundImage.includes('oklch') || backgroundImage.includes('oklab')) {
+              // Gradients using oklch/oklab are particularly unstable in html2canvas
+              htmlEl.style.setProperty('background-image', 'none', 'important');
+            }
+
+            const boxShadow = style.getPropertyValue('box-shadow');
+            if (boxShadow.includes('oklch') || boxShadow.includes('oklab')) {
+              htmlEl.style.setProperty('box-shadow', 'none', 'important');
+            }
+            
+            const textShadow = style.getPropertyValue('text-shadow');
+            if (textShadow.includes('oklch') || textShadow.includes('oklab')) {
+              htmlEl.style.setProperty('text-shadow', 'none', 'important');
+            }
+          });
         }
       }
     });
