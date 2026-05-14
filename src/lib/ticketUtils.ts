@@ -46,34 +46,6 @@ export const handleDownloadPDF = async (order: Order) => {
       windowWidth: element.scrollWidth,
       windowHeight: element.scrollHeight,
       onclone: (clonedDoc) => {
-        // Sanitize modern CSS to avoid html2canvas failures
-        const styleSheets = Array.from(clonedDoc.styleSheets);
-        styleSheets.forEach((sheet) => {
-          try {
-            const rules = Array.from(sheet.cssRules);
-            for (let i = rules.length - 1; i >= 0; i--) {
-              const rule = rules[i];
-              if (rule.cssText.includes('oklch') || rule.cssText.includes('oklab')) {
-                sheet.deleteRule(i);
-              }
-            }
-          } catch (e) {
-            // Non-destructive skip for restricted stylesheets
-          }
-        });
-
-        // Also check inline styles
-        const allElements = clonedDoc.getElementsByTagName('*');
-        for (let i = 0; i < allElements.length; i++) {
-          const el = allElements[i] as HTMLElement;
-          if (el.style) {
-            const styleText = el.getAttribute('style') || '';
-            if (styleText.includes('oklch') || styleText.includes('oklab')) {
-              el.setAttribute('style', styleText.replace(/oklch\([^)]+\)/g, 'rgb(0,0,0)').replace(/oklab\([^)]+\)/g, 'rgb(0,0,0)'));
-            }
-          }
-        }
-
         // Force PDF rendering mode properties on the cloned element
         const clonedElement = clonedDoc.getElementById(`ticket-card-${order.id}`);
         if (clonedElement) {

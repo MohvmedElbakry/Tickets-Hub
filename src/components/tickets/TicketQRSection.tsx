@@ -24,28 +24,28 @@ export const TicketQRSection: React.FC<TicketQRSectionProps> = ({
 
   if (!isPaid) {
     return (
-      <div className="w-40 h-40 bg-bg-card border border-bg-border rounded-card flex flex-col items-center justify-center text-center p-4">
-        <Lock size={32} className="text-text-muted opacity-20 mb-2" />
-        <p className="text-[10px] font-black uppercase text-text-muted tracking-widest leading-tight">Payment<br />Required</p>
+      <div className={`w-40 h-40 rounded-card flex flex-col items-center justify-center text-center p-4 border ${isPdf ? 'bg-[#111918] border-[#1A2422]' : 'bg-bg-card border-bg-border'}`}>
+        <Lock size={32} className={`mb-2 ${isPdf ? 'text-[#7AADA6] opacity-20' : 'text-text-muted opacity-20'}`} />
+        <p className={`text-[10px] font-black uppercase tracking-widest leading-tight ${isPdf ? 'text-[#7AADA6]' : 'text-text-muted'}`}>Payment<br />Required</p>
       </div>
     );
   }
 
   if (loadingQr) {
     return (
-      <div className="w-40 h-40 bg-bg-card border border-bg-border rounded-card flex items-center justify-center">
-        <RefreshCw className={`text-teal opacity-50 ${isPdf ? '' : 'animate-spin'}`} size={32} />
+      <div className={`w-40 h-40 rounded-card flex items-center justify-center border ${isPdf ? 'bg-[#111918] border-[#1A2422]' : 'bg-bg-card border-bg-border'}`}>
+        <RefreshCw className={`${isPdf ? 'text-[#00C9B1] opacity-50' : 'text-teal opacity-50 animate-spin'}`} size={32} />
       </div>
     );
   }
 
   if (!qrVisible) {
     return (
-      <div className="w-40 h-40 bg-bg-card border border-bg-border rounded-card flex flex-col items-center justify-center text-center p-4 relative overflow-hidden group">
+      <div className={`w-40 h-40 rounded-card flex flex-col items-center justify-center text-center p-4 relative overflow-hidden group border ${isPdf ? 'bg-[#111918] border-[#1A2422]' : 'bg-bg-card border-bg-border'}`}>
         <div className="absolute inset-0 bg-gradient-to-br from-teal/5 to-transparent"></div>
-        <Lock size={32} className={`text-teal opacity-40 mb-2 ${isPdf ? '' : 'group-hover:scale-110 transition-transform duration-slow'}`} />
-        <p className="text-[10px] font-black uppercase text-text-primary tracking-widest leading-tight mb-1">Pass Locked</p>
-        <p className="text-[8px] font-bold text-text-muted leading-tight px-2">
+        <Lock size={32} className={`${isPdf ? 'text-[#00C9B1] opacity-40' : 'text-teal opacity-40 group-hover:scale-110 transition-transform duration-slow'} mb-2`} />
+        <p className={`text-[10px] font-black uppercase tracking-widest leading-tight mb-1 ${isPdf ? 'text-[#E8F5F3]' : 'text-text-primary'}`}>Pass Locked</p>
+        <p className={`text-[8px] font-bold leading-tight px-2 ${isPdf ? 'text-[#7AADA6]' : 'text-text-muted'}`}>
           {qrReason || 'Activated before entry window'}
         </p>
       </div>
@@ -57,7 +57,7 @@ export const TicketQRSection: React.FC<TicketQRSectionProps> = ({
       {!isPdf && (
         <div className="absolute -inset-2 bg-gradient-to-br from-teal/20 to-purple-500/20 rounded-card-xl blur opacity-0 group-hover:opacity-100 transition-opacity duration-slow"></div>
       )}
-      <div className={`w-40 h-40 bg-white p-4 rounded-card relative flex items-center justify-center shadow-2xl ${isPdf ? '' : 'transition-transform duration-slow transform hover:scale-[1.02]'}`}>
+      <div className={`w-40 h-40 bg-white p-4 rounded-card relative flex items-center justify-center shadow-2xl ${isPdf ? 'shadow-none' : 'transition-transform duration-slow transform hover:scale-[1.02]'}`}>
         {qrData ? (
           <QRCodeSVG 
             value={qrData} 
@@ -66,13 +66,15 @@ export const TicketQRSection: React.FC<TicketQRSectionProps> = ({
             includeMargin={true}
           />
         ) : (
-          <RefreshCw className={`text-bg-page opacity-20 ${isPdf ? '' : 'animate-spin'}`} size={32} />
+          <RefreshCw className={`${isPdf ? 'text-[#0A0F0E] opacity-20' : 'text-bg-page opacity-20 animate-spin'}`} size={32} />
         )}
         
         {/* Security Corner Decor */}
-        <div className="absolute top-1 right-1">
-          <ShieldCheck size={10} className="text-teal/20" />
-        </div>
+        {!isPdf && (
+           <div className="absolute top-1 right-1">
+             <ShieldCheck size={10} className="text-teal/20" />
+           </div>
+        )}
       </div>
     </div>
   );
