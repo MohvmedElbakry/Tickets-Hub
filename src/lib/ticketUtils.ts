@@ -70,17 +70,19 @@ export const handleDownloadPDF = async (order: Order, qrData?: string, qrVisible
 
     // 6. Capture using html2canvas
     const canvas = await html2canvas(ticketNode, {
-      scale: 2, 
+      scale: window.devicePixelRatio > 1 ? 2 : 1.5,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#0A0F0E',
       logging: false,
       width: 500,
-      height: ticketNode.offsetHeight
+      height: ticketNode.offsetHeight,
+      foreignObjectRendering: true,
+      removeContainer: true
     });
 
     // 7. Generate PDF
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const imgData = canvas.toDataURL('image/png');
     const pdfWidth = canvas.width / 2;
     const pdfHeight = canvas.height / 2;
     
@@ -90,7 +92,7 @@ export const handleDownloadPDF = async (order: Order, qrData?: string, qrVisible
       format: [pdfWidth, pdfHeight]
     });
 
-    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
     pdf.save(`Ticket-${order.id}.pdf`);
 
   } catch (error) {

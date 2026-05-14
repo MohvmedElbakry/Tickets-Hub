@@ -91,7 +91,7 @@ export const EventDetailsPage = () => {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center">
         <div className="w-12 h-12 border-4 border-teal border-t-transparent rounded-full animate-spin mb-4 shadow-card-glow"></div>
-        <p className="text-text-muted font-black tracking-widest uppercase text-label">Parsing Event Stream...</p>
+        <p className="text-text-muted font-black tracking-widest uppercase text-label">Loading Event Details...</p>
       </div>
     );
   }

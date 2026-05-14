@@ -44,7 +44,9 @@ export const TicketCard: React.FC<TicketCardProps> = ({
       WebkitFontSmoothing: 'antialiased',
       MozOsxFontSmoothing: 'grayscale',
       textRendering: 'geometricPrecision',
-      boxSizing: 'border-box'
+      boxSizing: 'border-box',
+      fontSize: '12px',
+      lineHeight: '1'
     },
     topBorder: {
       position: 'absolute' as const,
@@ -116,12 +118,12 @@ export const TicketCard: React.FC<TicketCardProps> = ({
     textLabel: {
       color: 'rgba(167, 181, 178, 0.5)',
       fontFamily: 'ui-monospace, monospace',
-      fontSize: '7px',
+      fontSize: '8px',
       fontWeight: '900',
       letterSpacing: '0.12em',
       textTransform: 'uppercase' as const,
       margin: '0 0 4px 0',
-      lineHeight: '1'
+      lineHeight: '1.2'
     },
     teal: { color: '#00C9B1' },
     metaItem: {
@@ -133,8 +135,9 @@ export const TicketCard: React.FC<TicketCardProps> = ({
       fontSize: '8px',
       fontWeight: '700',
       color: '#A7B5B2',
-      minHeight: '12px',
-      lineHeight: '1.1',
+      paddingTop: '1px',
+      paddingBottom: '1px',
+      lineHeight: '1.2',
       boxSizing: 'border-box' as const
     },
     metaGrid: {
@@ -183,7 +186,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
       fontSize: '9px',
       fontWeight: '900',
       flexShrink: 0,
-      lineHeight: '1'
+      lineHeight: '1.2'
     },
     footer: {
       padding: '16px 40px',
@@ -197,9 +200,10 @@ export const TicketCard: React.FC<TicketCardProps> = ({
     authSeal: {
       color: 'rgba(0, 201, 177, 0.25)',
       fontFamily: 'ui-monospace, monospace',
-      fontSize: '7px',
+      fontSize: '8px',
       fontWeight: '700',
-      letterSpacing: '0.05em'
+      letterSpacing: '0.05em',
+      lineHeight: '1.2'
     },
     poweredBy: {
       display: 'flex',
@@ -340,15 +344,15 @@ export const TicketCard: React.FC<TicketCardProps> = ({
                   </div>
                   <div 
                     className={isPdf ? '' : 'flex flex-col gap-0 overflow-hidden content-stack'}
-                    style={isPdf ? { display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px', minWidth: 0, paddingTop: '1px', paddingBottom: '1px', overflow: 'hidden' } : undefined}
+                    style={isPdf ? { display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px', minWidth: 0, paddingTop: '2px', paddingBottom: '1px' } : undefined}
                   >
                     <p 
                       className={isPdf ? '' : 'text-[11px] font-bold line-clamp-1 text-text-primary group/holder:text-teal transition-colors'}
-                      style={isPdf ? { ...styles?.textPrimary, fontSize: '8px', fontWeight: '700', lineHeight: '1.15', display: 'block', margin: 0, padding: 0 } : undefined}
+                      style={isPdf ? { ...styles?.textPrimary, fontSize: '8px', fontWeight: '700', lineHeight: '1.2', display: 'block', margin: 0, padding: 0 } : undefined}
                     >
                       {item.name || 'Attendee'}
                     </p>
-                    <p className={isPdf ? '' : 'font-bold uppercase tracking-tighter line-clamp-1 text-[9px] text-text-muted'} style={isPdf ? { ...styles?.textMuted, fontSize: '6px', fontWeight: '700', textTransform: 'uppercase', lineHeight: '1.1', display: 'block', margin: 0, padding: 0 } : undefined}>{item.ticket_type?.name || 'Ticket'}</p>
+                    <p className={isPdf ? '' : 'font-bold uppercase tracking-tighter line-clamp-1 text-[9px] text-text-muted'} style={isPdf ? { ...styles?.textMuted, fontSize: '7px', fontWeight: '700', textTransform: 'uppercase', lineHeight: '1.2', display: 'block', margin: 0, padding: 0 } : undefined}>{item.ticket_type?.name || 'Ticket'}</p>
                   </div>
                 </div>
               ))}
@@ -378,7 +382,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
           className={isPdf ? '' : 'flex items-center gap-2 grayscale hover:grayscale-0 transition-all opacity-40 hover:opacity-100'}
           style={isPdf ? styles?.poweredBy : undefined}
         >
-           <span className={isPdf ? '' : 'text-[9px] font-black leading-none text-text-muted'} style={isPdf ? { ...styles?.textLabel, fontSize: '7px', margin: 0 } : undefined}>POWERED BY</span>
+           <span className={isPdf ? '' : 'text-[9px] font-black leading-none text-text-muted'} style={isPdf ? { ...styles?.textLabel, fontSize: '8px', margin: 0, lineHeight: '1.2' } : undefined}>POWERED BY</span>
            <span className={isPdf ? '' : 'font-black tracking-tighter text-[11px] text-text-primary'} style={isPdf ? { ...styles?.textPrimary, fontWeight: '900', fontSize: '8px' } : undefined}>TICKETS<span className={isPdf ? '' : 'text-teal'} style={isPdf ? styles?.teal : undefined}>HUB</span></span>
         </div>
       </div>
