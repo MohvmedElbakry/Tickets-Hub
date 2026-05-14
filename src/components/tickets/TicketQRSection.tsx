@@ -44,11 +44,11 @@ export const TicketQRSection: React.FC<TicketQRSectionProps> = ({
   if (!isPaid) {
     return (
       <div 
-        className="w-40 h-40 rounded-card flex flex-col items-center justify-center text-center p-4 border"
-        style={isPdf ? styleProps?.container : undefined}
+        className={`w-40 h-40 flex flex-col items-center justify-center text-center p-4 border ${isPdf ? '' : 'rounded-card bg-bg-card border-bg-border'}`}
+        style={isPdf ? { ...styleProps?.container, borderRadius: '16px' } : undefined}
       >
-        <Lock size={32} className="opacity-20 mb-2" style={isPdf ? styleProps?.textMuted : undefined} />
-        <p className="text-[10px] font-black uppercase tracking-widest leading-tight" style={isPdf ? styleProps?.textMuted : undefined}>Payment<br />Required</p>
+        <Lock size={32} className={`mb-2 ${isPdf ? 'opacity-20' : 'text-text-muted opacity-20'}`} style={isPdf ? styleProps?.textMuted : undefined} />
+        <p className={`text-[10px] font-black uppercase tracking-widest leading-tight ${isPdf ? '' : 'text-text-muted'}`} style={isPdf ? styleProps?.textMuted : undefined}>Payment<br />Required</p>
       </div>
     );
   }
@@ -56,10 +56,10 @@ export const TicketQRSection: React.FC<TicketQRSectionProps> = ({
   if (loadingQr) {
     return (
       <div 
-        className="w-40 h-40 rounded-card flex items-center justify-center border"
-        style={isPdf ? styleProps?.container : undefined}
+        className={`w-40 h-40 flex items-center justify-center border ${isPdf ? '' : 'rounded-card bg-bg-card border-bg-border'}`}
+        style={isPdf ? { ...styleProps?.container, borderRadius: '16px' } : undefined}
       >
-        <RefreshCw className={`opacity-50 ${isPdf ? '' : 'animate-spin'}`} size={32} style={isPdf ? styleProps?.teal : undefined} />
+        <RefreshCw className={`${isPdf ? 'opacity-50' : 'text-teal opacity-50 animate-spin'}`} size={32} style={isPdf ? styleProps?.teal : undefined} />
       </div>
     );
   }
@@ -67,13 +67,13 @@ export const TicketQRSection: React.FC<TicketQRSectionProps> = ({
   if (!qrVisible) {
     return (
       <div 
-        className="w-40 h-40 rounded-card flex flex-col items-center justify-center text-center p-4 relative overflow-hidden group border"
-        style={isPdf ? styleProps?.container : undefined}
+        className={`w-40 h-40 flex flex-col items-center justify-center text-center p-4 relative overflow-hidden group border ${isPdf ? '' : 'rounded-card bg-bg-card border-bg-border'}`}
+        style={isPdf ? { ...styleProps?.container, borderRadius: '16px' } : undefined}
       >
         {!isPdf && <div className="absolute inset-0 bg-gradient-to-br from-teal/5 to-transparent"></div>}
-        <Lock size={32} className={`opacity-40 mb-2 ${isPdf ? '' : 'group-hover:scale-110 transition-transform duration-slow'}`} style={isPdf ? styleProps?.teal : undefined} />
-        <p className="text-[10px] font-black uppercase tracking-widest leading-tight mb-1" style={isPdf ? styleProps?.textPrimary : undefined}>Pass Locked</p>
-        <p className="text-[8px] font-bold leading-tight px-2" style={isPdf ? styleProps?.textMuted : undefined}>
+        <Lock size={32} className={`mb-2 ${isPdf ? 'opacity-40' : 'text-teal opacity-40 group-hover:scale-110 transition-transform duration-slow'}`} style={isPdf ? styleProps?.teal : undefined} />
+        <p className={`text-[10px] font-black uppercase tracking-widest leading-tight mb-1 ${isPdf ? '' : 'text-text-primary'}`} style={isPdf ? styleProps?.textPrimary : undefined}>Pass Locked</p>
+        <p className={`text-[8px] font-bold leading-tight px-2 ${isPdf ? '' : 'text-text-muted'}`} style={isPdf ? styleProps?.textMuted : undefined}>
           {qrReason || 'Activated before entry window'}
         </p>
       </div>
@@ -86,8 +86,8 @@ export const TicketQRSection: React.FC<TicketQRSectionProps> = ({
         <div className="absolute -inset-2 bg-gradient-to-br from-teal/20 to-purple-500/20 rounded-card-xl blur opacity-0 group-hover:opacity-100 transition-opacity duration-slow"></div>
       )}
       <div 
-        className={`w-40 h-40 p-4 rounded-card relative flex items-center justify-center ${isPdf ? 'shadow-none' : 'shadow-2xl transition-transform duration-slow transform hover:scale-[1.02]'}`}
-        style={isPdf ? styleProps?.qrBg : undefined}
+        className={`w-40 h-40 p-4 relative flex items-center justify-center ${isPdf ? 'border shadow-none' : 'rounded-card shadow-2xl transition-transform duration-slow transform hover:scale-[1.02]'}`}
+        style={isPdf ? { ...styleProps?.qrBg, borderColor: '#1A2422', borderRadius: '16px' } : undefined}
       >
         {qrData ? (
           <QRCodeSVG 
@@ -97,7 +97,7 @@ export const TicketQRSection: React.FC<TicketQRSectionProps> = ({
             includeMargin={true}
           />
         ) : (
-          <RefreshCw className={`opacity-20 ${isPdf ? '' : 'animate-spin'}`} size={32} style={isPdf ? { color: '#0A0F0E' } : undefined} />
+          <RefreshCw className={`${isPdf ? 'opacity-20' : 'opacity-20 animate-spin text-teal'}`} size={32} style={isPdf ? { color: '#0A0F0E' } : undefined} />
         )}
         
         {/* Security Corner Decor */}

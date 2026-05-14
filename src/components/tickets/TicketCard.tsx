@@ -33,40 +33,67 @@ export const TicketCard: React.FC<TicketCardProps> = ({
       backgroundColor: '#0A0F0E',
       borderColor: '#1A2422',
       color: '#E8F5F3',
+      borderRadius: '20px',
     },
     topBorder: {
       backgroundColor: isPaid ? '#00C9B1' : '#E8A020',
     },
-    textPrimary: { color: '#E8F5F3' },
-    textMuted: { color: '#7AADA6' },
+    textPrimary: { 
+      color: '#E8F5F3',
+      fontFamily: '"DM Sans", sans-serif'
+    },
+    textHeading: {
+      color: '#E8F5F3',
+      fontFamily: '"Playfair Display", serif',
+      fontSize: '2rem',
+      fontWeight: '700',
+      letterSpacing: '-0.01em',
+      lineHeight: '1.3'
+    },
+    textMuted: { 
+      color: '#7AADA6',
+      fontFamily: '"DM Sans", sans-serif'
+    },
+    textLabel: {
+      color: '#7AADA6',
+      fontFamily: '"DM Mono", monospace',
+      fontSize: '10px',
+      fontWeight: '900',
+      letterSpacing: '0.1em',
+      textTransform: 'uppercase' as const
+    },
     teal: { color: '#00C9B1' },
     tealLight: { color: '#4DDECF' },
     bgElevated: { backgroundColor: '#111918' },
     bgBorder: { backgroundColor: '#1A2422' },
-    divider: {
-      backgroundImage: 'linear-gradient(to bottom, transparent, #1A2422, transparent)',
-    },
     itemContainer: {
       backgroundColor: 'rgba(30, 45, 43, 0.3)',
-      borderColor: 'rgba(26, 36, 34, 0.2)'
+      borderColor: 'rgba(26, 36, 34, 0.2)',
+      borderRadius: '16px'
     },
     itemIcon: {
       backgroundColor: 'rgba(0, 201, 177, 0.1)',
-      color: '#00C9B1'
+      color: '#00C9B1',
+      borderRadius: '16px'
+    },
+    footerSize: {
+       fontSize: '9px',
+       fontWeight: '900'
     },
     footer: {
        backgroundColor: 'rgba(30, 45, 43, 0.5)',
        borderColor: 'rgba(26, 36, 34, 0.6)'
     },
     authSeal: {
-      color: 'rgba(0, 201, 177, 0.4)'
+      color: 'rgba(0, 201, 177, 0.4)',
+      fontFamily: '"DM Mono", monospace'
     }
   } : null;
 
   return (
     <div 
       id={`ticket-card-${order.id}`}
-      className={`border rounded-card-xl overflow-hidden relative ${isPdf ? 'w-[500px]' : 'bg-bg-page border-bg-border w-full shadow-ticket hover:shadow-card-glow transition-all duration-slow'}`}
+      className={`border overflow-hidden relative ${isPdf ? 'w-[500px]' : 'rounded-card-xl bg-bg-page border-bg-border w-full shadow-ticket hover:shadow-card-glow transition-all duration-slow'}`}
       style={styles?.card}
     >
       {/* Cinematic Top Border */}
@@ -91,77 +118,77 @@ export const TicketCard: React.FC<TicketCardProps> = ({
             isPdf={isPdf}
           />
           <div className="text-center">
-            <p className="text-[10px] font-black uppercase tracking-widest opacity-60 text-text-muted" style={styles?.textMuted}>Order Reference</p>
-            <p className="text-body-xs font-mono font-bold text-teal" style={styles?.teal}>#{order.id}</p>
+            <p className={`opacity-60 ${isPdf ? '' : 'text-[10px] font-black uppercase tracking-widest text-text-muted'}`} style={styles?.textLabel}>Order Reference</p>
+            <p className={`font-mono font-bold ${isPdf ? '' : 'text-body-xs text-teal'}`} style={styles?.teal}>#{order.id}</p>
           </div>
         </div>
 
         {/* Divider for PDF consistency */}
         <div className={`hidden md:block w-px ${isPdf ? 'block' : 'bg-gradient-to-b from-transparent via-bg-border to-transparent'}`} style={isPdf ? { backgroundColor: '#1A2422' } : undefined}></div>
-        <div className={`md:hidden w-full h-px bg-gradient-to-r from-transparent via-bg-border to-transparent ${isPdf ? 'hidden' : ''}`}></div>
+        <div className={`md:hidden w-full h-px ${isPdf ? 'hidden' : 'bg-gradient-to-r from-transparent via-bg-border to-transparent'}`}></div>
 
         {/* Right Side: Event & Attendee Info */}
-        <div className="flex-1 flex flex-col gap-6">
+        <div className={`flex-1 flex flex-col ${isPdf ? 'gap-6' : 'gap-6'}`}>
           {/* Header Area */}
           <div className="flex justify-between items-start">
-            <div className="content-stack gap-1">
+            <div className={`flex flex-col ${isPdf ? 'gap-1' : 'content-stack gap-1'}`}>
               <TicketStatusBadge status={isPaid ? 'CONFIRMED' : orderStatus} isPdf={isPdf} />
-              <p className="text-[10px] font-black uppercase tracking-widest mt-1 text-text-muted" style={styles?.textMuted}>Access Credential</p>
+              <p className={`mt-1 ${isPdf ? '' : 'text-[10px] font-black uppercase tracking-widest text-text-muted'}`} style={styles?.textLabel}>Access Credential</p>
             </div>
-            <div className="text-right content-stack gap-1">
-               <p className="text-[10px] font-black uppercase tracking-widest text-text-muted" style={styles?.textMuted}>Event ID</p>
-               <p className="text-body-xs font-mono font-bold text-text-primary" style={styles?.textPrimary}>E-{event?.id || '---'}</p>
+            <div className={`text-right flex flex-col ${isPdf ? 'gap-1' : 'content-stack gap-1'}`}>
+               <p className={`${isPdf ? '' : 'text-[10px] font-black uppercase tracking-widest text-text-muted'}`} style={styles?.textLabel}>Event ID</p>
+               <p className={`font-mono font-bold ${isPdf ? '' : 'text-body-xs text-text-primary'}`} style={styles?.textPrimary}>E-{event?.id || '---'}</p>
             </div>
           </div>
 
           {/* Event Identity */}
-          <div className="content-stack gap-1">
+          <div className={`flex flex-col ${isPdf ? 'gap-1' : 'content-stack gap-1'}`}>
             <h2 
-              className={`text-h3 leading-tight font-black tracking-tight line-clamp-2 text-text-primary ${isPdf ? '' : 'group-hover:text-teal transition-colors duration-base'}`}
-              style={styles?.textPrimary}
+              className={`leading-tight font-black tracking-tight line-clamp-2 ${isPdf ? '' : 'text-h3 text-text-primary group-hover:text-teal transition-colors duration-base'}`}
+              style={styles?.textHeading}
             >
               {event?.title || 'Unknown Event'}
             </h2>
             <div className="flex flex-wrap gap-x-4 gap-y-1">
-              <span className="flex items-center gap-1.5 text-body-xs font-bold text-text-muted" style={styles?.textMuted}>
-                <Calendar size={12} className="text-teal" style={styles?.teal} />
+              <span className={`flex items-center gap-1.5 font-bold ${isPdf ? '' : 'text-body-xs text-text-muted'}`} style={styles?.textMuted}>
+                <Calendar size={12} className={`${isPdf ? '' : 'text-teal'}`} style={styles?.teal} />
                 {event?.event_date || 'Date TBD'}
               </span>
-              <span className="flex items-center gap-1.5 text-body-xs font-bold text-text-muted" style={styles?.textMuted}>
-                <Clock size={12} className="text-teal" style={styles?.teal} />
+              <span className={`flex items-center gap-1.5 font-bold ${isPdf ? '' : 'text-body-xs text-text-muted'}`} style={styles?.textMuted}>
+                <Clock size={12} className={`${isPdf ? '' : 'text-teal'}`} style={styles?.teal} />
                 {formatEventTime(event?.event_date || event?.date, event?.event_time || event?.time)}
               </span>
             </div>
-            <span className="flex items-center gap-1.5 text-body-xs font-bold mt-1 text-text-muted" style={styles?.textMuted}>
-              <MapPin size={12} className="text-teal" style={styles?.teal} />
+            <span className={`flex items-center gap-1.5 font-bold mt-1 ${isPdf ? '' : 'text-body-xs text-text-muted'}`} style={styles?.textMuted}>
+              <MapPin size={12} className={`${isPdf ? '' : 'text-teal'}`} style={styles?.teal} />
               {event?.location || 'Location TBD'}
             </span>
           </div>
 
           {/* Attendee / Tickets Section */}
-          <div className={`content-stack gap-3 pt-4 border-t ${isPdf ? '' : 'border-bg-border/40'}`} style={isPdf ? { borderColor: 'rgba(26, 36, 34, 0.6)' } : undefined}>
-            <p className="text-[10px] font-black uppercase tracking-widest text-text-muted" style={styles?.textMuted}>Entry Details</p>
+          <div className={`flex flex-col pt-4 border-t ${isPdf ? '' : 'content-stack gap-3 border-bg-border/40'}`} style={isPdf ? { borderColor: 'rgba(26, 36, 34, 0.6)', gap: '12px' } : undefined}>
+            <p className={`${isPdf ? '' : 'text-[10px] font-black uppercase tracking-widest text-text-muted'}`} style={styles?.textLabel}>Entry Details</p>
             <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 pr-2 custom-scrollbar ${isPdf ? 'grid-cols-1 overflow-visible pr-0' : 'max-h-32 overflow-y-auto'}`}>
               {(order.items || []).map((item: any, idx) => (
                 <div 
                   key={item.id || idx} 
-                  className={`flex items-center gap-3 p-2.5 rounded-card border ${isPdf ? '' : 'bg-bg-elevated/30 border-bg-border/20 group/holder hover:border-teal/30 transition-colors'}`}
+                  className={`flex items-center gap-3 p-2.5 border ${isPdf ? '' : 'rounded-card bg-bg-elevated/30 border-bg-border/20 group/holder hover:border-teal/30 transition-colors'}`}
                   style={styles?.itemContainer}
                 >
                   <div 
-                    className="w-8 h-8 rounded-card flex items-center justify-center text-[10px] font-black shrink-0"
+                    className={`flex items-center justify-center font-black shrink-0 ${isPdf ? '' : 'w-8 h-8 rounded-card text-[10px] bg-teal/10 text-teal'}`}
                     style={styles?.itemIcon}
                   >
                     {idx + 1}
                   </div>
-                  <div className="content-stack gap-0 overflow-hidden">
+                  <div className={`flex flex-col gap-0 overflow-hidden ${isPdf ? '' : 'content-stack'}`}>
                     <p 
-                      className={`text-[11px] font-bold line-clamp-1 text-text-primary ${isPdf ? '' : 'group-hover/holder:text-teal transition-colors'}`}
+                      className={`text-[11px] font-bold line-clamp-1 ${isPdf ? '' : 'text-text-primary group-hover/holder:text-teal transition-colors'}`}
                       style={styles?.textPrimary}
                     >
                       {item.name || 'Attendee'}
                     </p>
-                    <p className="text-[9px] font-bold uppercase tracking-tighter line-clamp-1 text-text-muted" style={styles?.textMuted}>{item.ticket_type?.name || 'Ticket'}</p>
+                    <p className={`font-bold uppercase tracking-tighter line-clamp-1 ${isPdf ? '' : 'text-[9px] text-text-muted'}`} style={styles?.textMuted}>{item.ticket_type?.name || 'Ticket'}</p>
                   </div>
                 </div>
               ))}
@@ -175,18 +202,18 @@ export const TicketCard: React.FC<TicketCardProps> = ({
         className={`px-8 py-3 border-t flex justify-between items-center overflow-hidden ${isPdf ? '' : 'bg-bg-elevated/50 border-bg-border/60'}`}
         style={styles?.footer}
       >
-        <div className="content-stack gap-1">
-          <p className="text-[8px] font-black uppercase tracking-[0.2em] leading-none text-text-muted" style={styles?.textMuted}>Authentication Seal</p>
+        <div className={`flex flex-col ${isPdf ? 'gap-1' : 'content-stack gap-1'}`}>
+          <p className={`${isPdf ? '' : 'text-[8px] font-black uppercase tracking-[0.2em] leading-none text-text-muted'}`} style={styles?.textLabel}>Authentication Seal</p>
           <p 
-            className={`text-[10px] font-mono font-bold truncate ${isPdf ? 'max-w-none' : 'text-teal/40 max-w-[200px]'}`}
+            className={`font-mono font-bold truncate ${isPdf ? 'max-w-none' : 'text-[10px] text-teal/40 max-w-[200px]'}`}
             style={styles?.authSeal}
           >
             SECURE-AUTH-{order.qr_code_token || 'PENDING'}
           </p>
         </div>
         <div className={`flex items-center gap-2 ${isPdf ? '' : 'grayscale hover:grayscale-0 transition-all opacity-40 hover:opacity-100'}`}>
-           <span className="text-[9px] font-black leading-none text-text-muted" style={styles?.textMuted}>POWERED BY</span>
-           <span className="text-[11px] font-black tracking-tighter text-text-primary" style={styles?.textPrimary}>TICKETS<span className="text-teal" style={styles?.teal}>HUB</span></span>
+           <span className={`${isPdf ? '' : 'text-[9px] font-black leading-none text-text-muted'}`} style={styles?.textLabel}>POWERED BY</span>
+           <span className={`font-black tracking-tighter ${isPdf ? '' : 'text-[11px] text-text-primary'}`} style={styles?.textPrimary}>TICKETS<span className={`${isPdf ? '' : 'text-teal'}`} style={styles?.teal}>HUB</span></span>
         </div>
       </div>
     </div>

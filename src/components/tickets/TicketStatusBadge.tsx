@@ -16,12 +16,12 @@ export const TicketStatusBadge: React.FC<TicketStatusBadgeProps> = ({ status = '
 
   return (
     <span 
-      className={`px-2.5 py-0.5 rounded-tag text-[9px] font-black uppercase tracking-[0.15em] border whitespace-nowrap ${
-        isPdf ? '' : (isPaid 
+      className={`px-2.5 py-0.5 font-black uppercase tracking-[0.15em] border whitespace-nowrap ${
+        isPdf ? '' : 'rounded-tag text-[9px] ' + (isPaid 
           ? 'bg-status-success/10 text-status-success border-status-success/30 shadow-status-success/5' 
           : 'bg-status-warning/10 text-status-warning border-status-warning/30')
       }`}
-      style={style}
+      style={isPdf ? { ...style, borderRadius: '6px', fontSize: '9px' } : style}
     >
       {upperStatus}
     </span>

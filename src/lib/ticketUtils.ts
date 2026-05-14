@@ -64,8 +64,8 @@ export const handleDownloadPDF = async (order: Order) => {
       logging: false,
       windowWidth: 500,
       onclone: (clonedDoc) => {
-        // 2. ISOLATION: Remove ALL global stylesheets that might contain oklab/oklch
-        // This prevents the html2canvas parser crash which happens when scanning stylesheets
+        // 1. ABSOLUTE ISOLATION: Remove ALL global stylesheets immediately
+        // Component theme class purges (in JSX) + stylesheet removal (here) = 100% isolation
         const stylesheets = clonedDoc.querySelectorAll('style, link[rel="stylesheet"]');
         stylesheets.forEach(sheet => {
           if (sheet.id !== 'ticket-export-isolated-styles') {
@@ -75,23 +75,35 @@ export const handleDownloadPDF = async (order: Order) => {
 
         const clonedElement = clonedDoc.getElementById(`ticket-card-${order.id}`);
         if (clonedElement) {
-          // Force layout for capture
+          // Force layout properties for stable capture
           clonedElement.style.width = '500px';
           clonedElement.style.display = 'block';
           clonedElement.style.margin = '0';
           clonedElement.style.position = 'static';
+          clonedElement.style.visibility = 'visible';
           
-          // Double-check sanitization for inline styles if any slipped through
+          // Double-check sanitization for ANY problematic properties that might crash the scanner
           const allElements = clonedElement.querySelectorAll('*');
           allElements.forEach((el) => {
             const htmlEl = el as HTMLElement;
-            // Clean up any remaining dynamic effects that html2canvas struggles with
+            
+            // Critical: Remove any transition/animation/filter that confuses html2canvas
             htmlEl.style.transition = 'none';
             htmlEl.style.animation = 'none';
             htmlEl.style.transform = 'none';
             htmlEl.style.boxShadow = 'none';
             htmlEl.style.filter = 'none';
             htmlEl.style.backdropFilter = 'none';
+
+            // Catch-all: Purge ANY modern color function from inline styles if any slipped through
+            const inlineStyles = htmlEl.getAttribute('style') || '';
+            if (inlineStyles.includes('oklch') || inlineStyles.includes('oklab')) {
+               // We replace problematic property values with safe defaults or inherited
+               // Though with our JSX changes, this is mostly a fallback safety net.
+               htmlEl.style.color = htmlEl.style.color.includes('okl') ? '#E8F5F3' : htmlEl.style.color;
+               htmlEl.style.backgroundColor = htmlEl.style.backgroundColor.includes('okl') ? 'transparent' : htmlEl.style.backgroundColor;
+               htmlEl.style.borderColor = htmlEl.style.borderColor.includes('okl') ? '#1A2422' : htmlEl.style.borderColor;
+            }
           });
         }
       }
