@@ -115,24 +115,26 @@ export const handleDownloadPDF = async (order: Order) => {
 
     // 5. Execute html2canvas on the CLEAN DETACHED NODE
     const canvas = await html2canvas(clone, {
-      scale: 2,
+      scale: 3, // High resolution
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#0A0F0E',
       logging: false,
       width: 500,
-      height: clone.offsetHeight
+      height: clone.offsetHeight,
+      imageTimeout: 0,
+      ignoreElements: (el) => el.tagName === 'SCRIPT' || el.tagName === 'STYLE' && el.id !== 'ticket-export-isolated-styles'
     });
 
     // 6. Generate PDF
-    const imgData = canvas.toDataURL('image/png', 1.0);
+    const imgData = canvas.toDataURL('image/jpeg', 0.95); // High quality JPEG for smaller PDF size but crisp visuals
     const pdf = new jsPDF({
       orientation: 'p',
       unit: 'px',
-      format: [canvas.width / 2, canvas.height / 2]
+      format: [canvas.width / 3, canvas.height / 3]
     });
 
-    pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2);
+    pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width / 3, canvas.height / 3, undefined, 'FAST');
     pdf.save(`Ticket-${order.id}.pdf`);
 
   } catch (error) {

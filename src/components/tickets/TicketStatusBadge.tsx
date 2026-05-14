@@ -10,8 +10,8 @@ export const TicketStatusBadge: React.FC<TicketStatusBadgeProps> = ({ status = '
   const isPaid = upperStatus === 'CONFIRMED' || upperStatus === 'PAID' || upperStatus === 'APPROVED';
   
   const style = isPdf ? (isPaid 
-    ? { backgroundColor: 'rgba(0, 201, 177, 0.1)', color: '#00C9B1', borderColor: 'rgba(0, 201, 177, 0.3)' }
-    : { backgroundColor: 'rgba(232, 160, 32, 0.1)', color: '#E8A020', borderColor: 'rgba(232, 160, 32, 0.3)' })
+    ? { backgroundColor: 'rgba(0, 201, 177, 0.08)', color: '#00C9B1', borderColor: 'rgba(0, 201, 177, 0.4)' }
+    : { backgroundColor: 'rgba(232, 160, 32, 0.08)', color: '#E8A020', borderColor: 'rgba(232, 160, 32, 0.4)' })
     : undefined;
 
   return (

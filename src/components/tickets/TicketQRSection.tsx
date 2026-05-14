@@ -24,11 +24,13 @@ export const TicketQRSection: React.FC<TicketQRSectionProps> = ({
 
   const styleProps = isPdf ? {
     container: {
-      backgroundColor: '#111918',
-      borderColor: '#1A2422'
+      background: 'linear-gradient(135deg, #111918 0%, #1A2422 100%)',
+      borderColor: 'rgba(0, 201, 177, 0.2)',
+      boxShadow: 'inset 0 0 20px rgba(0, 201, 177, 0.05)'
     },
     qrBg: {
       backgroundColor: '#FFFFFF',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
     },
     textMuted: {
       color: '#7AADA6'

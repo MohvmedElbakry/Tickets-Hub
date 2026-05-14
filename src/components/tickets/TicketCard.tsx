@@ -30,36 +30,39 @@ export const TicketCard: React.FC<TicketCardProps> = ({
 
   const styles = isPdf ? {
     card: {
-      backgroundColor: '#0A0F0E',
+      background: 'linear-gradient(145deg, #0A0F0E 0%, #111918 100%)',
       borderColor: '#1A2422',
       color: '#E8F5F3',
-      borderRadius: '20px',
+      borderRadius: '24px',
+      boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
     },
     topBorder: {
-      backgroundColor: isPaid ? '#00C9B1' : '#E8A020',
+      background: isPaid 
+        ? 'linear-gradient(90deg, #00C9B1 0%, #00F2D8 50%, #00C9B1 100%)' 
+        : 'linear-gradient(90deg, #E8A020 0%, #FFB83D 50%, #E8A020 100%)',
     },
     textPrimary: { 
       color: '#E8F5F3',
-      fontFamily: '"DM Sans", sans-serif'
+      fontFamily: 'system-ui, -apple-system, sans-serif'
     },
     textHeading: {
       color: '#E8F5F3',
-      fontFamily: '"Playfair Display", serif',
-      fontSize: '2rem',
-      fontWeight: '700',
-      letterSpacing: '-0.01em',
-      lineHeight: '1.3'
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontSize: '28px',
+      fontWeight: '900',
+      letterSpacing: '-0.02em',
+      lineHeight: '1.2'
     },
     textMuted: { 
       color: '#7AADA6',
-      fontFamily: '"DM Sans", sans-serif'
+      fontFamily: 'system-ui, -apple-system, sans-serif'
     },
     textLabel: {
-      color: '#7AADA6',
-      fontFamily: '"DM Mono", monospace',
-      fontSize: '10px',
+      color: 'rgba(122, 173, 166, 0.6)',
+      fontFamily: 'ui-monospace, monospace',
+      fontSize: '9px',
       fontWeight: '900',
-      letterSpacing: '0.1em',
+      letterSpacing: '0.15em',
       textTransform: 'uppercase' as const
     },
     teal: { color: '#00C9B1' },
@@ -67,26 +70,23 @@ export const TicketCard: React.FC<TicketCardProps> = ({
     bgElevated: { backgroundColor: '#111918' },
     bgBorder: { backgroundColor: '#1A2422' },
     itemContainer: {
-      backgroundColor: 'rgba(30, 45, 43, 0.3)',
-      borderColor: 'rgba(26, 36, 34, 0.2)',
-      borderRadius: '16px'
+      backgroundColor: 'rgba(255, 255, 255, 0.03)',
+      border: '1px solid rgba(0, 201, 177, 0.1)',
+      borderRadius: '12px'
     },
     itemIcon: {
-      backgroundColor: 'rgba(0, 201, 177, 0.1)',
+      backgroundColor: 'rgba(0, 201, 177, 0.15)',
       color: '#00C9B1',
-      borderRadius: '16px'
-    },
-    footerSize: {
-       fontSize: '9px',
-       fontWeight: '900'
+      borderRadius: '10px'
     },
     footer: {
-       backgroundColor: 'rgba(30, 45, 43, 0.5)',
-       borderColor: 'rgba(26, 36, 34, 0.6)'
+      background: 'rgba(0, 0, 0, 0.2)',
+      borderTop: '1px solid rgba(26, 36, 34, 0.4)'
     },
     authSeal: {
-      color: 'rgba(0, 201, 177, 0.4)',
-      fontFamily: '"DM Mono", monospace'
+      color: 'rgba(0, 201, 177, 0.3)',
+      fontFamily: 'ui-monospace, monospace',
+      letterSpacing: '0.05em'
     }
   } : null;
 
