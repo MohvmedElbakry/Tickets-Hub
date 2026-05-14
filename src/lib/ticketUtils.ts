@@ -23,17 +23,59 @@ export const handleDownloadPDF = async (order: Order) => {
   const element = document.getElementById(`ticket-card-${order.id}`);
   if (!element) return;
 
+  // 1. Create a professional export-safe theme override style
+  // This forces all modern color functions to stable HEX/RGB fallbacks
+  // specifically during the export process to prevent html2canvas crashes.
   const style = document.createElement('style');
+  style.id = 'ticket-export-overrides';
   style.innerHTML = `
-    * {
+    .export-pdf-mode {
+      --teal: #00C9B1 !important;
+      --teal-light: #4DDECF !important;
+      --teal-dark: #00A896 !important;
+      --teal-deep: #007A6E !important;
+      --bg-page: #0A0F0E !important;
+      --bg-card: #111918 !important;
+      --bg-border: #1A2422 !important;
+      --bg-elevated: #1E2D2B !important;
+      --text-primary: #E8F5F3 !important;
+      --text-muted: #7AADA6 !important;
+      --status-success: #00C9B1 !important;
+      --status-error: #E84040 !important;
+      --status-warning: #E8A020 !important;
+      
+      /* Reset modern color features that conflict with html2canvas */
+      color-interpolation-filters: sRGB !important;
+      color-rendering: optimizeQuality !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
-      color-adjust: exact !important;
+    }
+
+    /* Disable all animations and expensive effects during capture */
+    .export-pdf-mode *, 
+    .export-pdf-mode {
+      transition: none !important;
+      animation: none !important;
+      transform: none !important;
+      box-shadow: none !important;
+      text-shadow: none !important;
+      backdrop-filter: none !important;
+      filter: none !important;
+    }
+
+    /* Ensure scroll containers are fully expanded */
+    .export-pdf-mode .custom-scrollbar {
+      overflow: visible !important;
+      max-height: none !important;
+      display: block !important;
     }
   `;
   
   try {
     document.head.appendChild(style);
+    
+    // 2. Apply the export mode class to the target element
+    element.classList.add('export-pdf-mode');
 
     const canvas = await html2canvas(element, {
       scale: 3,
@@ -46,32 +88,11 @@ export const handleDownloadPDF = async (order: Order) => {
       windowWidth: element.scrollWidth,
       windowHeight: element.scrollHeight,
       onclone: (clonedDoc) => {
-        // Force PDF rendering mode properties on the cloned element
+        // Double-check the cloned element dimensions
         const clonedElement = clonedDoc.getElementById(`ticket-card-${order.id}`);
         if (clonedElement) {
           clonedElement.style.width = '500px';
-          clonedElement.style.transform = 'none';
-          clonedElement.style.transition = 'none';
-          clonedElement.style.animation = 'none';
-          clonedElement.style.boxShadow = 'none';
-          
-          // Inject a style to handle nested elements in the clone
-          const cloneStyle = clonedDoc.createElement('style');
-          cloneStyle.innerHTML = `
-            #ticket-card-${order.id} *, 
-            #ticket-card-${order.id} {
-              transition: none !important;
-              animation: none !important;
-              transform: none !important;
-              box-shadow: none !important;
-              text-shadow: none !important;
-            }
-            .custom-scrollbar {
-              overflow: visible !important;
-              max-height: none !important;
-            }
-          `;
-          clonedDoc.head.appendChild(cloneStyle);
+          clonedElement.style.display = 'block';
         }
       }
     });
@@ -91,6 +112,8 @@ export const handleDownloadPDF = async (order: Order) => {
     console.error('PDF generation failed', error);
     alert('Failed to generate PDF. Please try again.');
   } finally {
+    // 3. Guaranteed Cleanup
+    element.classList.remove('export-pdf-mode');
     if (document.head.contains(style)) {
       document.head.removeChild(style);
     }
