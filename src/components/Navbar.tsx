@@ -37,21 +37,6 @@ export const Navbar = () => {
 
   return (
     <nav className="sticky top-0 z-50 bg-bg-page/80 backdrop-blur-lg border-b border-bg-border">
-      {/* Maintenance Banner */}
-      <div className="bg-status-warning/10 border-b border-status-warning/20 py-3 px-4 relative overflow-hidden group">
-        <div className="absolute inset-0 bg-status-warning/5 animate-pulse"></div>
-        <div className="max-w-7xl mx-auto relative z-10">
-          <div className="flex items-center justify-center gap-3">
-            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-status-warning/20 shrink-0 border border-status-warning/30">
-              <AlertCircle size={14} className="text-status-warning" />
-            </div>
-            <p className="text-[10px] sm:text-label font-black uppercase tracking-[0.2em] text-status-warning text-center leading-relaxed">
-              Tickets hub is under maintenence right now, please wait a few minutes and try again
-            </p>
-          </div>
-        </div>
-      </div>
-
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-24 lg:h-28">
           <Link to="/" className="cursor-pointer group focus:outline-none">
