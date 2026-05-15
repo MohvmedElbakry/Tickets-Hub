@@ -1,6 +1,6 @@
 import React from 'react';
-import { QRCodeSVG } from 'qrcode.react';
-import { RefreshCw, Lock, ShieldCheck } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
+import { RefreshCw, Lock } from 'lucide-react';
 
 interface TicketQRSectionProps {
   qrData?: string;
@@ -115,7 +115,7 @@ export const TicketQRSection: React.FC<TicketQRSectionProps> = ({
         style={isPdf ? styleProps?.qrBg : undefined}
       >
         {qrData ? (
-          <QRCodeSVG 
+          <QRCodeCanvas 
             value={qrData} 
             size={qrSize}
             level="H"

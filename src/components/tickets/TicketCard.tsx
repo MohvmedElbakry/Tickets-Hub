@@ -105,7 +105,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
     textHeading: {
       color: '#F3F7F6',
       fontFamily: 'system-ui, -apple-system, sans-serif',
-      fontSize: '22px',
+      fontSize: '18px',
       fontWeight: '900',
       letterSpacing: '-0.02em',
       lineHeight: '1.2',
@@ -113,7 +113,8 @@ export const TicketCard: React.FC<TicketCardProps> = ({
     },
     textMuted: { 
       color: '#A7B5B2',
-      fontFamily: 'system-ui, -apple-system, sans-serif'
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      lineHeight: '1.4'
     },
     textLabel: {
       color: 'rgba(167, 181, 178, 0.5)',
@@ -123,7 +124,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
       letterSpacing: '0.12em',
       textTransform: 'uppercase' as const,
       margin: '0 0 4px 0',
-      lineHeight: '1.2'
+      lineHeight: '1.4'
     },
     teal: { color: '#00C9B1' },
     metaItem: {
@@ -131,13 +132,12 @@ export const TicketCard: React.FC<TicketCardProps> = ({
       flexDirection: 'row' as const,
       alignItems: 'center',
       justifyContent: 'flex-start',
-      gap: '5px',
-      fontSize: '8px',
+      gap: '6px',
+      fontSize: '9px',
       fontWeight: '700',
       color: '#A7B5B2',
-      paddingTop: '1px',
-      paddingBottom: '1px',
-      lineHeight: '1.2',
+      minHeight: '16px',
+      lineHeight: '1',
       boxSizing: 'border-box' as const
     },
     metaGrid: {
@@ -344,11 +344,11 @@ export const TicketCard: React.FC<TicketCardProps> = ({
                   </div>
                   <div 
                     className={isPdf ? '' : 'flex flex-col gap-0 overflow-hidden content-stack'}
-                    style={isPdf ? { display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px', minWidth: 0, paddingTop: '2px', paddingBottom: '1px' } : undefined}
+                    style={isPdf ? { display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px', minWidth: 0, padding: '2px 0' } : undefined}
                   >
                     <p 
                       className={isPdf ? '' : 'text-[11px] font-bold line-clamp-1 text-text-primary group/holder:text-teal transition-colors'}
-                      style={isPdf ? { ...styles?.textPrimary, fontSize: '8px', fontWeight: '700', lineHeight: '1.2', display: 'block', margin: 0, padding: 0 } : undefined}
+                      style={isPdf ? { ...styles?.textPrimary, fontSize: '9px', fontWeight: '700', lineHeight: '1.1', display: 'block', margin: 0, padding: 0 } : undefined}
                     >
                       {item.name || 'Attendee'}
                     </p>

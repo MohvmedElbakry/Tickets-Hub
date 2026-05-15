@@ -2,6 +2,7 @@
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
 import React from 'react';
 import { Order } from '../types';
 import { TicketCard } from '../components/tickets/TicketCard';
@@ -23,25 +24,33 @@ export const isQRCodeVisible = (eventDate: string, eventTime: string, qrEnabledM
 };
 
 /**
- * DETACHED REACT RENDER PIPELINE
+ * DETACHED REACT RENDER PIPELINE - PRODUCTION GRADE
  * 
  * Instead of cloning the live DOM, we render a fresh, isolated React subtree
  * specifically for export. This guarantees that html2canvas NEVER sees
  * Tailwind v4 color tokens (oklab/oklch) which cause parser crashes.
+ * 
+ * We use flushSync to force an immediate commit to the DOM.
  */
 export const handleDownloadPDF = async (order: Order, qrData?: string, qrVisible?: boolean, qrReason?: string) => {
   if (!order) return;
 
   // 1. Create a NEW detached export container
+  // We place it in the viewport but invisible to ensure the browser paints it correctly.
   const exportContainer = document.createElement('div');
+  exportContainer.id = 'pdf-export-anchor';
   Object.assign(exportContainer.style, {
     position: 'fixed',
     top: '0',
-    left: '-9999px', // Out of viewport
+    left: '0',
     width: '500px',
     height: 'auto',
     backgroundColor: '#0A0F0E',
-    zIndex: '-1000'
+    zIndex: '-9999',
+    opacity: '0',
+    pointerEvents: 'none',
+    visibility: 'visible',
+    overflow: 'visible'
   });
   
   document.body.appendChild(exportContainer);
@@ -49,56 +58,66 @@ export const handleDownloadPDF = async (order: Order, qrData?: string, qrVisible
   const root = createRoot(exportContainer);
 
   try {
-    // 2. Render the isolated ticket subtree
-    // We pass isPdf={true} to force the component into its self-contained rendering mode
-    root.render(
-      React.createElement(TicketCard, {
-        order,
-        qrData,
-        qrVisible,
-        qrReason,
-        isPdf: true
-      })
-    );
+    // 2. Force a synchronous React render to the DOM
+    // This ensures that ticketNode is available and fully populated immediately.
+    flushSync(() => {
+      root.render(
+        React.createElement(TicketCard, {
+          order,
+          qrData,
+          qrVisible,
+          qrReason,
+          isPdf: true
+        })
+      );
+    });
 
-    // 4. Wait for React to finish the render cycle and commit to the DOM
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // 3. Brief layout stabilization delay
+    // flushSync commits to DOM, but the browser may need an extra tick for layout calculations.
+    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 50)));
 
-    // 5. Select the rendered node
+    // 4. Select the rendered node
     const ticketNode = exportContainer.firstChild as HTMLElement;
     if (!ticketNode) throw new Error('Render failed to produce DOM node');
 
-    // 6. Capture using html2canvas
+    // 5. Capture using html2canvas
+    // WE REMOVED foreignObjectRendering as it is the primary source of blank PDF failures.
     const canvas = await html2canvas(ticketNode, {
-      scale: window.devicePixelRatio > 1 ? 2 : 1.5,
+      scale: 2, // Stable high resolution
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#0A0F0E',
       logging: false,
       width: 500,
       height: ticketNode.offsetHeight,
-      foreignObjectRendering: true,
-      removeContainer: true
+      removeContainer: true,
+      imageTimeout: 15000,
+      onclone: (clonedDoc) => {
+        // Additional stabilization inside the clone if needed
+        const clonedNode = clonedDoc.getElementById('pdf-export-anchor');
+        if (clonedNode) (clonedNode as HTMLElement).style.opacity = '1';
+      }
     });
 
-    // 7. Generate PDF
-    const imgData = canvas.toDataURL('image/png');
-    const pdfWidth = canvas.width / 2;
-    const pdfHeight = canvas.height / 2;
+    // 6. Generate PDF using PNG for lossless text edges
+    const imgData = canvas.toDataURL('image/png', 1.0);
+    const pdfWidth = 500; // Match container width
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
     
     const pdf = new jsPDF({
       orientation: 'p',
       unit: 'px',
-      format: [pdfWidth, pdfHeight]
+      format: [pdfWidth, pdfHeight],
+      hotfixes: ["px_scaling"]
     });
 
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'SLOW');
     pdf.save(`Ticket-${order.id}.pdf`);
 
   } catch (error) {
-    console.error('Detached PDF Pipeline Failed:', error);
+    console.error('Production PDF Pipeline Failed:', error);
   } finally {
-    // 8. CRITICAL CLEANUP
+    // 7. CRITICAL CLEANUP
     root.unmount();
     if (exportContainer.parentNode) {
       document.body.removeChild(exportContainer);
