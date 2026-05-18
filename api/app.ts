@@ -992,46 +992,64 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res) => {
     await page.emulateMediaType('screen');
 
     // Navigate and wait for content
-    await page.goto(targetUrl, { 
-      waitUntil: ['networkidle0', 'domcontentloaded'],
+    console.log('[PDF Export] Navigating to page...');
+    const response = await page.goto(targetUrl, { 
+      waitUntil: 'domcontentloaded',
       timeout: 30000 
     });
+    console.log(`[PDF Export] Page navigation completed with status: ${response?.status()}`);
 
-    // Wait for fonts to be ready
-    await page.evaluateHandle('document.fonts.ready');
+    // Check if the page returned an error status
+    if (response && response.status() >= 400) {
+      const pageContent = await page.content();
+      console.error(`[PDF Export] Page returned error status ${response.status()}. Content: ${pageContent.substring(0, 500)}...`);
+      throw new Error(`Target page returned status ${response.status()}`);
+    }
 
-    // Wait for a small buffer to ensure QR code and any other dynamic elements are fully rendered
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Wait for fonts to be ready with a timeout
+    console.log('[PDF Export] Waiting for fonts...');
+    await Promise.race([
+      page.evaluateHandle('document.fonts.ready'),
+      new Promise(resolve => setTimeout(resolve, 5000))
+    ]);
+    console.log('[PDF Export] Fonts wait completed (or timed out)');
 
     // Wait for the ticket card to be visible
-    await page.waitForSelector('#print-content', { timeout: 10000 });
+    console.log('[PDF Export] Waiting for #print-content selector...');
+    await page.waitForSelector('#print-content', { visible: true, timeout: 15000 });
+    console.log('[PDF Export] Selector #print-content found');
 
     // Generate the PDF
-    const pdf = await page.pdf({
+    console.log('[PDF Export] Generating PDF...');
+    const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
-      margin: {
-        top: '20mm',
-        bottom: '20mm',
-        left: '10mm',
-        right: '10mm'
-      },
-      scale: 0.8 // Scale down slightly to fit well on A4
+      preferCSSPageSize: true,
     });
 
-    console.log(`[PDF Export] PDF generated successfully for order public ID #${publicId}`);
+    console.log(`[PDF Export] PDF generated successfully. Type: ${typeof pdfBuffer}, IsBuffer: ${Buffer.isBuffer(pdfBuffer)}, Length: ${pdfBuffer.length} bytes`);
 
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename=Ticket-${publicId}.pdf`);
-    res.contentType('application/pdf');
-    res.send(pdf);
+    if (!pdfBuffer || pdfBuffer.length < 1000) {
+       throw new Error(`Generated PDF buffer is invalid or empty (${pdfBuffer?.length || 0} bytes)`);
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Ticket-${publicId}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    
+    console.log('[PDF Export] Sending PDF response...');
+    return res.end(pdfBuffer);
 
   } catch (error: any) {
     console.error(`[PDF Export] Error for order public ID #${publicId}:`, error);
-    res.status(500).json({ error: 'Failed to generate PDF ticket', details: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to generate PDF ticket', details: error.message });
+    }
   } finally {
     if (browser) {
+      console.log('[PDF Export] Closing browser...');
       await browser.close();
+      console.log('[PDF Export] Browser closed');
     }
   }
 });
