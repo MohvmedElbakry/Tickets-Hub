@@ -84,7 +84,7 @@ export const handleDownloadPDF = async (order: Order, qrData?: string, qrVisible
     // WE REMOVED foreignObjectRendering as it is the primary source of blank PDF failures.
     // 6. Capture using html2canvas
     const canvas = await html2canvas(ticketNode, {
-      scale: 2,
+      scale: 1,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#0A0F0E',
@@ -97,33 +97,6 @@ export const handleDownloadPDF = async (order: Order, qrData?: string, qrVisible
       height: ticketNode.offsetHeight,
     });
 
-    // ================================
-    // DEBUG SECTION
-    // ================================
-
-    console.log('CANVAS DEBUG', {
-      width: canvas.width,
-      height: canvas.height,
-    });
-
-    // VISUALLY APPEND CANVAS TO PAGE
-    canvas.style.position = 'fixed';
-    canvas.style.top = '20px';
-    canvas.style.right = '20px';
-    canvas.style.zIndex = '999999';
-    canvas.style.border = '4px solid red';
-    canvas.style.maxWidth = '300px';
-    canvas.style.maxHeight = '500px';
-
-    document.body.appendChild(canvas);
-
-    // EXPORT RAW PNG
-    const pngLink = document.createElement('a');
-    pngLink.href = canvas.toDataURL('image/png');
-    pngLink.download = `debug-ticket-${order.id}.png`;
-    pngLink.click();
-
-    console.log('PNG EXPORTED');
 
     // 6. Generate PDF using PNG for lossless text edges
   const imgData = canvas.toDataURL('image/png');
