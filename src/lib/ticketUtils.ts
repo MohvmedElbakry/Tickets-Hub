@@ -84,7 +84,7 @@ export const handleDownloadPDF = async (order: Order, qrData?: string, qrVisible
     // WE REMOVED foreignObjectRendering as it is the primary source of blank PDF failures.
     // 6. Capture using html2canvas
     const canvas = await html2canvas(ticketNode, {
-      scale: 1,
+      scale: 2,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#0A0F0E',
@@ -99,24 +99,29 @@ export const handleDownloadPDF = async (order: Order, qrData?: string, qrVisible
 
 
     // 6. Generate PDF using PNG for lossless text edges
-  const imgData = canvas.toDataURL('image/png');
+const imgData = canvas.toDataURL('image/png');
 
-  const pdf = new jsPDF({
-    orientation: 'portrait',
-    unit: 'pt',
-    format: [canvas.width, canvas.height]
-  });
+const padding = 20;
 
-  pdf.addImage(
-    imgData,
-    'PNG',
-    0,
-    0,
-    canvas.width,
-    canvas.height
-  );
+const pdfWidth = canvas.width + padding * 2;
+const pdfHeight = canvas.height + padding * 2;
 
-  pdf.save(`Ticket-${order.id}.pdf`);
+const pdf = new jsPDF({
+  orientation: 'portrait',
+  unit: 'px',
+  format: [pdfWidth, pdfHeight],
+});
+
+pdf.addImage(
+  imgData,
+  'PNG',
+  padding,
+  padding,
+  canvas.width,
+  canvas.height
+);
+
+pdf.save(`Ticket-${order.id}.pdf`);
 
   } catch (error) {
     console.error('Production PDF Pipeline Failed:', error);
