@@ -972,32 +972,42 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res) => {
     console.log(`[PDF Export] Navigating to: ${targetUrl}`);
 
     console.log('[PDF Export] Launching Chromium...');
+    const launchStart = Date.now();
     const executablePath = await chromium.executablePath();
-    console.log(`[PDF Export] Chromium executable path: ${executablePath}`);
-
+    
     browser = await puppeteer.launch({
       args: (chromium as any).args,
-      defaultViewport: (chromium as any).defaultViewport,
+      defaultViewport: { width: 600, height: 800 },
       executablePath: executablePath,
       headless: (chromium as any).headless,
     });
+    console.log(`[PDF Export] Browser launched in ${Date.now() - launchStart}ms`);
 
-    console.log('[PDF Export] Browser launched successfully');
     const page = await browser.newPage();
     
-    // Set viewport to a reasonable size
-    await page.setViewport({ width: 1200, height: 800, deviceScaleFactor: 2 });
-    
-    // Set medium to screen to preserve full cinematic appearance (backgrounds, etc)
+    // Enable request interception to block unnecessary assets
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+      const resourceType = request.resourceType();
+      const allowList = ['document', 'stylesheet', 'font', 'script', 'fetch', 'xhr'];
+      
+      if (allowList.includes(resourceType)) {
+        request.continue();
+      } else {
+        request.abort();
+      }
+    });
+
     await page.emulateMediaType('screen');
 
     // Navigate and wait for content
     console.log('[PDF Export] Navigating to page...');
+    const navStart = Date.now();
     const response = await page.goto(targetUrl, { 
       waitUntil: 'domcontentloaded',
-      timeout: 30000 
+      timeout: 20000 
     });
-    console.log(`[PDF Export] Page navigation completed with status: ${response?.status()}`);
+    console.log(`[PDF Export] Page navigation completed in ${Date.now() - navStart}ms with status: ${response?.status()}`);
 
     // Check if the page returned an error status
     if (response && response.status() >= 400) {
@@ -1006,28 +1016,43 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res) => {
       throw new Error(`Target page returned status ${response.status()}`);
     }
 
-    // Wait for fonts to be ready with a timeout
-    console.log('[PDF Export] Waiting for fonts...');
-    await Promise.race([
-      page.evaluateHandle('document.fonts.ready'),
-      new Promise(resolve => setTimeout(resolve, 5000))
-    ]);
-    console.log('[PDF Export] Fonts wait completed (or timed out)');
-
     // Wait for the ticket card to be visible
     console.log('[PDF Export] Waiting for #print-content selector...');
+    const selectorStart = Date.now();
     await page.waitForSelector('#print-content', { visible: true, timeout: 15000 });
-    console.log('[PDF Export] Selector #print-content found');
+    console.log(`[PDF Export] Selector #print-content found in ${Date.now() - selectorStart}ms`);
+
+    // Wait for fonts to be ready (fast race)
+    await Promise.race([
+      page.evaluateHandle('document.fonts.ready'),
+      new Promise(resolve => setTimeout(resolve, 2000))
+    ]);
+
+    // Measure content size
+    const element = await page.$('#print-content');
+    const boundingBox = await element?.boundingBox();
+    
+    if (!boundingBox) {
+      throw new Error('Could not measure #print-content dimensions');
+    }
+    console.log(`[PDF Export] Content dimensions measured: ${Math.ceil(boundingBox.width)}x${Math.ceil(boundingBox.height)}`);
 
     // Generate the PDF
-    console.log('[PDF Export] Generating PDF...');
+    console.log('[PDF Export] Generating content-sized PDF...');
+    const genStart = Date.now();
     const pdfBuffer = await page.pdf({
-      format: 'A4',
+      width: `${Math.ceil(boundingBox.width)}px`,
+      height: `${Math.ceil(boundingBox.height)}px`,
       printBackground: true,
+      margin: {
+        top: '0px',
+        right: '0px',
+        bottom: '0px',
+        left: '0px'
+      },
       preferCSSPageSize: true,
     });
-
-    console.log(`[PDF Export] PDF generated successfully. Type: ${typeof pdfBuffer}, IsBuffer: ${Buffer.isBuffer(pdfBuffer)}, Length: ${pdfBuffer.length} bytes`);
+    console.log(`[PDF Export] PDF generated in ${Date.now() - genStart}ms. Length: ${pdfBuffer.length} bytes`);
 
     if (!pdfBuffer || pdfBuffer.length < 1000) {
        throw new Error(`Generated PDF buffer is invalid or empty (${pdfBuffer?.length || 0} bytes)`);

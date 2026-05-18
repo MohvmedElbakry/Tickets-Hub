@@ -35,7 +35,7 @@ const TicketPrintPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0F0E] flex items-center justify-center p-10 print:p-0">
+    <div className="bg-[#0A0F0E] inline-block">
       <div id="print-content" className="relative">
         <TicketPrintCard 
           order={order}
