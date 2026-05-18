@@ -80,12 +80,12 @@ export const useKashierReturn = () => {
              isPaidRef.current = true;
              
              // Invalidate caches
-             invalidateOrder(Number(orderId));
+             invalidateOrder(orderId);
              clearQRStatusCache(orderId);
              
              // IMMEDIATELY set state before navigation
              setLastOrder({ 
-               id: Number(orderId), 
+               public_id: orderId,
                is_paid: true, 
                order_status: 'paid'
              } as any);
@@ -101,7 +101,7 @@ export const useKashierReturn = () => {
                replace: true,
                state: {
                  order: {
-                   id: Number(orderId),
+                   public_id: orderId,
                    is_paid: true,
                    order_status: 'paid'
                  }
@@ -129,12 +129,12 @@ export const useKashierReturn = () => {
             isPaidRef.current = true; // STOP LOOP
             
             // Invalidate caches
-            invalidateOrder(Number(orderId));
+            invalidateOrder(orderId);
             clearQRStatusCache(orderId);
             
             // IMMEDIATELY set state before navigation
             setLastOrder({ 
-              id: Number(orderId), 
+              public_id: orderId,
               is_paid: true, 
               order_status: 'paid'
             } as any);
@@ -150,7 +150,7 @@ export const useKashierReturn = () => {
               replace: true,
               state: {
                 order: {
-                  id: Number(orderId), 
+                  public_id: orderId, 
                   is_paid: true, 
                   order_status: 'paid'
                 }
@@ -222,7 +222,7 @@ export const useKashierReturn = () => {
       replace: true,
       state: {
         order: {
-          id: Number(pendingOrderId),
+          public_id: pendingOrderId,
           is_paid: true,
           order_status: 'paid'
         }

@@ -36,15 +36,15 @@ export const orderService = {
   },
 
   async getOrderQRStatus(id: string | number) {
-    return await ordersApi.getOrderQRStatus(Number(id));
+    return await ordersApi.getOrderQRStatus(id);
   },
 
   async payOrder(id: string | number) {
-    return await ordersApi.payOrder(Number(id));
+    return await ordersApi.payOrder(id);
   },
 
   async rejectInvitation(id: string | number) {
-    return await ordersApi.rejectInvitation(Number(id));
+    return await ordersApi.rejectInvitation(id);
   },
 
   async createResaleRequest(params: {
@@ -56,7 +56,7 @@ export const orderService = {
     return await ordersApi.createResaleRequest(params);
   },
 
-  async createPaymentSession(orderId: number) {
+  async createPaymentSession(orderId: number | string) {
     return await ordersApi.createPaymentSession(orderId);
   },
 
@@ -84,19 +84,19 @@ export const orderService = {
     return await ordersApi.adminCreateInvitation(params);
   },
 
-  async adminMarkResalePaid(id: number) {
+  async adminMarkResalePaid(id: string | number) {
     return await ordersApi.adminMarkResalePaid(id);
   },
 
-  async adminDeleteInvitation(id: number) {
+  async adminDeleteInvitation(id: string | number) {
     return await ordersApi.adminDeleteInvitation(id);
   },
 
   async adminApproveOrder(id: number | string) {
-    return await ordersApi.adminApproveOrder(Number(id));
+    return await ordersApi.adminApproveOrder(id);
   },
 
   async adminRejectOrder(id: number | string) {
-    return await ordersApi.adminRejectOrder(Number(id));
+    return await ordersApi.adminRejectOrder(id);
   }
 };

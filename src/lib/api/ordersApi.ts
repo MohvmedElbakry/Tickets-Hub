@@ -21,7 +21,7 @@ export const verifyPayment = async (params: { orderId: string | number }): Promi
   return await fetchWithAuth(`/api/payments/verify/${params.orderId}`);
 };
 
-export const getOrderQRStatus = async (orderId: number): Promise<any> => {
+export const getOrderQRStatus = async (orderId: string | number): Promise<any> => {
   return await fetchWithAuth(`/api/orders/${orderId}/qr-status`);
 };
 
@@ -50,13 +50,13 @@ export const adminUpdateOrderStatus = async (id: number, status: string): Promis
   });
 };
 
-export const adminApproveOrder = async (id: number): Promise<any> => {
+export const adminApproveOrder = async (id: string | number): Promise<any> => {
   return await fetchWithAuth(`/api/orders/${id}/approve`, {
     method: 'PUT'
   });
 };
 
-export const adminRejectOrder = async (id: number): Promise<any> => {
+export const adminRejectOrder = async (id: string | number): Promise<any> => {
   return await fetchWithAuth(`/api/orders/${id}/reject`, {
     method: 'PUT'
   });
@@ -73,7 +73,7 @@ export const adminUpdateResellStatus = async (id: number, status: string): Promi
   });
 };
 
-export const adminMarkResalePaid = async (id: number): Promise<any> => {
+export const adminMarkResalePaid = async (id: string | number): Promise<any> => {
   return await fetchWithAuth(`/api/admin/resale/${id}/payout`, {
     method: 'PUT'
   });
@@ -90,25 +90,25 @@ export const adminCreateInvitation = async (data: any): Promise<any> => {
   });
 };
 
-export const adminDeleteInvitation = async (id: number): Promise<any> => {
+export const adminDeleteInvitation = async (id: string | number): Promise<any> => {
   return await fetchWithAuth(`/api/admin/invitations/${id}`, {
     method: 'DELETE'
   });
 };
 
-export const payOrder = async (id: number): Promise<any> => {
+export const payOrder = async (id: string | number): Promise<any> => {
   return await fetchWithAuth(`/api/orders/${id}/pay`, {
     method: 'PUT'
   });
 };
 
-export const rejectInvitation = async (id: number): Promise<any> => {
+export const rejectInvitation = async (id: string | number): Promise<any> => {
   return await fetchWithAuth(`/api/orders/${id}/reject`, {
     method: 'PUT'
   });
 };
 
-export const createPaymentSession = async (orderId: number): Promise<any> => {
+export const createPaymentSession = async (orderId: string | number): Promise<any> => {
   return await fetchWithAuth('/api/payments/create-session', {
     method: 'POST',
     body: JSON.stringify({ order_id: orderId })

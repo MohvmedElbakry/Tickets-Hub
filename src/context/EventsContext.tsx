@@ -160,11 +160,12 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
 
       if (order) {
+        const orderId = order.public_id || order.id;
         if (order.order_status === 'pending_approval') {
-          navigate(`/confirmation/${order.id}`);
+          navigate(`/confirmation/${orderId}`);
           setIsBookingModalOpen(false);
         } else {
-          navigate(`/checkout/${order.id}`);
+          navigate(`/checkout/${orderId}`);
           setIsBookingModalOpen(false);
         }
       }

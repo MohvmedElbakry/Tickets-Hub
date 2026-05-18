@@ -520,9 +520,9 @@ app.get('/api/admin/orders', authenticateToken, authorizeRole(['admin']), async 
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/orders/:id', async (req: any, res) => {
+app.get('/api/orders/:publicId', async (req: any, res) => {
   try {
-    const order = await db.getOrderById(parseInt(req.params.id));
+    const order = await db.getOrderByPublicId(req.params.publicId);
     if (!order) return res.status(404).json({ error: 'Not found' });
     const items = await db.getOrderTicketsByOrderId(order.id);
     const event = await db.getEventById(order.event_id);
@@ -558,7 +558,13 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
 
     try {
       // Fetch order with user relation to dynamically extract customer data
-      const order = await db.getOrderById(parseInt(order_id));
+      let order: any = null;
+      if (!isNaN(Number(order_id))) {
+        order = await db.getOrderById(parseInt(order_id));
+      }
+      if (!order) {
+        order = await db.getOrderByPublicId(order_id);
+      }
 
       if (!order) {
         return res.status(404).json({ error: 'Order not found' });
@@ -632,6 +638,8 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
       console.log(`[Payment] Merchant ID: ${KASHIER_MERCHANT_ID}`);
       console.log(`[Payment] Amount: ${finalAmount}`);
 
+      const orderIdentifier = order.public_id || order.id.toString();
+
       const response = await fetch(kashierApiUrl, {
         method: 'POST',
         headers: {
@@ -642,9 +650,9 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
         body: JSON.stringify({
           amount: finalAmount.toString(),
           currency: 'EGP',
-          order: order_id.toString(),
+          order: orderIdentifier,
           merchantId: KASHIER_MERCHANT_ID,
-          merchantRedirect: `${APP_URL}/payment-return?order_id=${order_id}&origin=kashier`,
+          merchantRedirect: `${APP_URL}/payment-return?order_id=${orderIdentifier}&origin=kashier`,
           expireAt: expireAt,
           display: 'en',
           type: 'one-time',
@@ -708,7 +716,12 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
         order = await db.getOrderById(Number(orderIdParam));
       }
 
-      // 2. Fallback to Kashier UUID
+      // 2. Try Public ID (UUID)
+      if (!order) {
+        order = await db.getOrderByPublicId(orderIdParam);
+      }
+
+      // 3. Fallback to Kashier UUID
       if (!order) {
         order = await db.getOrderByKashierOrderId(orderIdParam);
       }
@@ -751,6 +764,9 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
       let order: any = null;
       if (!isNaN(Number(orderId))) {
         order = await db.getOrderById(Number(orderId));
+      }
+      if (!order) {
+        order = await db.getOrderByPublicId(orderId);
       }
       if (!order) {
         order = await db.getOrderByKashierOrderId(orderId);
@@ -982,16 +998,19 @@ app.post(['/api/user/redeem', '/api/user/points/redeem'], authenticateToken, asy
 });
 
 // --- TICKET PRINT & PDF API ---
-app.get('/api/tickets/:id/pdf', async (req: any, res) => {
-  const orderId = req.params.id;
-  console.log(`[PDF Export] Starting export for order #${orderId}`);
+app.get('/api/tickets/:publicId/pdf', async (req: any, res) => {
+  const publicId = req.params.publicId;
+  console.log(`[PDF Export] Starting export for order public ID #${publicId}`);
   
   let browser;
   try {
+    const order = await db.getOrderByPublicId(publicId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
     const protocol = req.get('x-forwarded-proto') || req.protocol;
     const host = req.get('host');
     const APP_URL = process.env.APP_URL || `${protocol}://${host}`;
-    const targetUrl = `${APP_URL}/ticket/print/${orderId}`;
+    const targetUrl = `${APP_URL}/ticket/print/${publicId}`;
 
     console.log(`[PDF Export] Navigating to: ${targetUrl}`);
 
@@ -1043,15 +1062,15 @@ app.get('/api/tickets/:id/pdf', async (req: any, res) => {
       scale: 0.8 // Scale down slightly to fit well on A4
     });
 
-    console.log(`[PDF Export] PDF generated successfully for order #${orderId}`);
+    console.log(`[PDF Export] PDF generated successfully for order public ID #${publicId}`);
 
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename=Ticket-${orderId}.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename=Ticket-${publicId}.pdf`);
     res.contentType('application/pdf');
     res.send(pdf);
 
   } catch (error: any) {
-    console.error(`[PDF Export] Error for order #${orderId}:`, error);
+    console.error(`[PDF Export] Error for order public ID #${publicId}:`, error);
     res.status(500).json({ error: 'Failed to generate PDF ticket', details: error.message });
   } finally {
     if (browser) {
@@ -1282,17 +1301,29 @@ app.post('/api/admin/scan', authenticateToken, authorizeRole(['admin']), async (
 
 app.get('/api/orders/:id/qr-status', async (req: any, res) => {
   try {
-    const order = await db.getOrderById(parseInt(req.params.id));
+    const idParam = req.params.id;
+    let order: any = null;
+    
+    if (!isNaN(Number(idParam))) {
+      order = await db.getOrderById(parseInt(idParam));
+    }
+    if (!order) {
+      order = await db.getOrderByPublicId(idParam);
+    }
+
     if (!order) return res.status(404).json({ error: 'Not found' });
     const event = await db.getEventById(order.event_id);
     if (!event) return res.status(404).json({ error: 'Event not found' });
     if (!order.is_paid || !order.qr_code_token) return res.json({ visible: false, reason: 'Payment pending' });
-    if (event.qr_enabled_manual === true) return res.json({ visible: true, qr_data: `TicketsHub-Order-${order.qr_code_token}` });
+    
+    // Check if QR is manually enabled or if it's within the 1h window
+    const qrData = `TicketsHub-Order-${order.qr_code_token}`;
+    if (event.qr_enabled_manual === true) return res.json({ visible: true, qr_data: qrData });
     
     const eventDate = event.event_date;
     if (!eventDate) return res.json({ visible: false, reason: 'Event date not set' });
     const eventTime = new Date(eventDate).getTime();
-    if (Date.now() >= eventTime - (60 * 60 * 1000)) return res.json({ visible: true, qr_data: `TicketsHub-Order-${order.qr_code_token}` });
+    if (Date.now() >= eventTime - (60 * 60 * 1000)) return res.json({ visible: true, qr_data: qrData });
     res.json({ visible: false, reason: 'Available 1h before event' });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });

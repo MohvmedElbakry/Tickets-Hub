@@ -156,15 +156,15 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/events" element={<EventsListingPage />} />
                 <Route path="/events/:id" element={<EventDetailsPage />} />
-                <Route path="/checkout/:id" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
-                <Route path="/confirmation/:id" element={<ProtectedRoute><ConfirmationPage /></ProtectedRoute>} />
-                <Route path="/payment-failure/:id" element={<ProtectedRoute><PaymentFailurePage /></ProtectedRoute>} />
+                <Route path="/checkout/:publicId" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
+                <Route path="/confirmation/:publicId" element={<ProtectedRoute><ConfirmationPage /></ProtectedRoute>} />
+                <Route path="/payment-failure/:publicId" element={<ProtectedRoute><PaymentFailurePage /></ProtectedRoute>} />
                 <Route path="/payment-failure" element={<ProtectedRoute><PaymentFailurePage /></ProtectedRoute>} />
                 <Route path="/payment-return" element={<ProtectedRoute><PaymentReturnPage /></ProtectedRoute>} />
                 <Route path="/payment/pending" element={<ProtectedRoute><PaymentPendingPage /></ProtectedRoute>} />
                 <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
                 <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-                <Route path="/ticket/print/:id" element={<TicketPrintPage />} />
+                <Route path="/ticket/print/:publicId" element={<TicketPrintPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </PageContainer>

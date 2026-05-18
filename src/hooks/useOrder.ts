@@ -12,20 +12,19 @@ export const useOrder = (orderId: string | number | undefined) => {
     mountedRef.current = true;
     
     const fetchOrder = async () => {
-      const id = typeof orderId === 'string' ? parseInt(orderId, 10) : orderId;
-      if (!id || isNaN(id)) {
+      if (!orderId) {
         setOrder(null);
         return;
       }
 
       // Only show loading if we don't have the order data already
-      if (!order || order.id !== id) {
+      if (!order || (order.id !== orderId && order.public_id !== orderId)) {
         setLoading(true);
       }
       
       setError(null);
       try {
-        const data = await getOrderCached(id);
+        const data = await getOrderCached(orderId);
         if (mountedRef.current) {
           setOrder(data);
         }

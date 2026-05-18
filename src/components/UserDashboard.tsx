@@ -51,7 +51,7 @@ export const UserDashboard = () => {
   const [exportingOrder, setExportingOrder] = useState<Order | null>(null);
   
       // Phase 3.2.4: Use single source of truth for the viewing ticket
-  const { order: freshOrder, loading: loadingFullOrder } = useOrder(viewingTicket?.id);
+  const { order: freshOrder, loading: loadingFullOrder } = useOrder(viewingTicket?.public_id || viewingTicket?.id?.toString());
 
   // QR status for export logic removed in favor of server-side Puppeteer migration
   // const { qrStatus: exportingQrStatus, loading: loadingExportingQr } = useQRStatus(...)
@@ -65,7 +65,7 @@ export const UserDashboard = () => {
     qrStatus: viewingTicketQrStatus, 
     loading: loadingViewingQr 
   } = useQRStatus(
-    viewingTicket?.id?.toString(), 
+    viewingTicket?.public_id || viewingTicket?.id?.toString(), 
     viewingTicket?.is_paid === true
   );
 
@@ -238,7 +238,7 @@ export const UserDashboard = () => {
                         </div>
                         <div className="p-5 pt-0 flex justify-between items-center border-t border-bg-border mt-auto h-16 bg-bg-elevated/20 group-hover:bg-bg-elevated transition-colors">
                           <div className="content-stack gap-0">
-                            <p className="text-label text-text-muted">Order #{order.id}</p>
+                            <p className="text-label text-text-muted">Order #{order.public_id?.split('-')[0] || order.id}</p>
                             <p className="text-body-sm text-text-primary font-black uppercase tracking-tight">{order.total_price.toFixed(2)} EGP</p>
                           </div>
                           <Button variant="outline" size="sm">Details</Button>
@@ -321,7 +321,7 @@ export const UserDashboard = () => {
                       </div>
                       <div className="p-5 pt-0 flex justify-between items-center border-t border-bg-border mt-auto h-20">
                         <div className="content-stack gap-0">
-                          <p className="text-label text-text-muted">{item.type === 'order' ? `Order #${item.id}` : 'Pre-Registration'}</p>
+                          <p className="text-label text-text-muted">{item.type === 'order' ? `Order #${item.public_id?.split('-')[0] || item.id}` : 'Pre-Registration'}</p>
                           <p className="text-body-sm font-bold text-text-primary">{item.total_price ? `${item.total_price.toFixed(2)} EGP` : 'TBA'}</p>
                         </div>
                         <div className="flex gap-2">
@@ -612,7 +612,7 @@ export const UserDashboard = () => {
                       {orders.length > 0 ? (
                         orders.map(order => (
                           <tr key={order.id} className="hover:bg-bg-elevated/50 transition-colors duration-base">
-                            <td className="px-6 py-5 font-mono text-body-xs text-text-muted tracking-tighter">#{order.id}</td>
+                            <td className="px-6 py-5 font-mono text-body-xs text-text-muted tracking-tighter">#{order.public_id?.split('-')[0] || order.id}</td>
                             <td className="px-6 py-5 text-body-sm font-bold text-text-primary">{order.event?.title}</td>
                             <td className="px-6 py-5 text-body-sm font-bold text-teal">{order.total_price.toFixed(2)} <span className="text-body-xs font-normal opacity-60">EGP</span></td>
                             <td className="px-6 py-5 text-body-xs text-text-muted">{order.created_at}</td>

@@ -92,6 +92,7 @@ model Voucher {
 
 model Order {
   id                     Int             @id @default(autoincrement())
+  public_id              String          @unique @default(uuid())
   user_id                Int
   user                   User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
   event_id               Int

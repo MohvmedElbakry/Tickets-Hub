@@ -638,6 +638,21 @@ class PrismaDB {
     }
   }
 
+  async getOrderByPublicId(publicId: string) {
+    try {
+      const order = await prisma.order.findUnique({ 
+        where: { public_id: publicId },
+        include: { user: true, event: true, order_tickets: { include: { ticket_type: true } } }
+      });
+      if (order && (order as any).order_tickets) (order as any).items = (order as any).order_tickets;
+      console.log(`[DB SUCCESS] Order fetched by public ID ${publicId}:`, !!order);
+      return order;
+    } catch (err) {
+      console.error(`[DB ERROR] getOrderByPublicId(${publicId}):`, err);
+      throw err;
+    }
+  }
+
   async getOrderByKashierOrderId(kashierOrderId: string) {
     try {
       const result = await prisma.order.findUnique({

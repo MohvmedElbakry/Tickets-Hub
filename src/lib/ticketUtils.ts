@@ -29,8 +29,10 @@ export const isQRCodeVisible = (eventDate: string, eventTime: string, qrEnabledM
 export const handleDownloadPDF = async (order: Order) => {
   if (!order) return;
 
+  const orderIdentifier = order.public_id || order.id.toString();
+
   try {
-    const response = await fetch(`/api/tickets/${order.id}/pdf`);
+    const response = await fetch(`/api/tickets/${orderIdentifier}/pdf`);
     
     if (!response.ok) {
       throw new Error(`Failed to generate PDF: ${response.statusText}`);
@@ -40,7 +42,7 @@ export const handleDownloadPDF = async (order: Order) => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Ticket-${order.id}.pdf`;
+    a.download = `Ticket-${orderIdentifier}.pdf`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);

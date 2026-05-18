@@ -6,15 +6,15 @@ import { useOrder } from '../hooks/useOrder';
 import { useQRStatus } from '../hooks/useQRStatus';
 
 const TicketPrintPage: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
-  const { order, loading: loadingOrder, error } = useOrder(id ? parseInt(id) : undefined);
+  const { publicId } = useParams<{ publicId: string }>();
+  const { order, loading: loadingOrder, error } = useOrder(publicId);
   const isPaid = order?.is_paid || order?.order_status === 'paid';
   
   const { 
     qrStatus, 
     loading: loadingQr 
   } = useQRStatus(
-    order?.id?.toString(), 
+    order?.public_id || order?.id?.toString(), 
     isPaid
   );
 

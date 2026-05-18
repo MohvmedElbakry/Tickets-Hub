@@ -6,15 +6,16 @@ interface CacheEntry<T> {
   timestamp: number;
 }
 
-const cache = new Map<number, CacheEntry<Order>>();
-const inFlight = new Map<number, Promise<Order>>();
+const cache = new Map<string, CacheEntry<Order>>();
+const inFlight = new Map<string, Promise<Order>>();
 const ORDER_TTL_MS = 30000; // 30 seconds
 
 /**
  * Deduplicated order fetcher with TTL and background revalidation.
  */
-export const getOrderCached = async (orderId: number, forceRefresh = false): Promise<Order> => {
-  const cached = cache.get(orderId);
+export const getOrderCached = async (orderId: number | string, forceRefresh = false): Promise<Order> => {
+  const cacheKey = orderId.toString();
+  const cached = cache.get(cacheKey);
   const now = Date.now();
 
   // 1. If we have fresh cache and no force refresh, return immediately
@@ -23,8 +24,8 @@ export const getOrderCached = async (orderId: number, forceRefresh = false): Pro
   }
 
   // 2. If there's an in-flight request, return its promise
-  if (inFlight.has(orderId)) {
-    return inFlight.get(orderId)!;
+  if (inFlight.has(cacheKey)) {
+    return inFlight.get(cacheKey)!;
   }
 
   // Define the refresh function
@@ -32,13 +33,17 @@ export const getOrderCached = async (orderId: number, forceRefresh = false): Pro
     try {
       const order = await orderService.getOrder(orderId);
       if (order) {
-        const currentCached = cache.get(orderId);
-        // Only update if data actually changed to avoid unnecessary re-renders in hooks
-        if (!currentCached || JSON.stringify(currentCached.data) !== JSON.stringify(order)) {
-          cache.set(orderId, { data: order, timestamp: Date.now() });
-        } else {
-          // Just update timestamp to extend TTL
-          currentCached.timestamp = Date.now();
+        // Cache by both internal ID and public_id if available to maximize hit rate
+        const entriesToUpdate = [order.id.toString()];
+        if (order.public_id) entriesToUpdate.push(order.public_id);
+
+        for (const key of entriesToUpdate) {
+          const currentCached = cache.get(key);
+          if (!currentCached || JSON.stringify(currentCached.data) !== JSON.stringify(order)) {
+            cache.set(key, { data: order, timestamp: Date.now() });
+          } else {
+            currentCached.timestamp = Date.now();
+          }
         }
       }
       return order;
@@ -46,7 +51,7 @@ export const getOrderCached = async (orderId: number, forceRefresh = false): Pro
       console.error(`Failed to fetch order ${orderId}:`, error);
       throw error;
     } finally {
-      inFlight.delete(orderId);
+      inFlight.delete(cacheKey);
     }
   };
 
@@ -59,7 +64,7 @@ export const getOrderCached = async (orderId: number, forceRefresh = false): Pro
 
   // 4. No cache or force refresh: perform fetch
   const requestPromise = refresh();
-  inFlight.set(orderId, requestPromise);
+  inFlight.set(cacheKey, requestPromise);
   return requestPromise;
 };
 
@@ -67,16 +72,17 @@ export const getOrderCached = async (orderId: number, forceRefresh = false): Pro
  * Update the cache manually (e.g. after a payment update)
  */
 export const updateOrderCache = (order: Order) => {
-  if (order && order.id) {
-    cache.set(order.id, { data: order, timestamp: Date.now() });
+  if (order) {
+    if (order.id) cache.set(order.id.toString(), { data: order, timestamp: Date.now() });
+    if (order.public_id) cache.set(order.public_id, { data: order, timestamp: Date.now() });
   }
 };
 
 /**
  * Invalidate an order in the cache
  */
-export const invalidateOrder = (orderId: number) => {
-  cache.delete(orderId);
+export const invalidateOrder = (orderId: number | string) => {
+  cache.delete(orderId.toString());
 };
 
 /**

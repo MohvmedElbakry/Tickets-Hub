@@ -23,7 +23,7 @@ import { updateOrderCache, getOrderCached } from '../lib/orderCache';
 import { formatEventTime } from '../lib/utils';
 
 export const ConfirmationPage = () => {
-  const { id } = useParams<{ id: string }>();
+  const { publicId } = useParams<{ publicId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { lastOrder, setLastOrder } = useUI();
@@ -31,11 +31,11 @@ export const ConfirmationPage = () => {
   // 🔥 SINGLE SOURCE OF TRUTH PRIORITY: 
   // 1. location.state.order, 2. lastOrder (context), 3. null
   const initialOrder = (location.state as any)?.order || 
-    (lastOrder && id && lastOrder.id.toString() === id ? lastOrder : null);
+    (lastOrder && publicId && (lastOrder.public_id === publicId || lastOrder.id.toString() === publicId) ? lastOrder : null);
 
   // Pre-fill cache if we already have valid data to avoid unnecessary network calls
   useEffect(() => {
-    if (initialOrder && id && initialOrder.id.toString() === id) {
+    if (initialOrder && publicId && (initialOrder.public_id === publicId || initialOrder.id.toString() === publicId)) {
       const hasValidEventData = initialOrder.event && 
         (initialOrder.event.event_date || initialOrder.event.date) && 
         (initialOrder.event.event_time || initialOrder.event.time);
@@ -44,15 +44,15 @@ export const ConfirmationPage = () => {
         updateOrderCache(initialOrder);
       }
     }
-  }, [initialOrder, id]);
+  }, [initialOrder, publicId]);
 
-  const { order: hookOrder, loading: hookLoading } = useOrder(id);
+  const { order: hookOrder, loading: hookLoading } = useOrder(publicId);
   
   // Prefer hookOrder (cached or fetched), fallback to initialOrder for immediate UI
   const order = hookOrder || initialOrder;
   const isPaid = order?.is_paid === true || order?.order_status === 'paid';
   
-  const { qrStatus, loading: loadingQr } = useQRStatus(id, isPaid);
+  const { qrStatus, loading: loadingQr } = useQRStatus(publicId, isPaid);
   const loadingOrder = hookLoading && !initialOrder;
   
   // Sync state between hook and context
@@ -83,10 +83,10 @@ export const ConfirmationPage = () => {
   const isProcessing = !isPaid;
   
   const refreshOrderStatus = async () => {
-    if (!id) return;
+    if (!publicId) return;
     try {
       // Use getOrderCached with forceRefresh: true to ensure we hit the network
-      const resp = await getOrderCached(Number(id), true);
+      const resp = await getOrderCached(publicId, true);
       if (resp) {
         setLastOrder(resp);
       }
@@ -126,7 +126,7 @@ export const ConfirmationPage = () => {
             </div>
           )}
           <div className="mt-4 text-label font-bold tracking-widest text-text-muted/60">
-            ORDER ID: <span className="text-teal">#{order.id}</span>
+            ORDER ID: <span className="text-teal">#{order.public_id?.split('-')[0] || '...'}</span>
           </div>
         </div>
 

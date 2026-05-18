@@ -31,6 +31,7 @@ export interface TicketType {
 
 export interface Order {
   id: number;
+  public_id: string;
   user_id: number;
   event_id: number;
   total_price: number;
