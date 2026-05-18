@@ -13,7 +13,8 @@ import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
 import prisma from './lib/prisma.js';
 import { db } from './lib/db-service.js';
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 
 dotenv.config();
 
@@ -970,18 +971,18 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res) => {
 
     console.log(`[PDF Export] Navigating to: ${targetUrl}`);
 
+    console.log('[PDF Export] Launching Chromium...');
+    const executablePath = await chromium.executablePath();
+    console.log(`[PDF Export] Chromium executable path: ${executablePath}`);
+
     browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu',
-        '--window-size=1200,800'
-      ]
+      args: (chromium as any).args,
+      defaultViewport: (chromium as any).defaultViewport,
+      executablePath: executablePath,
+      headless: (chromium as any).headless,
     });
 
+    console.log('[PDF Export] Browser launched successfully');
     const page = await browser.newPage();
     
     // Set viewport to a reasonable size
