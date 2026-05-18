@@ -542,29 +542,16 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
   catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-  // --- Kashier Payment API (Payment Sessions) ---
   app.post('/api/payments/create-session', authenticateToken, async (req: any, res) => {
-    console.log('[Payment] Create session request received');
-    console.log('[Payment] Headers:', req.headers);
-    console.log('[Payment] Body type:', typeof req.body);
-    console.log('[Payment] Body:', req.body);
-    
-    // FIX 1: REMOVE req.body.amount to prevent client-side price manipulation
-    const { order_id, currency = 'EGP' } = req.body;
+    const { order_id } = req.body;
     
     if (!order_id) {
       return res.status(400).json({ error: 'order_id is required' });
     }
 
     try {
-      // Fetch order with user relation to dynamically extract customer data
-      let order: any = null;
-      if (!isNaN(Number(order_id))) {
-        order = await db.getOrderById(parseInt(order_id));
-      }
-      if (!order) {
-        order = await db.getOrderByPublicId(order_id);
-      }
+      // PROPER LOOKUP: Public APIs use Public ID (UUID)
+      const order = await db.getOrderByPublicId(order_id);
 
       if (!order) {
         return res.status(404).json({ error: 'Order not found' });
@@ -577,7 +564,7 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
 
       // CHECK FOR EXISTING SESSION
       if (order.kashier_url && !order.is_paid) {
-        console.log(`[Payment] REUSING existing Kashier session for order: ${order_id}`);
+        console.log(`[Payment] REUSING existing Kashier session for order: ${order.public_id}`);
         return res.json({ 
           payment_url: order.kashier_url, 
           checkoutUrl: order.kashier_url,
@@ -597,17 +584,12 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
         });
       }
 
-      // FIX 1 (Cont.): SECURE AMOUNT SOURCE
-      // Dynamically calculate total amount from DB price + service fees from settings
       const settings = await db.getSettings();
       const serviceFeePercent = settings?.service_fee_percent ?? 10;
       const processingFeePercent = settings?.processing_fee_percent ?? 2.75;
       const fixedFeeEgp = settings?.fixed_fee_egp ?? 3;
 
       const basePrice = order.total_price || 0;
-      // New Fee Structure:
-      // 1. Dynamic platform fee (%)
-      // 2. Gateway fee (from settings)
       const dynamicFee = basePrice * (serviceFeePercent / 100);
       const gatewayFee = (basePrice * (processingFeePercent / 100)) + fixedFeeEgp;
       const finalAmount = Number((basePrice + dynamicFee + gatewayFee).toFixed(2));
@@ -617,7 +599,6 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
       const KASHIER_MERCHANT_ID = process.env.KASHIER_MERCHANT_ID;
       const KASHIER_TEST_MODE = process.env.KASHIER_TEST_MODE === 'true';
       
-      // Dynamic URL detection for redirects
       const protocol = req.get('x-forwarded-proto') || req.protocol;
       const host = req.get('host');
       const APP_URL = process.env.APP_URL || `${protocol}://${host}`;
@@ -633,12 +614,12 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
 
       const expireAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
-      console.log('[Payment] Creating Kashier session for order:', order_id);
+      console.log('[Payment] Creating Kashier session for order:', order.public_id);
       console.log(`[Payment] URL: ${kashierApiUrl}`);
       console.log(`[Payment] Merchant ID: ${KASHIER_MERCHANT_ID}`);
       console.log(`[Payment] Amount: ${finalAmount}`);
 
-      const orderIdentifier = order.public_id || order.id.toString();
+      const orderIdentifier = order.public_id;
 
       const response = await fetch(kashierApiUrl, {
         method: 'POST',
@@ -675,12 +656,12 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
       console.log('[Kashier FULL response]:', data);
       
       if (response.ok && data.sessionUrl) {
-        console.log(`[Payment] Session created successfully for order #${order_id}.`);
+        console.log(`[Payment] Session created successfully for order #${order.public_id}.`);
         
-        // Store Kashier's UUID orderID and sessionUrl in our DB
         const kashierOrderId = data.orderId || (data.session && data.session.orderId);
-        console.log(`[Payment] Persisting session data for #${order_id}`);
-        await db.updateOrder(order_id, { 
+        console.log(`[Payment] Persisting session data for #${order.public_id}`);
+        // INTERNAL DB CALL: uses numeric order.id
+        await db.updateOrder(order.id, { 
           kashier_order_id: kashierOrderId || undefined,
           kashier_url: data.sessionUrl 
         });
@@ -705,33 +686,19 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
     }
   });
 
-  app.get('/api/payments/verify/:orderId', async (req: any, res) => {
-    const orderIdParam = req.params.orderId;
-    console.log(`[API] Checking payment verify state for order identifier: ${orderIdParam}`);
+  app.get('/api/payments/verify/:publicId', async (req: any, res) => {
+    const publicId = req.params.publicId;
+    console.log(`[API] Checking payment verify state for order identifier: ${publicId}`);
 
     try {
-      // 1. Try numeric internal ID
-      let order: any = null;
-      if (!isNaN(Number(orderIdParam))) {
-        order = await db.getOrderById(Number(orderIdParam));
-      }
-
-      // 2. Try Public ID (UUID)
-      if (!order) {
-        order = await db.getOrderByPublicId(orderIdParam);
-      }
-
-      // 3. Fallback to Kashier UUID
-      if (!order) {
-        order = await db.getOrderByKashierOrderId(orderIdParam);
-      }
+      // PROPER LOOKUP: Public APIs use Public ID (UUID)
+      const order = await db.getOrderByPublicId(publicId);
 
       if (!order) {
-        console.warn(`[API] Order for verification not found: ${orderIdParam}`);
+        console.warn(`[API] Order for verification not found: ${publicId}`);
         return res.status(404).json({ error: 'Order not found' });
       }
 
-      // 3. RULE: Return current DB state ONLY (Read-only)
       console.log(`[API] Returning payment state for order #${order.id}: ${order.is_paid ? 'PAID' : 'NOT PAID'}`);
       return res.json({ 
         success: order.is_paid, 
@@ -741,7 +708,7 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
       });
 
     } catch (error: any) {
-      console.error(`[API ERROR] /api/payments/verify/${orderIdParam}:`, error);
+      console.error(`[API ERROR] /api/payments/verify/${publicId}:`, error);
       res.status(500).json({ 
         error: 'Internal Server Error', 
         details: error.message 
@@ -760,33 +727,23 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
     }
 
     try {
-      // 1. Resolve order
-      let order: any = null;
-      if (!isNaN(Number(orderId))) {
-        order = await db.getOrderById(Number(orderId));
-      }
-      if (!order) {
-        order = await db.getOrderByPublicId(orderId);
-      }
-      if (!order) {
-        order = await db.getOrderByKashierOrderId(orderId);
-      }
+      // PROPER LOOKUP: Public APIs use Public ID (UUID)
+      const order = await db.getOrderByPublicId(orderId);
 
       if (!order) {
         console.warn(`[API] Order for confirm-from-return not found: ${orderId}`);
         return res.status(404).json({ error: 'Order not found.' });
       }
 
-      // FIX 2: BACKEND IDEMPOTENCY (MANDATORY)
+      // BACKEND IDEMPOTENCY
       if (order.is_paid) {
-        console.log(`[API] Order #${order.id} already marked as paid. Returning cached success.`);
+        console.log(`[API] Order #${order.id} (Public: ${order.public_id}) already marked as paid. Returning cached success.`);
         return res.json({ success: true, is_paid: true, order });
       }
 
-      // 2. Trigger idempotent payment finalization
+      // INTERNAL DB CALL: uses numeric order.id
       const result = await db.markOrderAsPaid(order.id, transactionId);
       
-      // 3. RULE: Return success if the order is now paid (or was already paid)
       if (result.success) {
         console.log(`[API SUCCESS] Order #${order.id} confirmed via return.`);
         return res.json({ success: true, is_paid: true, order: result.order });
@@ -830,16 +787,15 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
       }
 
       // Resolve order and trigger markOrderAsPaid
-      let order: any = null;
-      if (!isNaN(Number(orderIdStr))) {
-        order = await db.getOrderById(Number(orderIdStr));
-      }
+      // We pass order.public_id in our checkout session creation, so we check that first.
+      let order: any = await db.getOrderByPublicId(orderIdStr);
+      
       if (!order) {
         order = await db.getOrderByKashierOrderId(orderIdStr);
       }
 
       if (order) {
-        console.log(`[Webhook] Triggering markOrderAsPaid for order #${order.id}`);
+        console.log(`[Webhook] Triggering markOrderAsPaid for order #${order.id} (Public: ${order.public_id})`);
         await db.markOrderAsPaid(order.id, transactionId);
       }
 
@@ -1239,14 +1195,20 @@ app.put('/api/admin/orders/:id/status', authenticateToken, authorizeRole(['admin
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.put('/api/orders/:id/approve', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+app.put('/api/orders/:publicId/approve', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
   try {
-    const orderId = parseInt(req.params.id);
-    const order = await db.getOrderById(orderId);
+    const order = await db.getOrderByPublicId(req.params.publicId);
     if (!order) return res.status(404).json({ error: 'Not found' });
+    
     const deadline = new Date();
     deadline.setHours(deadline.getHours() + 24);
-    const updated = await db.updateOrder(orderId, { order_status: 'approved', payment_deadline: deadline });
+    
+    // INTERNAL DB CALL: uses numeric order.id
+    const updated = await db.updateOrder(order.id, { 
+      order_status: 'approved', 
+      payment_deadline: deadline 
+    });
+    
     const event = await db.getEventById(order.event_id);
     await db.addNotification({ 
       user_id: order.user_id, 
@@ -1258,12 +1220,14 @@ app.put('/api/orders/:id/approve', authenticateToken, authorizeRole(['admin']), 
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.put('/api/orders/:id/reject', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+app.put('/api/orders/:publicId/reject', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
   try {
-    const orderId = parseInt(req.params.id);
-    const order = await db.getOrderById(orderId);
+    const order = await db.getOrderByPublicId(req.params.publicId);
     if (!order) return res.status(404).json({ error: 'Not found' });
-    const updated = await db.updateOrder(orderId, { order_status: 'rejected' });
+
+    // INTERNAL DB CALL: uses numeric order.id
+    const updated = await db.updateOrder(order.id, { order_status: 'rejected' });
+    
     const event = await db.getEventById(order.event_id);
     await db.addNotification({ 
       user_id: order.user_id, 
@@ -1275,13 +1239,21 @@ app.put('/api/orders/:id/reject', authenticateToken, authorizeRole(['admin']), a
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.put('/api/orders/:id/pay', authenticateToken, async (req: any, res) => {
+app.put('/api/orders/:publicId/pay', authenticateToken, async (req: any, res) => {
   try {
-    const orderId = parseInt(req.params.id);
-    const order = await db.getOrderById(orderId);
+    const order = await db.getOrderByPublicId(req.params.publicId);
     if (!order) return res.status(404).json({ error: 'Not found' });
-    if (order.user_id !== req.user.id) return res.status(403).json({ error: 'Unauthorized' });
-    res.json(await db.updateOrder(orderId, { order_status: 'paid', is_paid: true, paid_at: new Date() }));
+    
+    // Security: Only user or admin can pay
+    if (order.user_id !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Unauthorized' });
+
+    // INTERNAL DB CALL: uses numeric order.id
+    const result = await db.updateOrder(order.id, { 
+      order_status: 'paid', 
+      is_paid: true, 
+      paid_at: new Date() 
+    });
+    res.json(result);
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
@@ -1299,17 +1271,11 @@ app.post('/api/admin/scan', authenticateToken, authorizeRole(['admin']), async (
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/orders/:id/qr-status', async (req: any, res) => {
+app.get('/api/orders/:publicId/qr-status', async (req: any, res) => {
   try {
-    const idParam = req.params.id;
-    let order: any = null;
-    
-    if (!isNaN(Number(idParam))) {
-      order = await db.getOrderById(parseInt(idParam));
-    }
-    if (!order) {
-      order = await db.getOrderByPublicId(idParam);
-    }
+    const publicId = req.params.publicId;
+    // PROPER LOOKUP: Public APIs use Public ID (UUID)
+    const order = await db.getOrderByPublicId(publicId);
 
     if (!order) return res.status(404).json({ error: 'Not found' });
     const event = await db.getEventById(order.event_id);

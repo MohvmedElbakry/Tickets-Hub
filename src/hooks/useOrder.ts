@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Order } from '../types';
+import { Order, OrderPublicId, OrderId } from '../types';
 import { getOrderCached } from '../lib/orderCache';
 
-export const useOrder = (orderId: string | number | undefined) => {
+export const useOrder = (orderId: OrderPublicId | OrderId | undefined) => {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -18,7 +18,8 @@ export const useOrder = (orderId: string | number | undefined) => {
       }
 
       // Only show loading if we don't have the order data already
-      if (!order || (order.id !== orderId && order.public_id !== orderId)) {
+      const idStr = orderId.toString();
+      if (!order || (order.id.toString() !== idStr && order.public_id !== idStr)) {
         setLoading(true);
       }
       

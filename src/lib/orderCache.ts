@@ -1,5 +1,5 @@
 import { orderService } from '../services/orderService';
-import { Order } from '../types';
+import { Order, OrderPublicId, OrderId } from '../types';
 
 interface CacheEntry<T> {
   data: T;
@@ -13,7 +13,7 @@ const ORDER_TTL_MS = 30000; // 30 seconds
 /**
  * Deduplicated order fetcher with TTL and background revalidation.
  */
-export const getOrderCached = async (orderId: number | string, forceRefresh = false): Promise<Order> => {
+export const getOrderCached = async (orderId: OrderPublicId | OrderId, forceRefresh = false): Promise<Order> => {
   const cacheKey = orderId.toString();
   const cached = cache.get(cacheKey);
   const now = Date.now();
@@ -31,20 +31,9 @@ export const getOrderCached = async (orderId: number | string, forceRefresh = fa
   // Define the refresh function
   const refresh = async (): Promise<Order> => {
     try {
-      const order = await orderService.getOrder(orderId);
+      const order = await orderService.getOrder(orderId.toString());
       if (order) {
-        // Cache by both internal ID and public_id if available to maximize hit rate
-        const entriesToUpdate = [order.id.toString()];
-        if (order.public_id) entriesToUpdate.push(order.public_id);
-
-        for (const key of entriesToUpdate) {
-          const currentCached = cache.get(key);
-          if (!currentCached || JSON.stringify(currentCached.data) !== JSON.stringify(order)) {
-            cache.set(key, { data: order, timestamp: Date.now() });
-          } else {
-            currentCached.timestamp = Date.now();
-          }
-        }
+        updateOrderCache(order);
       }
       return order;
     } catch (error) {
@@ -73,16 +62,27 @@ export const getOrderCached = async (orderId: number | string, forceRefresh = fa
  */
 export const updateOrderCache = (order: Order) => {
   if (order) {
-    if (order.id) cache.set(order.id.toString(), { data: order, timestamp: Date.now() });
-    if (order.public_id) cache.set(order.public_id, { data: order, timestamp: Date.now() });
+    const timestamp = Date.now();
+    const entry = { data: order, timestamp };
+    if (order.id) cache.set(order.id.toString(), entry);
+    if (order.public_id) cache.set(order.public_id, entry);
   }
 };
 
 /**
  * Invalidate an order in the cache
  */
-export const invalidateOrder = (orderId: number | string) => {
-  cache.delete(orderId.toString());
+export const invalidateOrder = (identifier: OrderPublicId | OrderId) => {
+  const key = identifier.toString();
+  const cached = cache.get(key);
+  
+  if (cached?.data) {
+    const order = cached.data;
+    if (order.id) cache.delete(order.id.toString());
+    if (order.public_id) cache.delete(order.public_id);
+  } else {
+    cache.delete(key);
+  }
 };
 
 /**

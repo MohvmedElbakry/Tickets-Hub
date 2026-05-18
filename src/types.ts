@@ -29,9 +29,12 @@ export interface TicketType {
   sale_end: string;
 }
 
+export type OrderId = number;
+export type OrderPublicId = string;
+
 export interface Order {
-  id: number;
-  public_id: string;
+  id: OrderId;
+  public_id: OrderPublicId;
   user_id: number;
   event_id: number;
   total_price: number;

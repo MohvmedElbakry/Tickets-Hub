@@ -85,7 +85,7 @@ export const OrdersTab: React.FC<OrdersTabProps> = ({
                       <button 
                         onClick={async () => {
                           try {
-                            const data = await orderService.adminApproveOrder(order.id);
+                            const data = await orderService.adminApproveOrder(order.public_id);
                             if (data) fetchOrders();
                           } catch (err) {
                             console.error('Failed to approve order', err);
@@ -100,7 +100,7 @@ export const OrdersTab: React.FC<OrdersTabProps> = ({
                       <button 
                         onClick={async () => {
                           try {
-                            const data = await orderService.adminRejectOrder(order.id);
+                            const data = await orderService.adminRejectOrder(order.public_id);
                             if (data) fetchOrders();
                           } catch (err) {
                             console.error('Failed to reject order', err);

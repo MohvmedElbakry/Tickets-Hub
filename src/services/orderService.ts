@@ -1,6 +1,7 @@
 
 import * as ordersApi from '../lib/api/ordersApi';
 import { normalizeEvent } from '../lib/utils';
+import { OrderPublicId } from '../types';
 
 export const orderService = {
   async createOrder(params: {
@@ -27,7 +28,7 @@ export const orderService = {
     return data;
   },
 
-  async getOrder(id: string | number) {
+  async getOrder(id: OrderPublicId) {
     const data = await ordersApi.getOrder(id);
     if (data && data.event) {
       data.event = normalizeEvent(data.event);
@@ -35,15 +36,15 @@ export const orderService = {
     return data;
   },
 
-  async getOrderQRStatus(id: string | number) {
+  async getOrderQRStatus(id: OrderPublicId) {
     return await ordersApi.getOrderQRStatus(id);
   },
 
-  async payOrder(id: string | number) {
+  async payOrder(id: OrderPublicId) {
     return await ordersApi.payOrder(id);
   },
 
-  async rejectInvitation(id: string | number) {
+  async rejectInvitation(id: OrderPublicId) {
     return await ordersApi.rejectInvitation(id);
   },
 
@@ -56,15 +57,15 @@ export const orderService = {
     return await ordersApi.createResaleRequest(params);
   },
 
-  async createPaymentSession(orderId: number | string) {
+  async createPaymentSession(orderId: OrderPublicId) {
     return await ordersApi.createPaymentSession(orderId);
   },
 
-  async verifyPayment(params: { orderId: string | number }) {
+  async verifyPayment(params: { orderId: OrderPublicId }) {
     return await ordersApi.verifyPayment(params);
   },
 
-  async confirmPaymentFromReturn(data: { orderId: string | number; transactionId: string; status: string }) {
+  async confirmPaymentFromReturn(data: { orderId: OrderPublicId; transactionId: string; status: string }) {
     return await ordersApi.confirmPaymentFromReturn(data);
   },
 
@@ -92,11 +93,11 @@ export const orderService = {
     return await ordersApi.adminDeleteInvitation(id);
   },
 
-  async adminApproveOrder(id: number | string) {
+  async adminApproveOrder(id: OrderPublicId) {
     return await ordersApi.adminApproveOrder(id);
   },
 
-  async adminRejectOrder(id: number | string) {
+  async adminRejectOrder(id: OrderPublicId) {
     return await ordersApi.adminRejectOrder(id);
   }
 };

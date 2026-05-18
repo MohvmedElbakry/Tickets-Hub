@@ -1,12 +1,12 @@
 
 import { fetchWithAuth } from './client';
-import { Order } from '../../types';
+import { Order, OrderPublicId, OrderId } from '../../types';
 
 export const getOrders = async (): Promise<Order[]> => {
   return await fetchWithAuth('/api/orders');
 };
 
-export const getOrder = async (id: string | number): Promise<Order> => {
+export const getOrder = async (id: OrderPublicId): Promise<Order> => {
   return await fetchWithAuth(`/api/orders/${id}`);
 };
 
@@ -17,11 +17,11 @@ export const createOrder = async (data: any): Promise<any> => {
   });
 };
 
-export const verifyPayment = async (params: { orderId: string | number }): Promise<any> => {
+export const verifyPayment = async (params: { orderId: OrderPublicId }): Promise<any> => {
   return await fetchWithAuth(`/api/payments/verify/${params.orderId}`);
 };
 
-export const getOrderQRStatus = async (orderId: string | number): Promise<any> => {
+export const getOrderQRStatus = async (orderId: OrderPublicId): Promise<any> => {
   return await fetchWithAuth(`/api/orders/${orderId}/qr-status`);
 };
 
@@ -32,7 +32,7 @@ export const createResaleRequest = async (data: any): Promise<any> => {
   });
 };
 
-export const confirmPaymentFromReturn = async (data: { orderId: string | number; transactionId: string; status: string }): Promise<any> => {
+export const confirmPaymentFromReturn = async (data: { orderId: OrderPublicId; transactionId: string; status: string }): Promise<any> => {
   return await fetchWithAuth('/api/payments/confirm-from-return', {
     method: 'POST',
     body: JSON.stringify(data)
@@ -43,20 +43,20 @@ export const adminGetOrders = async (): Promise<Order[]> => {
   return await fetchWithAuth('/api/admin/orders');
 };
 
-export const adminUpdateOrderStatus = async (id: number, status: string): Promise<any> => {
+export const adminUpdateOrderStatus = async (id: OrderPublicId, status: string): Promise<any> => {
   return await fetchWithAuth(`/api/admin/orders/${id}/status`, {
     method: 'PUT',
     body: JSON.stringify({ status })
   });
 };
 
-export const adminApproveOrder = async (id: string | number): Promise<any> => {
+export const adminApproveOrder = async (id: OrderPublicId): Promise<any> => {
   return await fetchWithAuth(`/api/orders/${id}/approve`, {
     method: 'PUT'
   });
 };
 
-export const adminRejectOrder = async (id: string | number): Promise<any> => {
+export const adminRejectOrder = async (id: OrderPublicId): Promise<any> => {
   return await fetchWithAuth(`/api/orders/${id}/reject`, {
     method: 'PUT'
   });
@@ -73,7 +73,7 @@ export const adminUpdateResellStatus = async (id: number, status: string): Promi
   });
 };
 
-export const adminMarkResalePaid = async (id: string | number): Promise<any> => {
+export const adminMarkResalePaid = async (id: number | string): Promise<any> => {
   return await fetchWithAuth(`/api/admin/resale/${id}/payout`, {
     method: 'PUT'
   });
@@ -90,25 +90,25 @@ export const adminCreateInvitation = async (data: any): Promise<any> => {
   });
 };
 
-export const adminDeleteInvitation = async (id: string | number): Promise<any> => {
+export const adminDeleteInvitation = async (id: number | string): Promise<any> => {
   return await fetchWithAuth(`/api/admin/invitations/${id}`, {
     method: 'DELETE'
   });
 };
 
-export const payOrder = async (id: string | number): Promise<any> => {
+export const payOrder = async (id: OrderPublicId): Promise<any> => {
   return await fetchWithAuth(`/api/orders/${id}/pay`, {
     method: 'PUT'
   });
 };
 
-export const rejectInvitation = async (id: string | number): Promise<any> => {
+export const rejectInvitation = async (id: OrderPublicId): Promise<any> => {
   return await fetchWithAuth(`/api/orders/${id}/reject`, {
     method: 'PUT'
   });
 };
 
-export const createPaymentSession = async (orderId: string | number): Promise<any> => {
+export const createPaymentSession = async (orderId: OrderPublicId): Promise<any> => {
   return await fetchWithAuth('/api/payments/create-session', {
     method: 'POST',
     body: JSON.stringify({ order_id: orderId })

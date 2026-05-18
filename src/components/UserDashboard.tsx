@@ -51,7 +51,7 @@ export const UserDashboard = () => {
   const [exportingOrder, setExportingOrder] = useState<Order | null>(null);
   
       // Phase 3.2.4: Use single source of truth for the viewing ticket
-  const { order: freshOrder, loading: loadingFullOrder } = useOrder(viewingTicket?.public_id || viewingTicket?.id?.toString());
+  const { order: freshOrder, loading: loadingFullOrder } = useOrder(viewingTicket?.public_id || undefined);
 
   // QR status for export logic removed in favor of server-side Puppeteer migration
   // const { qrStatus: exportingQrStatus, loading: loadingExportingQr } = useQRStatus(...)
@@ -65,7 +65,7 @@ export const UserDashboard = () => {
     qrStatus: viewingTicketQrStatus, 
     loading: loadingViewingQr 
   } = useQRStatus(
-    viewingTicket?.public_id || viewingTicket?.id?.toString(), 
+    viewingTicket?.public_id || undefined, 
     viewingTicket?.is_paid === true
   );
 
@@ -334,7 +334,7 @@ export const UserDashboard = () => {
                                   size="sm"
                                   onClick={() => {
                                     if (confirm('Proceed to payment? (Simulated)')) {
-                                      orderService.payOrder(item.id).then(data => data && window.location.reload());
+                                      orderService.payOrder(item.public_id).then(data => data && window.location.reload());
                                     }
                                   }}
                                 >
@@ -366,7 +366,7 @@ export const UserDashboard = () => {
                                     size="sm"
                                     onClick={() => {
                                       if (confirm('Accept this invitation?')) {
-                                        orderService.payOrder(item.id).then(data => data && window.location.reload());
+                                        orderService.payOrder(item.public_id).then(data => data && window.location.reload());
                                       }
                                     }}
                                   >
@@ -378,7 +378,7 @@ export const UserDashboard = () => {
                                     className="text-status-error hover:bg-status-error/10"
                                     onClick={() => {
                                       if (confirm('Reject this invitation?')) {
-                                        orderService.rejectInvitation(item.id).then(data => data && window.location.reload());
+                                        orderService.rejectInvitation(item.public_id).then(data => data && window.location.reload());
                                       }
                                     }}
                                   >
@@ -725,7 +725,7 @@ export const UserDashboard = () => {
                         className="flex-1 py-6 rounded-card text-label font-bold shadow-card-glow"
                         onClick={() => {
                           if (confirm('Proceed to payment? (Simulated)')) {
-                            orderService.payOrder((freshOrder || viewingTicket).id).then(data => data && window.location.reload());
+                            orderService.payOrder((freshOrder || viewingTicket).public_id).then(data => data && window.location.reload());
                           }
                         }}
                       >

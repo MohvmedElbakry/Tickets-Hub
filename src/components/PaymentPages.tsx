@@ -27,7 +27,7 @@ export const CheckoutPage = () => {
   const [paymentLoading, setPaymentLoading] = useState(false);
 
   useEffect(() => {
-    if (publicId && (!order || (order.id.toString() !== publicId && order.public_id !== publicId))) {
+    if (publicId && (!order || order.public_id !== publicId)) {
       setLoading(true);
       orderService.getOrder(publicId).then(fetchedOrder => {
         if (fetchedOrder) {
@@ -48,12 +48,12 @@ export const CheckoutPage = () => {
   const handlePay = async () => {
     if (!order || paymentLoading) return;
     
-    console.log(`[CheckoutPage] handlePay triggered for order #${order.public_id || order.id}`);
+    console.log(`[CheckoutPage] handlePay triggered for order #${order.public_id}`);
     
     // REUSE existing session URL if available from the order object
     if (order.kashier_url) {
       console.log(`[CheckoutPage] REUSING existing kashier_url found in order object: ${order.kashier_url}`);
-      localStorage.setItem('last_payment_order_id', order.public_id || order.id.toString());
+      localStorage.setItem('last_payment_order_id', order.public_id);
       localStorage.setItem('last_payment_time', Date.now().toString());
       window.location.href = order.kashier_url;
       return;
@@ -61,24 +61,24 @@ export const CheckoutPage = () => {
 
     setPaymentLoading(true);
     try {
-      console.log(`[CheckoutPage] Initiating createPaymentSession for order identifier: ${order.public_id || order.id}`);
+      console.log(`[CheckoutPage] Initiating createPaymentSession for order identifier: ${order.public_id}`);
       // Clear any existing session locks before starting a new payment session
       sessionStorage.removeItem("payment_redirect_done");
       sessionStorage.removeItem("payment_navigation_lock");
 
-      const data = await orderService.createPaymentSession(order.public_id || order.id);
+      const data = await orderService.createPaymentSession(order.public_id);
       
       if (data?.reused) {
-        console.log(`[CheckoutPage] Backend reported session REUSE for order identifier: ${order.public_id || order.id}`);
+        console.log(`[CheckoutPage] Backend reported session REUSE for order identifier: ${order.public_id}`);
       } else {
-        console.log(`[CheckoutPage] New session created for order identifier: ${order.public_id || order.id}`);
+        console.log(`[CheckoutPage] New session created for order identifier: ${order.public_id}`);
       }
 
       const checkoutUrl = data?.checkoutUrl || data?.payment_url;
       
       if (checkoutUrl) {
         console.log(`[CheckoutPage] Redirecting to: ${checkoutUrl}`);
-        localStorage.setItem('last_payment_order_id', order.public_id || order.id.toString());
+        localStorage.setItem('last_payment_order_id', order.public_id);
         localStorage.setItem('last_payment_time', Date.now().toString());
         window.location.href = checkoutUrl;
       } else {
@@ -93,7 +93,7 @@ export const CheckoutPage = () => {
     }
   };
 
-  if (loading || !order || (order.id.toString() !== publicId && order.public_id !== publicId)) return (
+  if (loading || !order || order.public_id !== publicId) return (
     <div className="max-w-7xl mx-auto px-4 py-24 text-center">
       <RefreshCw className="animate-spin text-teal mx-auto mb-4" size={48} />
       <p className="text-text-muted font-bold tracking-widest uppercase text-label">Verifying Order Details...</p>
@@ -126,7 +126,7 @@ export const CheckoutPage = () => {
         <div className="p-10 border-b border-bg-border bg-bg-elevated/30 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="content-stack gap-1">
             <h1 className="text-h2">Checkout</h1>
-            <p className="text-label text-text-muted font-bold tracking-widest">ORDER TRANSACTION <span className="text-teal">#{order.public_id?.split('-')[0] || order.id}</span></p>
+            <p className="text-label text-text-muted font-bold tracking-widest">ORDER TRANSACTION <span className="text-teal">#{order.public_id?.split('-')[0]}</span></p>
           </div>
           <div className="hidden md:block">
             <span className="px-4 py-1.5 bg-status-warning/10 text-status-warning border border-status-warning/20 rounded-tag text-[10px] font-black uppercase tracking-widest">Awaiting Payment</span>
@@ -209,7 +209,7 @@ export const PaymentSuccessPage = () => {
         <div className="content-stack gap-4">
           <h1 className="text-h1">Payment Successful!</h1>
           <p className="text-body-lg text-text-muted max-w-lg mx-auto">
-            Thank you for your purchase. Your order <span className="text-text-primary font-black">#{order?.public_id?.split('-')[0] || order?.id}</span> has been confirmed and your tickets are now activated in your dashboard.
+            Thank you for your purchase. Your order <span className="text-text-primary font-black">#{order?.public_id?.split('-')[0]}</span> has been confirmed and your tickets are now activated in your dashboard.
           </p>
         </div>
       </div>
