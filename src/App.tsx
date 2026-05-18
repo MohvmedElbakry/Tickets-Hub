@@ -36,6 +36,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { AdminRoute } from './components/AdminRoute';
 import { NotFoundPage } from './components/NotFoundPage';
 import PageContainer from './components/layout/PageContainer';
+import TicketPrintPage from './pages/TicketPrintPage';
 
 export default function App() {
   const [appKey, setAppKey] = useState(0);
@@ -131,19 +132,11 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
 
   // --- Page Components ---
 
-
-
-
-
-
-
-
-
-    // AdminDashboard is now imported from ./components/admin/AdminDashboard
+  const isPrintPage = location.pathname.startsWith('/ticket/print');
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar />
+      {!isPrintPage && <Navbar />}
       <LoginModal />
       <SignupModal />
       <AdminEventModal />
@@ -153,12 +146,12 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
         <AnimatePresence mode="wait">
           <motion.div
             key={location.pathname}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
+            initial={isPrintPage ? { opacity: 1 } : { opacity: 0, y: 20 }}
+            animate={isPrintPage ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={isPrintPage ? { opacity: 1 } : { opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
           >
-            <PageContainer>
+            <PageContainer noPadding={isPrintPage}>
               <Routes location={location}>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/events" element={<EventsListingPage />} />
@@ -171,6 +164,7 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
                 <Route path="/payment/pending" element={<ProtectedRoute><PaymentPendingPage /></ProtectedRoute>} />
                 <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
                 <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+                <Route path="/ticket/print/:id" element={<TicketPrintPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </PageContainer>
@@ -178,7 +172,7 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
         </AnimatePresence>
       </main>
 
-      <Footer />
+      {!isPrintPage && <Footer />}
     </div>
   );
 }

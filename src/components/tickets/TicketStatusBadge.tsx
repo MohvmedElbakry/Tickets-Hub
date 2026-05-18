@@ -9,37 +9,18 @@ export const TicketStatusBadge: React.FC<TicketStatusBadgeProps> = ({ status = '
   const upperStatus = (status || 'PENDING').toUpperCase();
   const isPaid = upperStatus === 'CONFIRMED' || upperStatus === 'PAID' || upperStatus === 'APPROVED';
   
-  const style = isPdf ? (isPaid 
-    ? { backgroundColor: 'rgba(0, 201, 177, 0.08)', color: '#00C9B1', border: '1px solid rgba(0, 201, 177, 0.4)' }
-    : { backgroundColor: 'rgba(245, 158, 11, 0.08)', color: '#F59E0B', border: '1px solid rgba(245, 158, 11, 0.4)' })
-    : undefined;
+  // TODO: Refactor 'isPdf' to 'isPrint' to support server-side PDF layouts
+  // The legacy inline styling pipeline was removed.
 
   return (
     <span 
-      className={isPdf ? '' : `px-2.5 py-0.5 font-black uppercase tracking-[0.15em] border whitespace-nowrap rounded-tag text-[9px] ${
-        isPaid 
-          ? 'bg-status-success/10 text-status-success border-status-success/30 shadow-status-success/5' 
-          : 'bg-status-warning/10 text-status-warning border-status-warning/30'
+      className={`px-2.5 py-0.5 font-black uppercase tracking-[0.15em] border whitespace-nowrap rounded-[4px] text-[9px] ${
+        isPdf
+          ? (isPaid ? 'bg-[#00C9B1]/10 text-[#00C9B1] border-[#00C9B1]/30' : 'bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/30')
+          : (isPaid 
+              ? 'bg-status-success/10 text-status-success border-status-success/30 shadow-status-success/5' 
+              : 'bg-status-warning/10 text-status-warning border-status-warning/30')
       }`}
-      style={isPdf ? { 
-        ...style, 
-        borderRadius: '6px', 
-        fontSize: '7px',
-        fontWeight: 900,
-        textTransform: 'uppercase',
-        letterSpacing: '0.15em',
-        padding: '0 10px',
-        height: '22px',
-        minHeight: '22px',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        verticalAlign: 'middle',
-        lineHeight: '22px',
-        boxSizing: 'border-box' as const,
-        whiteSpace: 'nowrap',
-        fontFamily: 'system-ui, sans-serif'
-      } : style}
     >
       {upperStatus}
     </span>

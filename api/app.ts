@@ -13,6 +13,7 @@ import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
 import prisma from './lib/prisma.js';
 import { db } from './lib/db-service.js';
+import puppeteer from 'puppeteer';
 
 dotenv.config();
 
@@ -978,6 +979,85 @@ app.post(['/api/user/redeem', '/api/user/points/redeem'], authenticateToken, asy
     });
     res.json({ message: 'Redeemed', voucher });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+// --- TICKET PRINT & PDF API ---
+app.get('/api/tickets/:id/pdf', async (req: any, res) => {
+  const orderId = req.params.id;
+  console.log(`[PDF Export] Starting export for order #${orderId}`);
+  
+  let browser;
+  try {
+    const protocol = req.get('x-forwarded-proto') || req.protocol;
+    const host = req.get('host');
+    const APP_URL = process.env.APP_URL || `${protocol}://${host}`;
+    const targetUrl = `${APP_URL}/ticket/print/${orderId}`;
+
+    console.log(`[PDF Export] Navigating to: ${targetUrl}`);
+
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        '--window-size=1200,800'
+      ]
+    });
+
+    const page = await browser.newPage();
+    
+    // Set viewport to a reasonable size
+    await page.setViewport({ width: 1200, height: 800, deviceScaleFactor: 2 });
+    
+    // Set medium to screen to preserve full cinematic appearance (backgrounds, etc)
+    await page.emulateMediaType('screen');
+
+    // Navigate and wait for content
+    await page.goto(targetUrl, { 
+      waitUntil: ['networkidle0', 'domcontentloaded'],
+      timeout: 30000 
+    });
+
+    // Wait for fonts to be ready
+    await page.evaluateHandle('document.fonts.ready');
+
+    // Wait for a small buffer to ensure QR code and any other dynamic elements are fully rendered
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Wait for the ticket card to be visible
+    await page.waitForSelector('#print-content', { timeout: 10000 });
+
+    // Generate the PDF
+    const pdf = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '20mm',
+        bottom: '20mm',
+        left: '10mm',
+        right: '10mm'
+      },
+      scale: 0.8 // Scale down slightly to fit well on A4
+    });
+
+    console.log(`[PDF Export] PDF generated successfully for order #${orderId}`);
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename=Ticket-${orderId}.pdf`);
+    res.contentType('application/pdf');
+    res.send(pdf);
+
+  } catch (error: any) {
+    console.error(`[PDF Export] Error for order #${orderId}:`, error);
+    res.status(500).json({ error: 'Failed to generate PDF ticket', details: error.message });
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
 });
 
 // --- TICKET RESALE API ---

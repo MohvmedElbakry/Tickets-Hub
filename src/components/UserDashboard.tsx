@@ -53,29 +53,13 @@ export const UserDashboard = () => {
       // Phase 3.2.4: Use single source of truth for the viewing ticket
   const { order: freshOrder, loading: loadingFullOrder } = useOrder(viewingTicket?.id);
 
-  // QR status for export
-  const { 
-    qrStatus: exportingQrStatus, 
-    loading: loadingExportingQr 
-  } = useQRStatus(
-    exportingOrder?.id?.toString(), 
-    exportingOrder?.is_paid === true
-  );
-
-  useEffect(() => {
-    if (exportingOrder && !loadingExportingQr) {
-      // Small delay to ensure render
-      const timer = setTimeout(() => {
-        handleDownloadPDF(
-          exportingOrder, 
-          exportingQrStatus?.qr_data,
-          exportingQrStatus?.visible,
-          exportingQrStatus?.reason
-        ).then(() => setExportingOrder(null));
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [exportingOrder, loadingExportingQr, exportingQrStatus?.qr_data]);
+  // QR status for export logic removed in favor of server-side Puppeteer migration
+  // const { qrStatus: exportingQrStatus, loading: loadingExportingQr } = useQRStatus(...)
+  
+  // PDF Export
+  const handleExport = (order: Order) => {
+    handleDownloadPDF(order);
+  };
 
   const { 
     qrStatus: viewingTicketQrStatus, 
@@ -713,9 +697,9 @@ export const UserDashboard = () => {
                     <Button 
                       variant="outline" 
                       className="flex-1 py-6 rounded-card text-label gap-2 font-bold" 
-                      onClick={() => setExportingOrder(freshOrder || viewingTicket)}
+                      onClick={() => handleExport(freshOrder || viewingTicket)}
                     >
-                      <Download size={16} /> {exportingOrder ? 'Generating...' : 'PDF Ticket'}
+                      <Download size={16} /> PDF Ticket
                     </Button>
                     
                     {(freshOrder || viewingTicket).is_paid && (

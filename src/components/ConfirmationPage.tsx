@@ -153,7 +153,7 @@ export const ConfirmationPage = () => {
             <Button 
               variant="accent" 
               className="px-8 py-4 text-button font-black uppercase tracking-widest flex items-center gap-3 shadow-card-glow"
-              onClick={() => handleDownloadPDF(order, qrStatus?.qr_data, qrStatus?.visible, qrStatus?.reason)}
+              onClick={() => handleDownloadPDF(order)}
             >
               <Download size={18} /> Download PDF Ticket
             </Button>
