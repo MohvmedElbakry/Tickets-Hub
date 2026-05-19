@@ -1,17 +1,17 @@
 {
   "compilerOptions": {
     "outDir": "api/dist",
-    "rootDir": ".",
-    "module": "ESNext",
+    "rootDir": "api",
+    "module": "NodeNext",
     "target": "ES2020",
-    "jsx": "react-jsx",
-    "strict": false,
+    "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "allowJs": true,
     "resolveJsonModule": true,
-    "moduleResolution": "node"
+    "moduleResolution": "NodeNext",
+    "jsx": "react-jsx"
   },
-  "include": ["api/**/*.ts", "api/**/*.tsx", "src/types.ts", "src/lib/utils.ts"],
+  "include": ["api/**/*.ts", "api/**/*.tsx"],
   "exclude": ["api/[...all].ts", "api/dist/**/*"]
 }

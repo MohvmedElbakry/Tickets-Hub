@@ -1,5 +1,5 @@
 import React from 'react';
-import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { RefreshCw, Lock } from 'lucide-react';
 
 interface TicketQRSectionProps {
@@ -66,8 +66,6 @@ export const TicketQRSection: React.FC<TicketQRSectionProps> = ({
     );
   }
 
-  const QRComponent = isPdf ? QRCodeSVG : QRCodeCanvas;
-
   return (
     <div className="relative">
       {!printStyles && <div className="absolute -inset-2 bg-gradient-to-br from-teal/20 to-purple-500/20 rounded-card-xl blur opacity-0 group-hover:opacity-100 transition-opacity duration-slow"></div>}
@@ -75,7 +73,7 @@ export const TicketQRSection: React.FC<TicketQRSectionProps> = ({
         className={printStyles ? printStyles.qrBg : "w-40 h-40 p-4 relative flex items-center justify-center rounded-card shadow-2xl transition-transform duration-slow transform hover:scale-[1.02] bg-white border border-white"}
       >
         {qrData ? (
-          <QRComponent 
+          <QRCodeCanvas 
             value={qrData} 
             size={qrSize}
             level="H"

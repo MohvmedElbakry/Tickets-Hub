@@ -17,6 +17,9 @@ import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import { Browser } from 'puppeteer-core';
 import React from 'react';
+import ReactDOMServer from 'react-dom/server';
+import { TicketTemplate } from './pdf/TicketTemplate.js';
+import QRCode from 'qrcode';
 
 dotenv.config();
 
@@ -1003,127 +1006,92 @@ app.post(['/api/user/redeem', '/api/user/points/redeem'], authenticateToken, asy
 app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
   const publicId = req.params.publicId;
   const requestStart = Date.now();
-  console.log(`[PDF Export] Starting export for order public ID #${publicId}`);
+  console.log(`[PDF SSR] Starting export for order public ID #${publicId}`);
   
   let page;
   try {
+    // 1. Data Fetching (Single DB call)
     const order = await db.getOrderByPublicId(publicId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
-    
-    // Lazy load SSR dependencies to avoid module-load crashes during server boot
-    const [{ renderToStaticMarkup }, { TicketPdfTemplate }] = await Promise.all([
-      import('react-dom/server'),
-      import('./lib/TicketPdfTemplate.js')
-    ]);
+    const fetchTime = Date.now() - requestStart;
 
-    const event = await db.getEventById(order.event_id);
-    if (!event) return res.status(404).json({ error: 'Event not found' });
-
-    // 1. Fetch QR status logic internally (Avoids frontend async fetch)
-    const qrStatus = { visible: false, qr_data: '', reason: 'Payment pending' };
-    const qrToken = (order as any).qr_code_token;
+    const isPaid = order.is_paid || order.order_status === 'paid';
+    const event: any = order.event || {};
     
-    if (order.is_paid && qrToken) {
-      const qrData = `TicketsHub-Order-${qrToken}`;
-      if (event.qr_enabled_manual) {
-        qrStatus.visible = true;
-        qrStatus.qr_data = qrData;
-      } else if (event.event_date) {
-        const eventTime = new Date(event.event_date).getTime();
-        if (Date.now() >= eventTime - (60 * 60 * 1000)) {
-          qrStatus.visible = true;
-          qrStatus.qr_data = qrData;
-        } else {
-          qrStatus.reason = 'Available 1h before event';
-        }
-      } else {
-        qrStatus.reason = 'Event date not set';
-      }
+    // 2. State & QR Generation (Deterministic Backend Logic)
+    let qrDataUrl = '';
+    let statusText = isPaid ? 'CONFIRMED' : (order.order_status || 'PENDING').toUpperCase();
+
+    if (isPaid && order.qr_code_token) {
+       const eventTimeStr = event.event_time || '00:00';
+       const eventDateStr = event.event_date ? event.event_date.split('T')[0] : new Date().toISOString().split('T')[0];
+       const eventDateTime = new Date(`${eventDateStr}T${eventTimeStr.includes(':') ? eventTimeStr : eventTimeStr + ':00'}`);
+       
+       let visible = false;
+       if (event.qr_enabled_manual === true) {
+         visible = true;
+       } else if (!isNaN(eventDateTime.getTime()) && Date.now() >= eventDateTime.getTime() - (60 * 60 * 1000)) {
+         visible = true;
+       }
+
+       if (visible) {
+         const qrData = `TicketsHub-Order-${order.qr_code_token}`;
+         qrDataUrl = await QRCode.toDataURL(qrData, { 
+           margin: 1, 
+           width: 256,
+           errorCorrectionLevel: 'H',
+           color: { dark: '#000000', light: '#FFFFFF' }
+         });
+       }
     }
+    const qrTime = Date.now() - requestStart - fetchTime;
 
-    // 2. Render Component to Static HTML String
-    const renderedMarkup = renderToStaticMarkup(
-      React.createElement(TicketPdfTemplate, {
-        order: order as any,
-        qrData: qrStatus.qr_data,
-        qrVisible: qrStatus.visible,
-        qrReason: qrStatus.reason
-      })
+    // 3. SSR Rendering (Zero Hydration)
+    const ssrStart = Date.now();
+    const htmlBody = ReactDOMServer.renderToStaticMarkup(
+      React.createElement(TicketTemplate, { order, qrDataUrl, isPaid, statusText })
     );
 
-    const protocol = req.get('x-forwarded-proto') || req.protocol;
-    const host = req.get('host');
-    const APP_URL = process.env.APP_URL || `${protocol}://${host}`;
-    
-    // Construct full HTML shell
-    const html = `
+    const fullHtml = `
       <!DOCTYPE html>
       <html>
-      <head>
-        <meta charset="utf-8">
-        <link rel="stylesheet" href="${APP_URL}/src/globals.css">
-        <style>
-          body { background-color: #0A0F0E !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
-          #print-content { display: inline-block !important; }
-          *, *::before, *::after {
-            animation: none !important;
-            transition: none !important;
-            transition-duration: 0s !important;
-            animation-duration: 0s !important;
-          }
-        </style>
-      </head>
-      <body>
-        <div id="print-content">
-          ${renderedMarkup}
-        </div>
-      </body>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { margin: 0; padding: 0; background-color: #0A0F0E; -webkit-print-color-adjust: exact; }
+          </style>
+        </head>
+        <body>
+          ${htmlBody}
+        </body>
       </html>
     `;
+    const ssrTime = Date.now() - ssrStart;
 
+    // 4. Puppeteer Pipeline (Shared Browser)
     const browserStart = Date.now();
     const browser = await getSharedBrowser();
-    const browserWait = Date.now() - browserStart;
-    
     page = await browser.newPage();
     
-    // 3. Performance: AGGRESSIVE blocking of non-essential resources
+    // Minimal interception - we don't need any external assets for the SSR HTML
     await page.setRequestInterception(true);
     page.on('request', (request) => {
-      const resourceType = request.resourceType();
-      const allowList = ['document', 'stylesheet', 'font', 'script'];
-      
-      if (allowList.includes(resourceType)) {
-        request.continue();
-      } else {
-        request.abort();
-      }
+      request.abort(); 
     });
 
     await page.emulateMediaType('screen');
+    
+    // Inject Content Directly
+    const setStart = Date.now();
+    await page.setContent(fullHtml, { waitUntil: 'load' });
+    const setTime = Date.now() - setStart;
 
-    // 4. Performance: setContent is much faster than goto(URL)
-    const loadStart = Date.now();
-    await page.setContent(html, { waitUntil: 'load', timeout: 10000 });
-    const loadTime = Date.now() - loadStart;
-
-    // 5. Reliability: Wait for fonts (CRITICAL for alignment)
-    const fontStart = Date.now();
-    await Promise.race([
-      page.evaluateHandle('document.fonts.ready'),
-      new Promise(resolve => setTimeout(resolve, 1500))
-    ]);
-    const fontTime = Date.now() - fontStart;
-
-    // 6. Dimension Measurement
-    const measureStart = Date.now();
+    // 5. Dimension Measurement
     const element = await page.$('#print-content');
     const boundingBox = await element?.boundingBox();
-    const measureTime = Date.now() - measureStart;
-    
-    if (!boundingBox) throw new Error('Could not measure #print-content');
+    if (!boundingBox) throw new Error('Render failed');
 
-    // 7. PDF Generation
+    // 6. PDF Generation
     const pdfStart = Date.now();
     const pdfBuffer = await page.pdf({
       width: `${Math.ceil(boundingBox.width)}px`,
@@ -1132,20 +1100,20 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
       margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' },
       pageRanges: '1',
     });
-    const pdfGenTime = Date.now() - pdfStart;
+    
+    const browserTime = Date.now() - browserStart;
     const totalTime = Date.now() - requestStart;
 
-    console.log(`[PERF] STATIC Export Complete:
-      - Browser Ready: ${browserWait}ms
-      - HTML Load:     ${loadTime}ms
-      - Font Sync:    ${fontTime}ms
-      - Measure:      ${measureTime}ms
-      - PDF Gen:      ${pdfGenTime}ms
+    console.log(`[PERF SSR] Export Complete:
+      - DB Fetch:     ${fetchTime}ms
+      - QR Gen:       ${qrTime}ms
+      - SSR HTML:     ${ssrTime}ms
+      - Browser Ops:  ${browserTime}ms (setContent: ${setTime}ms)
       - TOTAL:        ${totalTime}ms
       - SIZE:         ${pdfBuffer.length} bytes`);
 
     if (!pdfBuffer || pdfBuffer.length < 500) {
-       throw new Error(`Invalid PDF buffer generated (${pdfBuffer?.length || 0} bytes)`);
+       throw new Error(`Invalid PDF buffer generated`);
     }
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -1154,7 +1122,7 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     return res.end(pdfBuffer);
 
   } catch (error: any) {
-    console.error(`[PDF Export ERROR] #${publicId}:`, error);
+    console.error(`[PDF SSR ERROR] #${publicId}:`, error);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Failed to generate PDF ticket', details: error.message });
     }
@@ -1164,7 +1132,6 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     }
   }
 });
-
 
 // --- TICKET RESALE API ---
 app.post('/api/tickets/resale', authenticateToken, async (req: any, res) => {
