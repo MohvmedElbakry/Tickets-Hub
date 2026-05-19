@@ -16,6 +16,9 @@ import { db } from './lib/db-service.js';
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import { Browser } from 'puppeteer-core';
+import React from 'react';
+import ReactDOMServer from 'react-dom/server';
+import { TicketPrintCard } from '../src/components/tickets/TicketPrintCard.js';
 
 dotenv.config();
 
@@ -1008,11 +1011,71 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
   try {
     const order = await db.getOrderByPublicId(publicId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
+    
+    const event = await db.getEventById(order.event_id);
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+
+    // 1. Fetch QR status logic internally (Avoids frontend async fetch)
+    const qrStatus = { visible: false, qr_data: '', reason: 'Payment pending' };
+    const qrToken = (order as any).qr_code_token;
+    
+    if (order.is_paid && qrToken) {
+      const qrData = `TicketsHub-Order-${qrToken}`;
+      if (event.qr_enabled_manual) {
+        qrStatus.visible = true;
+        qrStatus.qr_data = qrData;
+      } else if (event.event_date) {
+        const eventTime = new Date(event.event_date).getTime();
+        if (Date.now() >= eventTime - (60 * 60 * 1000)) {
+          qrStatus.visible = true;
+          qrStatus.qr_data = qrData;
+        } else {
+          qrStatus.reason = 'Available 1h before event';
+        }
+      } else {
+        qrStatus.reason = 'Event date not set';
+      }
+    }
+
+    // 2. Render Component to Static HTML String
+    const renderedMarkup = ReactDOMServer.renderToStaticMarkup(
+      React.createElement(TicketPrintCard, {
+        order: order as any,
+        qrData: qrStatus.qr_data,
+        qrVisible: qrStatus.visible,
+        qrReason: qrStatus.reason
+      })
+    );
 
     const protocol = req.get('x-forwarded-proto') || req.protocol;
     const host = req.get('host');
     const APP_URL = process.env.APP_URL || `${protocol}://${host}`;
-    const targetUrl = `${APP_URL}/ticket/print/${publicId}`;
+    
+    // Construct full HTML shell
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <link rel="stylesheet" href="${APP_URL}/src/globals.css">
+        <style>
+          body { background-color: #0A0F0E !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
+          #print-content { display: inline-block !important; }
+          *, *::before, *::after {
+            animation: none !important;
+            transition: none !important;
+            transition-duration: 0s !important;
+            animation-duration: 0s !important;
+          }
+        </style>
+      </head>
+      <body>
+        <div id="print-content">
+          ${renderedMarkup}
+        </div>
+      </body>
+      </html>
+    `;
 
     const browserStart = Date.now();
     const browser = await getSharedBrowser();
@@ -1020,11 +1083,11 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     
     page = await browser.newPage();
     
-    // 1. Performance: AGGRESSIVE blocking of non-essential resources
+    // 3. Performance: AGGRESSIVE blocking of non-essential resources
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const resourceType = request.resourceType();
-      const allowList = ['document', 'stylesheet', 'font', 'script', 'fetch', 'xhr'];
+      const allowList = ['document', 'stylesheet', 'font', 'script'];
       
       if (allowList.includes(resourceType)) {
         request.continue();
@@ -1033,44 +1096,14 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
       }
     });
 
-    // 2. Performance: Emulate screen to preserve visual cinematic theme
     await page.emulateMediaType('screen');
 
-    // 3. Performance: Navigate with minimal wait
-    const navStart = Date.now();
-    const response = await page.goto(targetUrl, { 
-      waitUntil: 'domcontentloaded',
-      timeout: 15000 
-    });
-    const navTime = Date.now() - navStart;
+    // 4. Performance: setContent is much faster than goto(URL)
+    const loadStart = Date.now();
+    await page.setContent(html, { waitUntil: 'load', timeout: 10000 });
+    const loadTime = Date.now() - loadStart;
 
-    if (response && response.status() >= 400) {
-      throw new Error(`Target page returned status ${response.status()}`);
-    }
-
-    // 4. Optimization: Inject CSS to kill animations and force print-ready state
-    await page.addStyleTag({
-      content: `
-        *, *::before, *::after {
-          animation: none !important;
-          transition: none !important;
-          transition-duration: 0s !important;
-          animation-duration: 0s !important;
-        }
-        body { background-color: #0A0F0E !important; margin: 0 !important; padding: 0 !important; }
-        ::-webkit-scrollbar { display: none !important; }
-      `
-    });
-
-    // 5. Reliability: Deterministic wait for content and QR Code
-    const waitStart = Date.now();
-    await Promise.all([
-      page.waitForSelector('#print-content', { visible: true, timeout: 10000 }),
-      order.is_paid ? page.waitForSelector('canvas', { timeout: 8000 }) : Promise.resolve()
-    ]);
-    const waitTime = Date.now() - waitStart;
-
-    // 6. Reliability: Quick Font Check (Timeout safe)
+    // 5. Reliability: Wait for fonts (CRITICAL for alignment)
     const fontStart = Date.now();
     await Promise.race([
       page.evaluateHandle('document.fonts.ready'),
@@ -1078,7 +1111,7 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     ]);
     const fontTime = Date.now() - fontStart;
 
-    // 7. Dimension Measurement
+    // 6. Dimension Measurement
     const measureStart = Date.now();
     const element = await page.$('#print-content');
     const boundingBox = await element?.boundingBox();
@@ -1086,7 +1119,7 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     
     if (!boundingBox) throw new Error('Could not measure #print-content');
 
-    // 8. PDF Generation
+    // 7. PDF Generation
     const pdfStart = Date.now();
     const pdfBuffer = await page.pdf({
       width: `${Math.ceil(boundingBox.width)}px`,
@@ -1098,10 +1131,9 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     const pdfGenTime = Date.now() - pdfStart;
     const totalTime = Date.now() - requestStart;
 
-    console.log(`[PERF] Export Complete:
+    console.log(`[PERF] STATIC Export Complete:
       - Browser Ready: ${browserWait}ms
-      - Navigation:   ${navTime}ms
-      - Wait/Ready:   ${waitTime}ms
+      - HTML Load:     ${loadTime}ms
       - Font Sync:    ${fontTime}ms
       - Measure:      ${measureTime}ms
       - PDF Gen:      ${pdfGenTime}ms
@@ -1128,6 +1160,7 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     }
   }
 });
+
 
 // --- TICKET RESALE API ---
 app.post('/api/tickets/resale', authenticateToken, async (req: any, res) => {

@@ -1,16 +1,17 @@
 {
   "compilerOptions": {
     "outDir": "api/dist",
-    "rootDir": "api",
-    "module": "NodeNext",
+    "rootDir": ".",
+    "module": "ESNext",
     "target": "ES2020",
-    "strict": true,
+    "jsx": "react-jsx",
+    "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "allowJs": true,
     "resolveJsonModule": true,
-    "moduleResolution": "NodeNext"
+    "moduleResolution": "node"
   },
-  "include": ["api/**/*.ts"],
+  "include": ["api/**/*.ts", "src/components/tickets/TicketPrintCard.tsx", "src/types.ts", "src/lib/utils.ts"],
   "exclude": ["api/[...all].ts", "api/dist/**/*"]
 }
