@@ -12,6 +12,6 @@
     "resolveJsonModule": true,
     "moduleResolution": "node"
   },
-  "include": ["api/**/*.ts", "src/components/tickets/TicketPrintCard.tsx", "src/types.ts", "src/lib/utils.ts"],
+  "include": ["api/**/*.ts", "api/**/*.tsx", "src/types.ts", "src/lib/utils.ts"],
   "exclude": ["api/[...all].ts", "api/dist/**/*"]
 }

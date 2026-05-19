@@ -17,8 +17,6 @@ import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import { Browser } from 'puppeteer-core';
 import React from 'react';
-import ReactDOMServer from 'react-dom/server';
-import { TicketPrintCard } from '../src/components/tickets/TicketPrintCard.js';
 
 dotenv.config();
 
@@ -1012,6 +1010,12 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     const order = await db.getOrderByPublicId(publicId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     
+    // Lazy load SSR dependencies to avoid module-load crashes during server boot
+    const [{ renderToStaticMarkup }, { TicketPdfTemplate }] = await Promise.all([
+      import('react-dom/server'),
+      import('./lib/TicketPdfTemplate.js')
+    ]);
+
     const event = await db.getEventById(order.event_id);
     if (!event) return res.status(404).json({ error: 'Event not found' });
 
@@ -1038,8 +1042,8 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     }
 
     // 2. Render Component to Static HTML String
-    const renderedMarkup = ReactDOMServer.renderToStaticMarkup(
-      React.createElement(TicketPrintCard, {
+    const renderedMarkup = renderToStaticMarkup(
+      React.createElement(TicketPdfTemplate, {
         order: order as any,
         qrData: qrStatus.qr_data,
         qrVisible: qrStatus.visible,
