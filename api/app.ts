@@ -15,8 +15,46 @@ import prisma from './lib/prisma.js';
 import { db } from './lib/db-service.js';
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
+import { Browser } from 'puppeteer-core';
 
 dotenv.config();
+
+// SHARED BROWSER SINGLETON (Safe for Vercel Warm Starts)
+let _cachedBrowser: Browser | null = null;
+let _isLaunching = false;
+
+async function getSharedBrowser(): Promise<Browser> {
+  // If browser exists and is connected, reuse it
+  if (_cachedBrowser && (_cachedBrowser as any).connected) {
+    return _cachedBrowser;
+  }
+
+  // Handle concurrent launch requests to avoid multiple browsers
+  if (_isLaunching) {
+    while (_isLaunching) {
+      await new Promise(r => setTimeout(r, 100));
+      if (_cachedBrowser && (_cachedBrowser as any).connected) return _cachedBrowser;
+    }
+  }
+
+  _isLaunching = true;
+  try {
+    console.log('[Puppeteer] Launching new shared Chromium instance...');
+    const launchStart = Date.now();
+    const executablePath = await chromium.executablePath();
+    
+    _cachedBrowser = await puppeteer.launch({
+      args: (chromium as any).args,
+      defaultViewport: { width: 600, height: 800 },
+      executablePath: executablePath,
+      headless: (chromium as any).headless,
+    });
+    console.log(`[Puppeteer] Shared Chromium launched in ${Date.now() - launchStart}ms`);
+    return _cachedBrowser;
+  } finally {
+    _isLaunching = false;
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -955,11 +993,11 @@ app.post(['/api/user/redeem', '/api/user/points/redeem'], authenticateToken, asy
 });
 
 // --- TICKET PRINT & PDF API ---
-app.get('/api/tickets/:publicId/pdf', async (req: any, res) => {
+app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
   const publicId = req.params.publicId;
   console.log(`[PDF Export] Starting export for order public ID #${publicId}`);
   
-  let browser;
+  let page;
   try {
     const order = await db.getOrderByPublicId(publicId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -969,32 +1007,22 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res) => {
     const APP_URL = process.env.APP_URL || `${protocol}://${host}`;
     const targetUrl = `${APP_URL}/ticket/print/${publicId}`;
 
-    console.log(`[PDF Export] Navigating to: ${targetUrl}`);
-
-    console.log('[PDF Export] Launching Chromium...');
-    const launchStart = Date.now();
-    const executablePath = await chromium.executablePath();
+    const browser = await getSharedBrowser();
+    page = await browser.newPage();
     
-    browser = await puppeteer.launch({
-      args: (chromium as any).args,
-      defaultViewport: { width: 600, height: 800 },
-      executablePath: executablePath,
-      headless: (chromium as any).headless,
-    });
-    console.log(`[PDF Export] Browser launched in ${Date.now() - launchStart}ms`);
-
-    const page = await browser.newPage();
-    
-    // Enable request interception to block unnecessary assets
+    // Request Interception: Allow necessary assets, block heavy/useless ones
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const resourceType = request.resourceType();
+      const blockList = ['image', 'media', 'video', 'other'];
       const allowList = ['document', 'stylesheet', 'font', 'script', 'fetch', 'xhr'];
       
       if (allowList.includes(resourceType)) {
         request.continue();
-      } else {
+      } else if (blockList.includes(resourceType)) {
         request.abort();
+      } else {
+        request.continue();
       }
     });
 
@@ -1016,11 +1044,14 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res) => {
       throw new Error(`Target page returned status ${response.status()}`);
     }
 
-    // Wait for the ticket card to be visible
-    console.log('[PDF Export] Waiting for #print-content selector...');
+    // Wait for content and QR canvas
+    console.log('[PDF Export] Waiting for #print-content and canvas (QR)...');
     const selectorStart = Date.now();
-    await page.waitForSelector('#print-content', { visible: true, timeout: 15000 });
-    console.log(`[PDF Export] Selector #print-content found in ${Date.now() - selectorStart}ms`);
+    await Promise.all([
+      page.waitForSelector('#print-content', { visible: true, timeout: 15000 }),
+      order.is_paid ? page.waitForSelector('canvas', { timeout: 10000 }) : Promise.resolve()
+    ]);
+    console.log(`[PDF Export] Readiness verified in ${Date.now() - selectorStart}ms`);
 
     // Wait for fonts to be ready (fast race)
     await Promise.race([
@@ -1050,7 +1081,7 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res) => {
         bottom: '0px',
         left: '0px'
       },
-      preferCSSPageSize: true,
+      pageRanges: '1',
     });
     console.log(`[PDF Export] PDF generated in ${Date.now() - genStart}ms. Length: ${pdfBuffer.length} bytes`);
 
@@ -1066,15 +1097,13 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res) => {
     return res.end(pdfBuffer);
 
   } catch (error: any) {
-    console.error(`[PDF Export] Error for order public ID #${publicId}:`, error);
+    console.error(`[PDF Export] Error for public ID #${publicId}:`, error);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Failed to generate PDF ticket', details: error.message });
     }
   } finally {
-    if (browser) {
-      console.log('[PDF Export] Closing browser...');
-      await browser.close();
-      console.log('[PDF Export] Browser closed');
+    if (page) {
+      await page.close().catch(() => {});
     }
   }
 });

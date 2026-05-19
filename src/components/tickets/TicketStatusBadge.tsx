@@ -14,7 +14,7 @@ export const TicketStatusBadge: React.FC<TicketStatusBadgeProps> = ({ status = '
 
   return (
     <span 
-      className={`px-2.5 py-0.5 font-black uppercase tracking-[0.15em] border whitespace-nowrap rounded-[4px] text-[9px] ${
+      className={`inline-flex items-center justify-center px-2.5 h-[18px] font-black uppercase tracking-[0.15em] border whitespace-nowrap rounded-[4px] text-[9px] leading-none ${
         isPdf
           ? (isPaid ? 'bg-[#00C9B1]/10 text-[#00C9B1] border-[#00C9B1]/30' : 'bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/30')
           : (isPaid 
@@ -22,7 +22,7 @@ export const TicketStatusBadge: React.FC<TicketStatusBadgeProps> = ({ status = '
               : 'bg-status-warning/10 text-status-warning border-status-warning/30')
       }`}
     >
-      {upperStatus}
+      <span className="relative top-[0.5px]">{upperStatus}</span>
     </span>
   );
 };
