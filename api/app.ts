@@ -24,15 +24,19 @@ let _cachedBrowser: Browser | null = null;
 let _isLaunching = false;
 
 async function getSharedBrowser(): Promise<Browser> {
+  const launchStart = Date.now();
+  
   // If browser exists and is connected, reuse it
   if (_cachedBrowser && (_cachedBrowser as any).connected) {
+    console.log(`[Puppeteer] Reusing existing browser instance (${Date.now() - launchStart}ms check)`);
     return _cachedBrowser;
   }
 
   // Handle concurrent launch requests to avoid multiple browsers
   if (_isLaunching) {
+    console.log('[Puppeteer] Waiting for existing launch process...');
     while (_isLaunching) {
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise(r => setTimeout(r, 50));
       if (_cachedBrowser && (_cachedBrowser as any).connected) return _cachedBrowser;
     }
   }
@@ -40,17 +44,19 @@ async function getSharedBrowser(): Promise<Browser> {
   _isLaunching = true;
   try {
     console.log('[Puppeteer] Launching new shared Chromium instance...');
-    const launchStart = Date.now();
     const executablePath = await chromium.executablePath();
     
     _cachedBrowser = await puppeteer.launch({
-      args: (chromium as any).args,
+      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
       defaultViewport: { width: 600, height: 800 },
       executablePath: executablePath,
-      headless: (chromium as any).headless,
+      headless: (chromium as any).headless !== undefined ? (chromium as any).headless : true,
     });
     console.log(`[Puppeteer] Shared Chromium launched in ${Date.now() - launchStart}ms`);
     return _cachedBrowser;
+  } catch (err: any) {
+    console.error('[Puppeteer] Launch FAILED:', err);
+    throw err;
   } finally {
     _isLaunching = false;
   }
@@ -995,6 +1001,7 @@ app.post(['/api/user/redeem', '/api/user/points/redeem'], authenticateToken, asy
 // --- TICKET PRINT & PDF API ---
 app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
   const publicId = req.params.publicId;
+  const requestStart = Date.now();
   console.log(`[PDF Export] Starting export for order public ID #${publicId}`);
   
   let page;
@@ -1007,97 +1014,111 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     const APP_URL = process.env.APP_URL || `${protocol}://${host}`;
     const targetUrl = `${APP_URL}/ticket/print/${publicId}`;
 
+    const browserStart = Date.now();
     const browser = await getSharedBrowser();
+    const browserWait = Date.now() - browserStart;
+    
     page = await browser.newPage();
     
-    // Request Interception: Allow necessary assets, block heavy/useless ones
+    // 1. Performance: AGGRESSIVE blocking of non-essential resources
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const resourceType = request.resourceType();
-      const blockList = ['image', 'media', 'video', 'other'];
       const allowList = ['document', 'stylesheet', 'font', 'script', 'fetch', 'xhr'];
       
       if (allowList.includes(resourceType)) {
         request.continue();
-      } else if (blockList.includes(resourceType)) {
-        request.abort();
       } else {
-        request.continue();
+        request.abort();
       }
     });
 
+    // 2. Performance: Emulate screen to preserve visual cinematic theme
     await page.emulateMediaType('screen');
 
-    // Navigate and wait for content
-    console.log('[PDF Export] Navigating to page...');
+    // 3. Performance: Navigate with minimal wait
     const navStart = Date.now();
     const response = await page.goto(targetUrl, { 
       waitUntil: 'domcontentloaded',
-      timeout: 20000 
+      timeout: 15000 
     });
-    console.log(`[PDF Export] Page navigation completed in ${Date.now() - navStart}ms with status: ${response?.status()}`);
+    const navTime = Date.now() - navStart;
 
-    // Check if the page returned an error status
     if (response && response.status() >= 400) {
-      const pageContent = await page.content();
-      console.error(`[PDF Export] Page returned error status ${response.status()}. Content: ${pageContent.substring(0, 500)}...`);
       throw new Error(`Target page returned status ${response.status()}`);
     }
 
-    // Wait for content and QR canvas
-    console.log('[PDF Export] Waiting for #print-content and canvas (QR)...');
-    const selectorStart = Date.now();
-    await Promise.all([
-      page.waitForSelector('#print-content', { visible: true, timeout: 15000 }),
-      order.is_paid ? page.waitForSelector('canvas', { timeout: 10000 }) : Promise.resolve()
-    ]);
-    console.log(`[PDF Export] Readiness verified in ${Date.now() - selectorStart}ms`);
+    // 4. Optimization: Inject CSS to kill animations and force print-ready state
+    await page.addStyleTag({
+      content: `
+        *, *::before, *::after {
+          animation: none !important;
+          transition: none !important;
+          transition-duration: 0s !important;
+          animation-duration: 0s !important;
+        }
+        body { background-color: #0A0F0E !important; margin: 0 !important; padding: 0 !important; }
+        ::-webkit-scrollbar { display: none !important; }
+      `
+    });
 
-    // Wait for fonts to be ready (fast race)
+    // 5. Reliability: Deterministic wait for content and QR Code
+    const waitStart = Date.now();
+    await Promise.all([
+      page.waitForSelector('#print-content', { visible: true, timeout: 10000 }),
+      order.is_paid ? page.waitForSelector('canvas', { timeout: 8000 }) : Promise.resolve()
+    ]);
+    const waitTime = Date.now() - waitStart;
+
+    // 6. Reliability: Quick Font Check (Timeout safe)
+    const fontStart = Date.now();
     await Promise.race([
       page.evaluateHandle('document.fonts.ready'),
-      new Promise(resolve => setTimeout(resolve, 2000))
+      new Promise(resolve => setTimeout(resolve, 1500))
     ]);
+    const fontTime = Date.now() - fontStart;
 
-    // Measure content size
+    // 7. Dimension Measurement
+    const measureStart = Date.now();
     const element = await page.$('#print-content');
     const boundingBox = await element?.boundingBox();
+    const measureTime = Date.now() - measureStart;
     
-    if (!boundingBox) {
-      throw new Error('Could not measure #print-content dimensions');
-    }
-    console.log(`[PDF Export] Content dimensions measured: ${Math.ceil(boundingBox.width)}x${Math.ceil(boundingBox.height)}`);
+    if (!boundingBox) throw new Error('Could not measure #print-content');
 
-    // Generate the PDF
-    console.log('[PDF Export] Generating content-sized PDF...');
-    const genStart = Date.now();
+    // 8. PDF Generation
+    const pdfStart = Date.now();
     const pdfBuffer = await page.pdf({
       width: `${Math.ceil(boundingBox.width)}px`,
       height: `${Math.ceil(boundingBox.height)}px`,
       printBackground: true,
-      margin: {
-        top: '0px',
-        right: '0px',
-        bottom: '0px',
-        left: '0px'
-      },
+      margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' },
       pageRanges: '1',
     });
-    console.log(`[PDF Export] PDF generated in ${Date.now() - genStart}ms. Length: ${pdfBuffer.length} bytes`);
+    const pdfGenTime = Date.now() - pdfStart;
+    const totalTime = Date.now() - requestStart;
 
-    if (!pdfBuffer || pdfBuffer.length < 1000) {
-       throw new Error(`Generated PDF buffer is invalid or empty (${pdfBuffer?.length || 0} bytes)`);
+    console.log(`[PERF] Export Complete:
+      - Browser Ready: ${browserWait}ms
+      - Navigation:   ${navTime}ms
+      - Wait/Ready:   ${waitTime}ms
+      - Font Sync:    ${fontTime}ms
+      - Measure:      ${measureTime}ms
+      - PDF Gen:      ${pdfGenTime}ms
+      - TOTAL:        ${totalTime}ms
+      - SIZE:         ${pdfBuffer.length} bytes`);
+
+    if (!pdfBuffer || pdfBuffer.length < 500) {
+       throw new Error(`Invalid PDF buffer generated (${pdfBuffer?.length || 0} bytes)`);
     }
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="Ticket-${publicId}.pdf"`);
     res.setHeader('Content-Length', pdfBuffer.length);
-    
-    console.log('[PDF Export] Sending PDF response...');
     return res.end(pdfBuffer);
 
   } catch (error: any) {
-    console.error(`[PDF Export] Error for public ID #${publicId}:`, error);
+    console.error(`[PDF Export ERROR] #${publicId}:`, error);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Failed to generate PDF ticket', details: error.message });
     }
