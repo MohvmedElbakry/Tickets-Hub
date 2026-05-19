@@ -27,13 +27,13 @@ dotenv.config();
 let _cachedBrowser: Browser | null = null;
 let _isLaunching = false;
 
-async function getSharedBrowser(): Promise<Browser> {
+async function getSharedBrowser(): Promise<{ browser: Browser, reused: boolean }> {
   const launchStart = Date.now();
   
   // If browser exists and is connected, reuse it
   if (_cachedBrowser && (_cachedBrowser as any).connected) {
     console.log(`[Puppeteer] Reusing existing browser instance (${Date.now() - launchStart}ms check)`);
-    return _cachedBrowser;
+    return { browser: _cachedBrowser, reused: true };
   }
 
   // Handle concurrent launch requests to avoid multiple browsers
@@ -41,7 +41,7 @@ async function getSharedBrowser(): Promise<Browser> {
     console.log('[Puppeteer] Waiting for existing launch process...');
     while (_isLaunching) {
       await new Promise(r => setTimeout(r, 50));
-      if (_cachedBrowser && (_cachedBrowser as any).connected) return _cachedBrowser;
+      if (_cachedBrowser && (_cachedBrowser as any).connected) return { browser: _cachedBrowser, reused: true };
     }
   }
 
@@ -57,7 +57,7 @@ async function getSharedBrowser(): Promise<Browser> {
       headless: (chromium as any).headless !== undefined ? (chromium as any).headless : true,
     });
     console.log(`[Puppeteer] Shared Chromium launched in ${Date.now() - launchStart}ms`);
-    return _cachedBrowser;
+    return { browser: _cachedBrowser, reused: false };
   } catch (err: any) {
     console.error('[Puppeteer] Launch FAILED:', err);
     throw err;
@@ -1006,19 +1006,21 @@ app.post(['/api/user/redeem', '/api/user/points/redeem'], authenticateToken, asy
 app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
   const publicId = req.params.publicId;
   const requestStart = Date.now();
-  console.log(`[PDF SSR] Starting export for order public ID #${publicId}`);
+  console.log(`[PDF PERF] Starting export for order public ID #${publicId}`);
   
   let page;
   try {
-    // 1. Data Fetching (Single DB call)
+    // 1. Data Fetching
+    const dbStart = Date.now();
     const order = await db.getOrderByPublicId(publicId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
-    const fetchTime = Date.now() - requestStart;
+    const dbTime = Date.now() - dbStart;
 
     const isPaid = order.is_paid || order.order_status === 'paid';
     const event: any = order.event || {};
     
-    // 2. State & QR Generation (Deterministic Backend Logic)
+    // 2. QR Generation
+    const qrStart = Date.now();
     let qrDataUrl = '';
     let statusText = isPaid ? 'CONFIRMED' : (order.order_status || 'PENDING').toUpperCase();
 
@@ -1044,7 +1046,7 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
          });
        }
     }
-    const qrTime = Date.now() - requestStart - fetchTime;
+    const qrTime = Date.now() - qrStart;
 
     // 3. SSR Rendering (Zero Hydration)
     const ssrStart = Date.now();
@@ -1067,13 +1069,18 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
       </html>
     `;
     const ssrTime = Date.now() - ssrStart;
+    const htmlSize = Buffer.byteLength(fullHtml, 'utf8');
 
-    // 4. Puppeteer Pipeline (Shared Browser)
-    const browserStart = Date.now();
-    const browser = await getSharedBrowser();
+    // 4. Puppeteer Pipeline
+    const acquireStart = Date.now();
+    const { browser, reused } = await getSharedBrowser();
+    const acquireTime = Date.now() - acquireStart;
+
+    const pageStart = Date.now();
     page = await browser.newPage();
+    const pageTime = Date.now() - pageStart;
     
-    // Minimal interception - we don't need any external assets for the SSR HTML
+    // Minimal interception
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       request.abort(); 
@@ -1086,12 +1093,23 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     await page.setContent(fullHtml, { waitUntil: 'load' });
     const setTime = Date.now() - setStart;
 
-    // 5. Dimension Measurement
+    // Font readiness check
+    const fontStart = Date.now();
+    await Promise.race([
+      page.evaluateHandle('document.fonts.ready'),
+      new Promise(resolve => setTimeout(resolve, 1500))
+    ]);
+    const fontTime = Date.now() - fontStart;
+
+    // Dimension Measurement
+    const measureStart = Date.now();
     const element = await page.$('#print-content');
     const boundingBox = await element?.boundingBox();
-    if (!boundingBox) throw new Error('Render failed');
+    const measureTime = Date.now() - measureStart;
+    
+    if (!boundingBox) throw new Error('Render failed: Could not measure #print-content');
 
-    // 6. PDF Generation
+    // PDF Generation
     const pdfStart = Date.now();
     const pdfBuffer = await page.pdf({
       width: `${Math.ceil(boundingBox.width)}px`,
@@ -1100,17 +1118,29 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
       margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' },
       pageRanges: '1',
     });
-    
-    const browserTime = Date.now() - browserStart;
+    const pdfGenTime = Date.now() - pdfStart;
+
     const totalTime = Date.now() - requestStart;
 
-    console.log(`[PERF SSR] Export Complete:
-      - DB Fetch:     ${fetchTime}ms
-      - QR Gen:       ${qrTime}ms
-      - SSR HTML:     ${ssrTime}ms
-      - Browser Ops:  ${browserTime}ms (setContent: ${setTime}ms)
-      - TOTAL:        ${totalTime}ms
-      - SIZE:         ${pdfBuffer.length} bytes`);
+    console.log(`
+[PDF PERF REPORT] - #${publicId}
+---------------------------------------
+Warm/Reused:        ${reused ? 'YES' : 'NO (Cold)'}
+HTML Size:          ${(htmlSize / 1024).toFixed(2)} KB
+PDF Size:           ${(pdfBuffer.length / 1024).toFixed(2)} KB
+---------------------------------------
+1. DB Fetch:        ${dbTime}ms
+2. QR Gen:          ${qrTime}ms
+3. SSR Render:      ${ssrTime}ms
+4. Browser Acquire: ${acquireTime}ms
+5. New Page:        ${pageTime}ms
+6. Set Content:     ${setTime}ms
+7. Fonts Ready:     ${fontTime}ms
+8. Measure:         ${measureTime}ms
+9. PDF Generate:    ${pdfGenTime}ms
+---------------------------------------
+TOTAL:              ${totalTime}ms
+---------------------------------------`);
 
     if (!pdfBuffer || pdfBuffer.length < 500) {
        throw new Error(`Invalid PDF buffer generated`);
@@ -1119,10 +1149,14 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="Ticket-${publicId}.pdf"`);
     res.setHeader('Content-Length', pdfBuffer.length);
-    return res.end(pdfBuffer);
+    
+    const sendStart = Date.now();
+    res.end(pdfBuffer);
+    console.log(`[PDF PERF] Response Send: ${Date.now() - sendStart}ms`);
+    return;
 
   } catch (error: any) {
-    console.error(`[PDF SSR ERROR] #${publicId}:`, error);
+    console.error(`[PDF PERF ERROR] #${publicId}:`, error);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Failed to generate PDF ticket', details: error.message });
     }
