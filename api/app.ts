@@ -25,44 +25,44 @@ dotenv.config();
 
 // SHARED BROWSER SINGLETON (Safe for Vercel Warm Starts)
 let _cachedBrowser: Browser | null = null;
-let _isLaunching = false;
+let _browserLaunchPromise: Promise<Browser> | null = null;
 
 async function getSharedBrowser(): Promise<{ browser: Browser, reused: boolean }> {
   const launchStart = Date.now();
+  const wasAlreadyLaunching = !!_browserLaunchPromise;
   
   // If browser exists and is connected, reuse it
   if (_cachedBrowser && (_cachedBrowser as any).connected) {
-    console.log(`[Puppeteer] Reusing existing browser instance (${Date.now() - launchStart}ms check)`);
     return { browser: _cachedBrowser, reused: true };
   }
 
-  // Handle concurrent launch requests to avoid multiple browsers
-  if (_isLaunching) {
-    console.log('[Puppeteer] Waiting for existing launch process...');
-    while (_isLaunching) {
-      await new Promise(r => setTimeout(r, 50));
-      if (_cachedBrowser && (_cachedBrowser as any).connected) return { browser: _cachedBrowser, reused: true };
-    }
+  // If already launching, wait for the existing promise
+  if (_browserLaunchPromise) {
+    const b = await _browserLaunchPromise;
+    return { browser: b, reused: wasAlreadyLaunching || true };
   }
 
-  _isLaunching = true;
-  try {
+  // Otherwise, start a new launch
+  _browserLaunchPromise = (async () => {
     console.log('[Puppeteer] Launching new shared Chromium instance...');
     const executablePath = await chromium.executablePath();
-    
-    _cachedBrowser = await puppeteer.launch({
+    const b = await puppeteer.launch({
       args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
       defaultViewport: { width: 600, height: 800 },
       executablePath: executablePath,
       headless: (chromium as any).headless !== undefined ? (chromium as any).headless : true,
     });
     console.log(`[Puppeteer] Shared Chromium launched in ${Date.now() - launchStart}ms`);
-    return { browser: _cachedBrowser, reused: false };
-  } catch (err: any) {
-    console.error('[Puppeteer] Launch FAILED:', err);
+    _cachedBrowser = b;
+    return b;
+  })();
+
+  try {
+    const b = await _browserLaunchPromise;
+    return { browser: b, reused: false };
+  } catch (err) {
+    _browserLaunchPromise = null;
     throw err;
-  } finally {
-    _isLaunching = false;
   }
 }
 
@@ -1010,11 +1010,24 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
   
   let page;
   try {
-    // 1. Data Fetching
-    const dbStart = Date.now();
-    const order = await db.getOrderByPublicId(publicId);
+    // 1. Parallelize DB Fetch and Browser Acquisition
+    const parallelStart = Date.now();
+    const [dbResult, browserResult] = await Promise.all([
+      (async () => {
+        const o = await db.getOrderByPublicId(publicId);
+        return { order: o, time: Date.now() - parallelStart };
+      })(),
+      (async () => {
+        const info = await getSharedBrowser();
+        return { info, time: Date.now() - parallelStart };
+      })()
+    ]);
+
+    const { order, time: dbTime } = dbResult;
+    const { info: browserInfo, time: acquireTime } = browserResult;
+    const { browser, reused } = browserInfo;
+
     if (!order) return res.status(404).json({ error: 'Order not found' });
-    const dbTime = Date.now() - dbStart;
 
     const isPaid = order.is_paid || order.order_status === 'paid';
     const event: any = order.event || {};
@@ -1072,10 +1085,6 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     const htmlSize = Buffer.byteLength(fullHtml, 'utf8');
 
     // 4. Puppeteer Pipeline
-    const acquireStart = Date.now();
-    const { browser, reused } = await getSharedBrowser();
-    const acquireTime = Date.now() - acquireStart;
-
     const pageStart = Date.now();
     page = await browser.newPage();
     const pageTime = Date.now() - pageStart;
@@ -1530,5 +1539,14 @@ app.use((req, res) => {
         timestamp: new Date().toISOString()
     });
 });
+
+// Eagerly pre-warm Chromium and DB on module load (background)
+setTimeout(() => {
+  console.log('[Puppeteer] Module loaded. Eagerly warming up browser instance...');
+  getSharedBrowser().catch(err => console.error('[Puppeteer] Eager warmup FAILED:', err));
+  
+  console.log('[DB] Module loaded. Warming up database connection...');
+  db.getSettings().catch(err => console.error('[DB] Eager warmup FAILED:', err));
+}, 100);
 
 export default app;

@@ -642,7 +642,7 @@ class PrismaDB {
     try {
       const order = await prisma.order.findUnique({ 
         where: { public_id: publicId },
-        include: { user: true, event: true, order_tickets: { include: { ticket_type: true } } }
+        include: { event: true, order_tickets: { include: { ticket_type: true } } }
       });
       if (order && (order as any).order_tickets) (order as any).items = (order as any).order_tickets;
       console.log(`[DB SUCCESS] Order fetched by public ID ${publicId}:`, !!order);
