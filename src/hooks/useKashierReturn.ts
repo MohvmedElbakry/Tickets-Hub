@@ -40,7 +40,6 @@ export const useKashierReturn = () => {
 
   const { orderId, transactionId, status: paymentStatus } = paymentDetails;
 
-  const [isRecovering, setIsRecovering] = useState(false);
   const isPaidRef = useRef(false);
   const isConfirmingRef = useRef(false);
   const attemptRef = useRef(0);
@@ -96,6 +95,9 @@ export const useKashierReturn = () => {
              setIsHandlingPaymentGlobal(false);
              setPaymentFlowActive(false);
              setVerificationStarted(false);
+             localStorage.removeItem('last_payment_order_id');
+             localStorage.removeItem('last_payment_time');
+             sessionStorage.removeItem('payment_redirect_done');
              
              navigate(`/confirmation/${orderId}`, { 
                replace: true,
@@ -134,9 +136,9 @@ export const useKashierReturn = () => {
             
             // IMMEDIATELY set state before navigation
             setLastOrder({ 
-              public_id: orderId,
-              is_paid: true, 
-              order_status: 'paid'
+               public_id: orderId,
+               is_paid: true, 
+               order_status: 'paid'
             } as any);
             
             if (res.order?.event) setSelectedEvent(res.order.event);
@@ -145,6 +147,9 @@ export const useKashierReturn = () => {
             setIsHandlingPaymentGlobal(false);
             setPaymentFlowActive(false);
             setVerificationStarted(false);
+            localStorage.removeItem('last_payment_order_id');
+            localStorage.removeItem('last_payment_time');
+            sessionStorage.removeItem('payment_redirect_done');
 
             navigate(`/confirmation/${orderId}`, { 
               replace: true,
@@ -164,6 +169,9 @@ export const useKashierReturn = () => {
             setIsHandlingPaymentGlobal(false);
             setPaymentFlowActive(false);
             setVerificationStarted(false);
+            localStorage.removeItem('last_payment_order_id');
+            localStorage.removeItem('last_payment_time');
+            sessionStorage.removeItem('payment_redirect_done');
             navigate(`/payment-failure/${orderId}`, { replace: true });
             return; // STOP
           }
@@ -181,6 +189,9 @@ export const useKashierReturn = () => {
              setIsHandlingPaymentGlobal(false);
              setPaymentFlowActive(false);
              setVerificationStarted(false);
+             localStorage.removeItem('last_payment_order_id');
+             localStorage.removeItem('last_payment_time');
+             sessionStorage.removeItem('payment_redirect_done');
              navigate(`/dashboard`, { replace: true });
           }
         } catch (err) {
@@ -201,34 +212,5 @@ export const useKashierReturn = () => {
     };
   }, [orderId, transactionId, paymentStatus, isAuthReady, location.pathname]);
 
-  // Handle Recovery Case (if user closes tab before redirect)
-  useEffect(() => {
-    const isOnEntryRoute = location.pathname === "/" || location.pathname.startsWith("/events");
-    if (!isOnEntryRoute) return;
-
-    const pendingOrderId = localStorage.getItem("last_payment_order_id");
-    if (!pendingOrderId) return;
-    if (sessionStorage.getItem("payment_redirect_done") === "1") return;
-    if (!isAuthReady) return;
-
-    console.log("🚑 [PaymentRecovery] Manual return detected. Using last_payment_order_id.");
-    
-    setIsRecovering(true);
-    sessionStorage.setItem("payment_redirect_done", "1");
-    localStorage.removeItem('last_payment_order_id');
-    localStorage.removeItem('last_payment_time');
-
-    navigate(`/confirmation/${pendingOrderId}`, { 
-      replace: true,
-      state: {
-        order: {
-          public_id: pendingOrderId,
-          is_paid: true,
-          order_status: 'paid'
-        }
-      }
-    });
-  }, [location.pathname, isAuthReady]);
-
-  return { isHandlingPayment: isRecovering || isVerifyingGlobal };
+  return { isHandlingPayment: isVerifyingGlobal };
 };

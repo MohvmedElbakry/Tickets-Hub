@@ -74,8 +74,11 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
   // PHASE 3.2.5: CLEAR payment flow flag definitively when landing on confirmation page
   useEffect(() => {
     if (location.pathname.startsWith('/confirmation')) {
-      console.log("✅ [AppContent] Navigation to confirmation detected. Clearing payment flow flag.");
+      console.log("✅ [AppContent] Navigation to confirmation detected. Clearing payment flow flag and storage indicators.");
       setPaymentFlowActive(false);
+      localStorage.removeItem('last_payment_order_id');
+      localStorage.removeItem('last_payment_time');
+      sessionStorage.removeItem('payment_redirect_done');
     }
   }, [location.pathname, setPaymentFlowActive]);
 

@@ -10,7 +10,7 @@ import { useUI } from './UIContext';
 interface EventsContextType {
   events: Event[];
   loading: boolean;
-  refreshEvents: () => Promise<void>;
+  refreshEvents: (force?: boolean) => Promise<void>;
   settings: { 
     service_fee_percent: number;
     processing_fee_percent: number;
