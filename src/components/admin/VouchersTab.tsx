@@ -1,34 +1,43 @@
 
 import React from 'react';
-import { RefreshCw, PlusCircle } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { Voucher } from '../../types';
-import { Button } from '../ui/Button';
 
 interface VouchersTabProps {
   allVouchers: Voucher[];
   loading: boolean;
   setIsVoucherModalOpen: (open: boolean) => void;
+  fetchVouchers: () => Promise<void>;
 }
 
 export const VouchersTab: React.FC<VouchersTabProps> = ({
   allVouchers,
   loading,
-  setIsVoucherModalOpen
+  setIsVoucherModalOpen,
+  fetchVouchers
 }) => {
   return (
     <section className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-h3">Voucher Management</h3>
+        <button 
+          type="button"
+          onClick={fetchVouchers} 
+          disabled={loading}
+          className="p-3 bg-bg-card hover:bg-bg-elevated border border-bg-border rounded-xl text-text-muted hover:text-text-primary transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer"
+          title="Refresh vouchers"
+        >
+          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+        </button>
+      </div>
+
       {loading && allVouchers.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 bg-bg-card rounded-3xl border border-bg-border mb-8">
           <RefreshCw className="w-12 h-12 text-teal animate-spin mb-4" />
           <p className="text-text-muted font-medium text-body-base">Loading vouchers...</p>
         </div>
       )}
-      <div className="flex justify-between items-center">
-        <h3 className="text-h3">Voucher Management</h3>
-        <Button variant="accent" onClick={() => setIsVoucherModalOpen(true)}>
-          <PlusCircle size={20} /> Create Voucher
-        </Button>
-      </div>
+
       <div className="bg-bg-card rounded-3xl border border-bg-border overflow-x-auto">
         <table className="w-full text-left">
           <thead>

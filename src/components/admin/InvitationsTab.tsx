@@ -33,9 +33,20 @@ export const InvitationsTab: React.FC<InvitationsTabProps> = ({
       )}
       <div className="flex justify-between items-center">
         <h3 className="text-h3">Admin Invitations</h3>
-        <Button variant="accent" onClick={() => setIsInvitationModalOpen(true)}>
-          <PlusCircle size={20} /> Send Invitation
-        </Button>
+        <div className="flex items-center gap-3">
+          <button 
+            type="button"
+            onClick={fetchInvitations} 
+            disabled={loading}
+            className="p-3 bg-bg-card hover:bg-bg-elevated border border-bg-border rounded-xl text-text-muted hover:text-text-primary transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer"
+            title="Refresh invitations"
+          >
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+          </button>
+          <Button variant="accent" onClick={() => setIsInvitationModalOpen(true)}>
+            <PlusCircle size={20} /> Send Invitation
+          </Button>
+        </div>
       </div>
       {isInvitationModalOpen && (
         <InvitationModal 

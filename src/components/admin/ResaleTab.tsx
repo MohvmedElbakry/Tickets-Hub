@@ -23,7 +23,18 @@ export const ResaleTab: React.FC<ResaleTabProps> = ({
           <p className="text-text-muted font-medium text-body-base">Loading resale requests...</p>
         </div>
       )}
-      <h3 className="text-h3">Resale Management</h3>
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-h3">Resale Management</h3>
+        <button 
+          type="button"
+          onClick={fetchResellRequests} 
+          disabled={loading}
+          className="p-3 bg-bg-card hover:bg-bg-elevated border border-bg-border rounded-xl text-text-muted hover:text-text-primary transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer"
+          title="Refresh resale requests"
+        >
+          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+        </button>
+      </div>
       <div className="bg-bg-card rounded-3xl border border-bg-border overflow-x-auto">
         <table className="w-full text-left">
           <thead>

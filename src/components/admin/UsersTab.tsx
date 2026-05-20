@@ -8,17 +8,32 @@ interface UsersTabProps {
   allUsers: UserProfile[];
   loading: boolean;
   handleUpdateUserRole: (userId: number, newRole: 'admin' | 'user') => Promise<void>;
+  fetchUsers: () => Promise<void>;
 }
 
 export const UsersTab: React.FC<UsersTabProps> = ({
   allUsers,
   loading,
-  handleUpdateUserRole
+  handleUpdateUserRole,
+  fetchUsers
 }) => {
   const { user } = useAuth();
   const currentUserEmail = user?.email;
   return (
-    <section>
+    <section className="space-y-6">
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-h3">User Directory</h3>
+        <button 
+          type="button"
+          onClick={fetchUsers} 
+          disabled={loading}
+          className="p-3 bg-bg-card hover:bg-bg-elevated border border-bg-border rounded-xl text-text-muted hover:text-text-primary transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer"
+          title="Refresh users"
+        >
+          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+        </button>
+      </div>
+
       {loading && allUsers.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 bg-bg-card rounded-3xl border border-bg-border mb-8">
           <RefreshCw className="w-12 h-12 text-teal animate-spin mb-4" />

@@ -273,6 +273,7 @@ export const AdminDashboard: React.FC = React.memo(() => {
               allUsers={allUsers}
               loading={loading}
               handleUpdateUserRole={handleUpdateUserRole}
+              fetchUsers={fetchUsers}
             />
           )}
 
@@ -281,6 +282,7 @@ export const AdminDashboard: React.FC = React.memo(() => {
               allVouchers={allVouchers}
               loading={loading}
               setIsVoucherModalOpen={setIsVoucherModalOpen}
+              fetchVouchers={fetchVouchers}
             />
           )}
 
