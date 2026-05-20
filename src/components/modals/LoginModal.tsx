@@ -7,8 +7,11 @@ import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
 
 export const LoginModal = () => {
-  const { isLoginModalOpen: isOpen, setIsLoginModalOpen, setIsSignupModalOpen } = useUI();
-  const onClose = () => setIsLoginModalOpen(false);
+  const { isLoginModalOpen: isOpen, setIsLoginModalOpen, setIsSignupModalOpen, loginModalNotice, setLoginModalNotice } = useUI();
+  const onClose = () => {
+    setIsLoginModalOpen(false);
+    setLoginModalNotice(null);
+  };
   const onOpenSignup = () => setIsSignupModalOpen(true);
   
   const { login: onLoginSuccess } = useAuth();
@@ -67,6 +70,15 @@ export const LoginModal = () => {
                 <X size={20} className="text-text-muted group-hover:text-text-primary transition-colors" />
               </button>
             </div>
+
+            {loginModalNotice && (
+              <div id="login-modal-notice" className="bg-teal/10 border border-teal/20 text-teal p-4 rounded-card mb-8 flex items-center gap-3 text-body-sm font-medium">
+                <div className="w-6 h-6 rounded-full bg-teal/20 flex items-center justify-center shrink-0">
+                  <AlertCircle size={14} className="text-teal" />
+                </div>
+                <span>{loginModalNotice}</span>
+              </div>
+            )}
 
             {error && (
               <div className="bg-status-error/10 border border-status-error/20 text-status-error p-4 rounded-card mb-8 flex items-center gap-3 text-body-sm font-medium">

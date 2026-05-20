@@ -11,7 +11,9 @@ export const SignupModal = () => {
   const { 
     isSignupModalOpen: isOpen, 
     setIsSignupModalOpen, 
-    setIsLoginModalOpen
+    setIsLoginModalOpen,
+    loginModalNotice,
+    setLoginModalNotice
   } = useUI();
   
   const [signupForm, setSignupForm] = useState({
@@ -26,7 +28,10 @@ export const SignupModal = () => {
     role: 'user' as 'user' | 'organizer'
   });
 
-  const onClose = () => setIsSignupModalOpen(false);
+  const onClose = () => {
+    setIsSignupModalOpen(false);
+    setLoginModalNotice(null);
+  };
   const onOpenLogin = () => setIsLoginModalOpen(true);
   
   const { login: onSignupSuccess } = useAuth();
@@ -83,6 +88,15 @@ export const SignupModal = () => {
                 <X size={20} className="text-text-muted group-hover:text-text-primary transition-colors" />
               </button>
             </div>
+
+            {loginModalNotice && (
+              <div id="signup-modal-notice" className="bg-teal/10 border border-teal/20 text-teal p-4 rounded-card mb-8 flex items-center gap-3 text-body-sm font-medium">
+                <div className="w-6 h-6 rounded-full bg-teal/20 flex items-center justify-center shrink-0">
+                  <AlertCircle size={14} className="text-teal" />
+                </div>
+                <span>{loginModalNotice}</span>
+              </div>
+            )}
 
             {error && (
               <div className="bg-status-error/10 border border-status-error/20 text-status-error p-4 rounded-card mb-8 flex items-center gap-3 text-body-sm font-medium">

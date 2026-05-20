@@ -148,6 +148,26 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [selectedEvent, setSelectedEvent, refreshNotifications]);
 
+  // Trigger pending action after successful login/signup
+  useEffect(() => {
+    if (!accessToken) return;
+
+    const pendingActionStr = sessionStorage.getItem('pending_action');
+    if (!pendingActionStr) return;
+
+    try {
+      const pendingAction = JSON.parse(pendingActionStr);
+      sessionStorage.removeItem('pending_action');
+
+      if (pendingAction.type === 'pre-register' && pendingAction.eventId) {
+        console.log(`[EventsContext] Executing pending pre-registration for event #${pendingAction.eventId}`);
+        handlePreRegister(pendingAction.eventId);
+      }
+    } catch (err) {
+      console.error('Failed to parse pending action', err);
+    }
+  }, [accessToken, handlePreRegister]);
+
   const handleUnregister = useCallback(async (eventId: string | number) => {
     try {
       const data = await eventService.unregister(eventId);

@@ -23,8 +23,8 @@ import { formatEventTime } from '../lib/utils';
 export const EventDetailsPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { selectedEvent, setSelectedEvent } = useUI();
-  const { isAuthReady } = useAuth();
+  const { selectedEvent, setSelectedEvent, setIsLoginModalOpen, setLoginModalNotice } = useUI();
+  const { isAuthReady, accessToken } = useAuth();
   const { handlePreRegister, handleUnregister, handlePurchase, purchaseLoading, purchaseError } = useEvents();
   const { settings } = useSettings();
   
@@ -299,6 +299,15 @@ export const EventDetailsPage = () => {
                         variant={selectedEvent.is_pre_registered ? 'outline' : 'accent'}
                         disabled={preRegLoading || unregisterLoading || selectedEvent.is_pre_registered}
                         onClick={async () => {
+                          if (!accessToken) {
+                            setLoginModalNotice("Please sign in to join the waitlist.");
+                            setIsLoginModalOpen(true);
+                            sessionStorage.setItem('pending_action', JSON.stringify({
+                              type: 'pre-register',
+                              eventId: selectedEvent.id
+                            }));
+                            return;
+                          }
                           setPreRegLoading(true);
                           try {
                             await handlePreRegister(selectedEvent.id!);

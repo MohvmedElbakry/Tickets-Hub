@@ -30,6 +30,8 @@ interface UIContextType {
   verificationStarted: boolean;
   setVerificationStarted: (started: boolean) => void;
   handleEventClick: (event: Event) => void;
+  loginModalNotice: string | null;
+  setLoginModalNotice: (notice: string | null) => void;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
@@ -50,6 +52,7 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const [isHandlingPayment, setIsHandlingPayment] = useState(false);
   const [paymentFlowActive, setPaymentFlowActive] = useState(false);
   const [verificationStarted, setVerificationStarted] = useState(false);
+  const [loginModalNotice, setLoginModalNotice] = useState<string | null>(null);
 
   // Handle unauthorized API calls and global logout
   useEffect(() => {
@@ -70,6 +73,7 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       setIsHandlingPayment(false);
       setPaymentFlowActive(false);
       setVerificationStarted(false);
+      setLoginModalNotice(null);
     };
 
     window.addEventListener('open-login-modal', handleOpenLogin);
@@ -95,6 +99,7 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
       isHandlingPayment, setIsHandlingPayment,
       paymentFlowActive, setPaymentFlowActive,
       verificationStarted, setVerificationStarted,
+      loginModalNotice, setLoginModalNotice,
       handleEventClick: (event: Event) => {
         setSelectedEvent(event);
         navigate(`/events/${event.id}`);
