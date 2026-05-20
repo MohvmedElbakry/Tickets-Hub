@@ -25,12 +25,13 @@ export const EventDetailsPage = () => {
   const navigate = useNavigate();
   const { selectedEvent, setSelectedEvent } = useUI();
   const { isAuthReady } = useAuth();
-  const { handlePreRegister, handlePurchase, purchaseLoading, purchaseError } = useEvents();
+  const { handlePreRegister, handleUnregister, handlePurchase, purchaseLoading, purchaseError } = useEvents();
   const { settings } = useSettings();
   
   const [ticketQuantities, setTicketQuantities] = useState<{[key: string]: number}>({});
   const [loading, setLoading] = useState(true);
   const [preRegLoading, setPreRegLoading] = useState(false);
+  const [unregisterLoading, setUnregisterLoading] = useState(false);
   const hasFetched = useRef(false);
 
   console.log("📦 EVENT DETAILS PAGE LOADED", { id, isAuthReady, selectedEventId: selectedEvent?.id });
@@ -292,21 +293,41 @@ export const EventDetailsPage = () => {
                         </div>
                       )}
                     </div>
-                    <Button 
-                      className={`w-full py-5 text-button font-black uppercase tracking-widest shadow-card-glow transition-all ${selectedEvent.is_pre_registered ? 'bg-status-success/20 border-status-success/30 text-status-success hover:bg-status-success/20 cursor-default shadow-none' : ''}`} 
-                      variant={selectedEvent.is_pre_registered ? 'outline' : 'accent'}
-                      disabled={preRegLoading || selectedEvent.is_pre_registered}
-                      onClick={async () => {
-                        setPreRegLoading(true);
-                        try {
-                          await handlePreRegister(selectedEvent.id!);
-                        } finally {
-                          setPreRegLoading(false);
-                        }
-                      }}
-                    >
-                      {preRegLoading ? 'JOINING...' : selectedEvent.is_pre_registered ? 'YOU\'RE IN' : 'NOTIFY ME'}
-                    </Button>
+                    <div className="content-stack gap-4 w-full">
+                      <Button 
+                        className={`w-full py-5 text-button font-black uppercase tracking-widest transition-all ${selectedEvent.is_pre_registered ? 'bg-status-success/20 border-status-success/30 text-status-success hover:bg-status-success/20 cursor-default shadow-none' : 'shadow-card-glow'}`} 
+                        variant={selectedEvent.is_pre_registered ? 'outline' : 'accent'}
+                        disabled={preRegLoading || unregisterLoading || selectedEvent.is_pre_registered}
+                        onClick={async () => {
+                          setPreRegLoading(true);
+                          try {
+                            await handlePreRegister(selectedEvent.id!);
+                          } finally {
+                            setPreRegLoading(false);
+                          }
+                        }}
+                      >
+                        {preRegLoading ? 'JOINING...' : selectedEvent.is_pre_registered ? "YOU'RE IN \u2713" : 'NOTIFY ME'}
+                      </Button>
+
+                      {selectedEvent.is_pre_registered && (
+                        <Button
+                          className="w-full py-3.5 text-xs font-black uppercase tracking-widest text-[#F05252] border border-[#F05252]/20 hover:border-[#F05252]/40 hover:bg-[#F05252]/10 transition-all font-sans"
+                          variant="ghost"
+                          disabled={preRegLoading || unregisterLoading}
+                          onClick={async () => {
+                            setUnregisterLoading(true);
+                            try {
+                              await handleUnregister(selectedEvent.id!);
+                            } finally {
+                              setUnregisterLoading(false);
+                            }
+                          }}
+                        >
+                          {unregisterLoading ? 'UNREGISTERING...' : 'UNREGISTER'}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="content-stack gap-8">

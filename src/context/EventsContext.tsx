@@ -23,6 +23,7 @@ interface EventsContextType {
   }>>;
   setEvents: React.Dispatch<React.SetStateAction<Event[]>>;
   handlePreRegister: (eventId: string | number) => Promise<void>;
+  handleUnregister: (eventId: string | number) => Promise<void>;
   handlePurchase: (eventId: string | number, tickets: any[], additionalInfo?: any) => Promise<void>;
   purchaseLoading: boolean;
   purchaseError: string | null;
@@ -142,9 +143,29 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     } catch (err: any) {
       console.error('Pre-registration failed', err);
-      // Fail silently or handle with a better UI in the component
     }
-  }, []);
+  }, [selectedEvent, setSelectedEvent]);
+
+  const handleUnregister = useCallback(async (eventId: string | number) => {
+    try {
+      const data = await eventService.unregister(eventId);
+      if (data) {
+        const updateFn = (e: Event) => e.id === eventId ? { 
+          ...e, 
+          pre_registration_count: Math.max(0, (e.pre_registration_count || 1) - 1),
+          is_pre_registered: false
+        } : e;
+
+        setEvents(prev => prev.map(updateFn));
+        
+        if (selectedEvent && selectedEvent.id === eventId) {
+          setSelectedEvent(updateFn(selectedEvent));
+        }
+      }
+    } catch (err: any) {
+      console.error('Unregister failed', err);
+    }
+  }, [selectedEvent, setSelectedEvent]);
 
   const handlePurchase = useCallback(async (eventId: string | number, tickets: any[], additionalInfo?: any) => {
     if (purchaseLoading) {
@@ -234,6 +255,7 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setSettings, 
       setEvents,
       handlePreRegister,
+      handleUnregister,
       handlePurchase,
       purchaseLoading,
       purchaseError,

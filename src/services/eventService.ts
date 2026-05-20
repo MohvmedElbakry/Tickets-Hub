@@ -26,6 +26,10 @@ export const eventService = {
     return await eventsApi.preRegister(eventId);
   },
 
+  async unregister(eventId: string | number) {
+    return await eventsApi.unregister(eventId);
+  },
+
   async adminDeleteEvent(id: string | number) {
     return await eventsApi.adminDeleteEvent(id);
   },

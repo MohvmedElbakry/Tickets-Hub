@@ -16,6 +16,12 @@ export const preRegister = async (eventId: string | number): Promise<any> => {
   });
 };
 
+export const unregister = async (eventId: string | number): Promise<any> => {
+  return await fetchWithAuth(`/api/events/${eventId}/pre-register`, {
+    method: 'DELETE'
+  });
+};
+
 export const getSettings = async (): Promise<any> => {
   return await fetchWithAuth('/api/settings');
 };
