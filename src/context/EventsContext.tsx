@@ -56,7 +56,7 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
 
-  const { accessToken } = useAuth();
+  const { accessToken, refreshNotifications } = useAuth();
   const { 
     setIsLoginModalOpen, 
     setBookingData, 
@@ -140,11 +140,13 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (selectedEvent && selectedEvent.id === eventId) {
           setSelectedEvent(updateFn(selectedEvent));
         }
+
+        refreshNotifications();
       }
     } catch (err: any) {
       console.error('Pre-registration failed', err);
     }
-  }, [selectedEvent, setSelectedEvent]);
+  }, [selectedEvent, setSelectedEvent, refreshNotifications]);
 
   const handleUnregister = useCallback(async (eventId: string | number) => {
     try {
@@ -161,11 +163,13 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (selectedEvent && selectedEvent.id === eventId) {
           setSelectedEvent(updateFn(selectedEvent));
         }
+
+        refreshNotifications();
       }
     } catch (err: any) {
       console.error('Unregister failed', err);
     }
-  }, [selectedEvent, setSelectedEvent]);
+  }, [selectedEvent, setSelectedEvent, refreshNotifications]);
 
   const handlePurchase = useCallback(async (eventId: string | number, tickets: any[], additionalInfo?: any) => {
     if (purchaseLoading) {

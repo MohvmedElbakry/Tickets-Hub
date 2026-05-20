@@ -987,6 +987,39 @@ app.post('/api/events/:id/pre-register', authenticateToken, async (req: any, res
     }
     
     const result = await db.addPreRegistration({ user_id: userId, event_id: eventId });
+    
+    // Create notifications asynchronously without blocking response
+    (async () => {
+      try {
+        const event = await db.getEventById(eventId);
+        const eventTitle = event ? event.title : `Event #${eventId}`;
+        
+        // 1. Notify current user
+        await db.addNotification({
+          user_id: userId,
+          title: 'Waitlist Joined',
+          message: `You joined the waitlist for ${eventTitle}. We will notify you when tickets become available.`,
+          type: 'info'
+        });
+        
+        // 2. Notify admins
+        const users = await db.getUsers();
+        const admins = users.filter((u: any) => u.role === 'admin');
+        const userName = req.user.name || req.user.email || 'A user';
+        
+        for (const admin of admins) {
+          await db.addNotification({
+            user_id: admin.id,
+            title: 'New Waitlist Registration',
+            message: `${userName} joined the waitlist for ${eventTitle}.`,
+            type: 'info'
+          });
+        }
+      } catch (notifErr) {
+        console.error('[Notification Error] Failed to create join notifications:', notifErr);
+      }
+    })();
+
     res.status(201).json({
       ...result,
       is_pre_registered: true,
@@ -997,8 +1030,43 @@ app.post('/api/events/:id/pre-register', authenticateToken, async (req: any, res
 
 app.delete('/api/events/:id/pre-register', authenticateToken, async (req: any, res) => {
   try {
-    await db.removePreRegistration(req.user.id, parseInt(req.params.id));
-    res.json({ message: 'Removed' });
+    const eventId = parseInt(req.params.id);
+    const userId = parseInt(req.user.id);
+    const event = await db.getEventById(eventId);
+    const eventTitle = event ? event.title : `Event #${eventId}`;
+
+    await db.removePreRegistration(userId, eventId);
+
+    // Create notifications asynchronously without blocking response
+    (async () => {
+      try {
+        // 1. Notify current user
+        await db.addNotification({
+          user_id: userId,
+          title: 'Waitlist Left',
+          message: `You have successfully left the waitlist for ${eventTitle}.`,
+          type: 'info'
+        });
+
+        // 2. Notify admins
+        const users = await db.getUsers();
+        const admins = users.filter((u: any) => u.role === 'admin');
+        const userName = req.user.name || req.user.email || 'A user';
+
+        for (const admin of admins) {
+          await db.addNotification({
+            user_id: admin.id,
+            title: 'Waitlist Removal',
+            message: `${userName} removed themselves from the waitlist for ${eventTitle}.`,
+            type: 'info'
+          });
+        }
+      } catch (notifErr) {
+        console.error('[Notification Error] Failed to create removal notifications:', notifErr);
+      }
+    })();
+
+    res.json({ message: 'Removed', success: true });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
