@@ -30,7 +30,7 @@ export const AdminEventModal: React.FC = () => {
     companyName: '',
     rules: '',
     googleMapsUrl: '',
-    status: 'draft' as const,
+    status: 'draft' as 'draft' | 'published' | 'upcoming' | 'live' | 'closed',
     qr_enabled_manual: false,
     government: 'Cairo',
     require_approval: false,

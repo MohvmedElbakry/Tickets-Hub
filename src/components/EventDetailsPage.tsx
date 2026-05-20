@@ -30,6 +30,7 @@ export const EventDetailsPage = () => {
   
   const [ticketQuantities, setTicketQuantities] = useState<{[key: string]: number}>({});
   const [loading, setLoading] = useState(true);
+  const [preRegLoading, setPreRegLoading] = useState(false);
   const hasFetched = useRef(false);
 
   console.log("📦 EVENT DETAILS PAGE LOADED", { id, isAuthReady, selectedEventId: selectedEvent?.id });
@@ -292,11 +293,19 @@ export const EventDetailsPage = () => {
                       )}
                     </div>
                     <Button 
-                      className="w-full py-5 text-button font-black uppercase tracking-widest shadow-card-glow" 
-                      variant="accent"
-                      onClick={() => handlePreRegister(selectedEvent.id!)}
+                      className={`w-full py-5 text-button font-black uppercase tracking-widest shadow-card-glow transition-all ${selectedEvent.is_pre_registered ? 'bg-status-success/20 border-status-success/30 text-status-success hover:bg-status-success/20 cursor-default shadow-none' : ''}`} 
+                      variant={selectedEvent.is_pre_registered ? 'outline' : 'accent'}
+                      disabled={preRegLoading || selectedEvent.is_pre_registered}
+                      onClick={async () => {
+                        setPreRegLoading(true);
+                        try {
+                          await handlePreRegister(selectedEvent.id!);
+                        } finally {
+                          setPreRegLoading(false);
+                        }
+                      }}
                     >
-                      NOTIFY ME
+                      {preRegLoading ? 'JOINING...' : selectedEvent.is_pre_registered ? 'YOU\'RE IN' : 'NOTIFY ME'}
                     </Button>
                   </div>
                 ) : (

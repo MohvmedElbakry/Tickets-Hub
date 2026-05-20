@@ -38,11 +38,11 @@ export interface Order {
   user_id: number;
   event_id: number;
   total_price: number;
-  order_status: 'pending' | 'paid' | 'cancelled' | 'requested' | 'approved' | 'rejected' | 'expired' | 'invited';
+  order_status: 'pending' | 'paid' | 'cancelled' | 'requested' | 'approved' | 'rejected' | 'expired' | 'invited' | 'pending_approval';
   created_at: string;
   items?: OrderTicket[];
   event?: Event;
-  user?: { name: string, email: string, age?: number, phone?: string };
+  user?: { name: string, email: string, age?: number, phone?: string, birthdate?: string };
   instagram_username?: string;
   phone?: string;
   age?: number;
@@ -52,6 +52,7 @@ export interface Order {
   qr_code_token?: string | null;
   kashier_url?: string;
   is_paid?: boolean;
+  displayStatus?: string;
 }
 
 export interface OrderTicket {
@@ -80,6 +81,7 @@ export interface Event {
   created_at?: string;
   ticket_types?: TicketType[];
   pre_registration_count?: number;
+  is_pre_registered?: boolean;
   is_featured?: boolean;
   featured_order?: number;
   // For backward compatibility with mock data and UI
@@ -95,6 +97,8 @@ export interface Event {
   rules?: string;
   google_maps_url?: string;
   qr_enabled_manual?: boolean;
+  government?: string;
+  require_approval?: boolean;
 }
 
 export interface PreRegistration {

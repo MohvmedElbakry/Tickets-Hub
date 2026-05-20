@@ -201,6 +201,23 @@ const authenticateToken = (req: any, res: any, next: any) => {
   });
 };
 
+const optionalAuthenticate = (req: any, res: any, next: any) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) {
+    req.user = null;
+    return next();
+  }
+  jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {
+    if (err) {
+      req.user = null;
+      return next();
+    }
+    req.user = decoded;
+    next();
+  });
+};
+
 const authorizeRole = (roles: string[]) => {
   return (req: any, res: any, next: any) => {
     if (!req.user) return res.status(401).json({ error: 'Authentication required.' });
@@ -294,31 +311,41 @@ app.put('/api/notifications/:id/read', authenticateToken, async (req: any, res) 
 
 // --- EVENT ROUTES ---
 console.log('[App] Registering Event Routes...');
-app.get('/api/events', async (req, res) => {
+app.get('/api/events', optionalAuthenticate, async (req: any, res) => {
   try {
     const events = await db.getEvents();
-    const result = events.map((e: any) => ({
-      ...e,
-      ticket_types: e.ticket_types || [],
-      pre_registration_count: (e.pre_registrations || []).length
-    }));
+    const userId = req.user?.id ? parseInt(req.user.id) : null;
+    
+    const result = events.map((e: any) => {
+      const preReg = e.pre_registrations || [];
+      return {
+        ...e,
+        ticket_types: e.ticket_types || [],
+        pre_registration_count: preReg.length,
+        is_pre_registered: userId ? preReg.some((r: any) => r.user_id === userId) : false
+      };
+    });
     res.json(result);
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.get('/api/events/:id', async (req, res) => {
+app.get('/api/events/:id', optionalAuthenticate, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
+    const userId = req.user?.id ? parseInt(req.user.id) : null;
+    
     // Background cleanup
     db.cleanupExpiredReservations().catch(err => console.error('[Cleanup Error]', err));
     
     const event: any = await db.getEventById(id);
     if (!event) return res.status(404).json({ error: 'Not found' });
     
+    const preReg = event.pre_registrations || [];
     res.json({
       ...event,
       ticket_types: event.ticket_types || [],
-      pre_registration_count: (event.pre_registrations || []).length
+      pre_registration_count: preReg.length,
+      is_pre_registered: userId ? preReg.some((r: any) => r.user_id === userId) : false
     });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
@@ -944,12 +971,27 @@ app.get('/api/pre-registrations', authenticateToken, async (req: any, res) => {
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/events/:id/pre-register', authenticateToken, async (req: any, res) => {
+app.post('/api/events/:id/pre-register', authenticateToken, async (req: any, res: any) => {
   try {
     const eventId = parseInt(req.params.id);
-    const existing = await db.getPreRegistrationsByUserId(req.user.id);
-    if (existing.find((r: any) => r.event_id === eventId)) return res.status(400).json({ error: 'Already pre-registered.' });
-    res.status(201).json(await db.addPreRegistration({ user_id: req.user.id, event_id: eventId }));
+    const userId = parseInt(req.user.id);
+    const registrations = await db.getPreRegistrationsByUserId(userId);
+    const alreadyRegistered = registrations.find((r: any) => r.event_id === eventId);
+    
+    if (alreadyRegistered) {
+      return res.status(200).json({ 
+        message: 'Already pre-registered.', 
+        is_pre_registered: true,
+        already_registered: true 
+      });
+    }
+    
+    const result = await db.addPreRegistration({ user_id: userId, event_id: eventId });
+    res.status(201).json({
+      ...result,
+      is_pre_registered: true,
+      success: true
+    });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 

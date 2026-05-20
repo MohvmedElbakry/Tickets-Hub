@@ -56,7 +56,15 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
 
   const { accessToken } = useAuth();
-  const { setIsLoginModalOpen, setBookingData, setIsBookingModalOpen, paymentFlowActive, setPaymentFlowActive } = useUI();
+  const { 
+    setIsLoginModalOpen, 
+    setBookingData, 
+    setIsBookingModalOpen, 
+    paymentFlowActive, 
+    setPaymentFlowActive,
+    selectedEvent,
+    setSelectedEvent
+  } = useUI();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -120,15 +128,21 @@ export const EventsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       const data = await eventService.preRegister(eventId);
       if (data) {
-        setEvents(prev => prev.map(e => e.id === eventId ? { ...e, pre_registrations_count: (e.pre_registrations_count || 0) + 1 } : e));
+        const updateFn = (e: Event) => e.id === eventId ? { 
+          ...e, 
+          pre_registration_count: (e.pre_registration_count || 0) + (data.already_registered ? 0 : 1),
+          is_pre_registered: true
+        } : e;
+
+        setEvents(prev => prev.map(updateFn));
+        
+        if (selectedEvent && selectedEvent.id === eventId) {
+          setSelectedEvent(updateFn(selectedEvent));
+        }
       }
     } catch (err: any) {
-      try {
-        const errorData = err.data || JSON.parse(err.message);
-        alert(errorData.error || 'Failed to pre-register');
-      } catch {
-        alert(err.message || 'An error occurred');
-      }
+      console.error('Pre-registration failed', err);
+      // Fail silently or handle with a better UI in the component
     }
   }, []);
 
