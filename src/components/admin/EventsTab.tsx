@@ -5,6 +5,7 @@ import { Event } from '../../types';
 import { Button } from '../ui/Button';
 import { eventService } from '../../services/eventService';
 import { useEvents } from '../../context/EventsContext';
+import { formatDate } from '../../lib/dateFormat';
 
 interface EventsTabProps {
   handleEditEvent: (event: Event) => void;
@@ -123,7 +124,7 @@ export const EventsTab: React.FC<EventsTabProps> = ({
               {filteredEvents.length > 0 ? filteredEvents.map(event => (
                 <tr key={event.id} className="border-b border-bg-border last:border-0 hover:bg-bg-elevated transition-colors">
                   <td className="px-6 py-4 text-body-sm font-medium text-text-primary">{event.title}</td>
-                  <td className="px-6 py-4 text-body-xs text-text-muted">{event.event_date}</td>
+                  <td className="px-6 py-4 text-body-xs text-text-muted">{formatDate(event.event_date)}</td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 rounded-lg text-label font-bold uppercase tracking-wider ${
                       event.status === 'live' || event.status === 'published' ? 'bg-status-success/10 text-status-success' : 

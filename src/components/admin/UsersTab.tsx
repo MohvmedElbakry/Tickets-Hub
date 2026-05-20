@@ -3,6 +3,7 @@ import React from 'react';
 import { RefreshCw } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { formatDate } from '../../lib/dateFormat';
 
 interface UsersTabProps {
   allUsers: UserProfile[];
@@ -63,7 +64,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                     {u.role}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-body-xs text-text-muted">{new Date(u.created_at).toLocaleDateString()}</td>
+                <td className="px-6 py-4 text-body-xs text-text-muted">{formatDate(u.created_at)}</td>
                 <td className="px-6 py-4">
                   <select 
                     value={u.role} 

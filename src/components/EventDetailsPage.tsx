@@ -19,6 +19,7 @@ import { useEvents, useSettings } from '../context/EventsContext';
 import { useUI } from '../context/UIContext';
 import { eventService } from '../services/eventService';
 import { formatEventTime } from '../lib/utils';
+import { formatDate } from '../lib/dateFormat';
 
 export const EventDetailsPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -157,7 +158,7 @@ export const EventDetailsPage = () => {
             </button>
             <h1 className="text-h2 md:text-hero mb-6">{selectedEvent.title}</h1>
             <div className="flex flex-wrap gap-6 text-body-lg">
-              <div className="flex items-center gap-2"><Calendar className="text-teal" size={20} /> {selectedEvent.event_date} at {formatEventTime(selectedEvent.event_date, selectedEvent.event_time)}</div>
+              <div className="flex items-center gap-2"><Calendar className="text-teal" size={20} /> {formatDate(selectedEvent.event_date)} at {formatEventTime(selectedEvent.event_date, selectedEvent.event_time)}</div>
               <div className="flex items-center gap-2"><MapPin className="text-teal" size={20} /> {selectedEvent.location}</div>
             </div>
           </div>
@@ -223,7 +224,7 @@ export const EventDetailsPage = () => {
                       <div className="flex flex-wrap gap-4">
                         <div className="flex items-center gap-2 text-label text-text-muted font-bold tracking-widest bg-bg-elevated/50 py-1.5 px-4 rounded-card border border-bg-border group-hover:border-teal/20 transition-all">
                           <Calendar size={14} className="text-teal" />
-                          SALE: {new Date(ticket.sale_start).toLocaleDateString()}
+                          SALE: {formatDate(ticket.sale_start)}
                         </div>
                         {remaining > 0 && remaining < 20 && (
                           <div className="flex items-center gap-2 text-label text-status-error font-black tracking-widest animate-pulse">
@@ -253,7 +254,7 @@ export const EventDetailsPage = () => {
                         </div>
                       ) : (
                         <div className="text-label text-text-muted font-black tracking-widest border border-bg-border px-6 py-3 rounded-card bg-bg-elevated/30">
-                          {isSoldOut ? 'REGISTRATION CLOSED' : !isSaleStarted ? `OPENS ${new Date(ticket.sale_start).toLocaleDateString()}` : 'EXPIRED'}
+                          {isSoldOut ? 'REGISTRATION CLOSED' : !isSaleStarted ? `OPENS ${formatDate(ticket.sale_start)}` : 'EXPIRED'}
                         </div>
                       )}
                     </div>

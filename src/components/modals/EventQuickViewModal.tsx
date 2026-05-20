@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui/Button';
 import { Event } from '../../types';
 import { formatEventTime } from '../../lib/utils';
+import { formatDate } from '../../lib/dateFormat';
 
 interface EventQuickViewModalProps {
   event: Event | null;
@@ -47,7 +48,7 @@ export const EventQuickViewModal = ({ event, onClose, onBook }: EventQuickViewMo
               <div className="content-stack gap-2">
                 <h2 className="text-h2 leading-tight">{event.title}</h2>
                 <div className="flex flex-wrap gap-x-6 gap-y-2 text-text-muted text-body-sm">
-                  <div className="flex items-center gap-2"><Calendar className="text-teal" size={16} /> {event.event_date || event.date}</div>
+                  <div className="flex items-center gap-2"><Calendar className="text-teal" size={16} /> {formatDate(event.event_date || event.date)}</div>
                   <div className="flex items-center gap-2"><Clock className="text-teal" size={16} /> {formatEventTime(event.event_date || event.date, event.event_time || event.time)}</div>
                   <div className="flex items-center gap-2"><MapPin className="text-teal" size={16} /> {event.location}</div>
                 </div>

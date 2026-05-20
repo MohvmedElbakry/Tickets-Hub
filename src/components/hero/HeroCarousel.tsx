@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Calendar, MapPin, Clock, ChevronRight } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useNavigate } from 'react-router-dom';
+import { formatDate } from '../../lib/dateFormat';
+import { formatEventTime } from '../../lib/utils';
 
 import { useEvents } from '../../context/EventsContext';
 
@@ -212,11 +214,11 @@ export const HeroCarousel: React.FC = () => {
             <div className="flex flex-wrap gap-6 items-center">
               <div className="flex items-center gap-2 text-body-sm text-text-primary">
                 <Calendar size={16} className="text-teal" />
-                <span>{currentSlide?.date}</span>
+                <span>{formatDate(currentSlide?.date)}</span>
               </div>
               <div className="flex items-center gap-2 text-body-sm text-text-primary">
                 <Clock size={16} className="text-teal" />
-                <span>{currentSlide?.time}</span>
+                <span>{formatEventTime(currentSlide?.date, currentSlide?.time)}</span>
               </div>
               <div className="flex items-center gap-2 text-body-sm text-text-primary">
                 <MapPin size={16} className="text-teal" />

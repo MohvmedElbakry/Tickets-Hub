@@ -33,6 +33,7 @@ import { TicketCard } from './tickets';
 import { useQRStatus } from '../hooks/useQRStatus';
 import { useOrder } from '../hooks/useOrder';
 import { formatEventTime } from '../lib/utils';
+import { formatDateTime, formatDate } from '../lib/dateFormat';
 
 export const UserDashboard = () => {
   const navigate = useNavigate();
@@ -224,7 +225,7 @@ export const UserDashboard = () => {
                           <div className="p-5 flex-1 content-stack gap-2">
                             <h4 className="text-h4 line-clamp-1 group-hover:text-teal transition-colors">{order.event?.title}</h4>
                             <div className="content-stack gap-1">
-                              <p className="text-label text-teal font-bold">{order.event?.event_date}</p>
+                              <p className="text-label text-teal font-bold">{formatDate(order.event?.event_date)}</p>
                               <p className="text-body-xs text-text-muted line-clamp-1">{order.event?.location}</p>
                             </div>
                             <div className="mt-auto">
@@ -299,7 +300,7 @@ export const UserDashboard = () => {
                         <div className="p-5 flex-1 content-stack gap-2">
                           <h4 className="text-h4 line-clamp-1">{item.event?.title}</h4>
                           <div className="content-stack gap-1">
-                            <p className="text-label text-teal font-bold">{item.event?.event_date}</p>
+                            <p className="text-label text-teal font-bold">{formatDate(item.event?.event_date)}</p>
                             <p className="text-body-xs text-text-muted line-clamp-1">{item.event?.location}</p>
                           </div>
                           <div className="mt-auto">
@@ -517,7 +518,7 @@ export const UserDashboard = () => {
                               <td className={`px-6 py-5 text-center font-mono font-bold ${h.type === 'earn' ? 'text-status-success' : 'text-status-error'}`}>
                                 {h.type === 'earn' ? '+' : '-'}{h.points}
                               </td>
-                              <td className="px-6 py-5 text-body-xs text-text-muted text-right italic">{h.created_at}</td>
+                              <td className="px-6 py-5 text-body-xs text-text-muted text-right italic">{formatDateTime(h.created_at)}</td>
                             </tr>
                           ))
                         ) : (
@@ -582,7 +583,7 @@ export const UserDashboard = () => {
                   </div>
                   <div className="content-stack gap-1.5 sm:col-span-2">
                     <label className="text-label font-bold text-text-muted uppercase tracking-widest">Member Since</label>
-                    <p className="text-body-base font-bold text-text-primary">{user?.created_at ? new Date(user.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A'}</p>
+                    <p className="text-body-base font-bold text-text-primary">{user?.created_at ? formatDate(user.created_at) : 'N/A'}</p>
                   </div>
                 </div>
 
@@ -615,7 +616,7 @@ export const UserDashboard = () => {
                             <td className="px-6 py-5 font-mono text-body-xs text-text-muted tracking-tighter">#{order.public_id?.split('-')[0] || order.id}</td>
                             <td className="px-6 py-5 text-body-sm font-bold text-text-primary">{order.event?.title}</td>
                             <td className="px-6 py-5 text-body-sm font-bold text-teal">{order.total_price.toFixed(2)} <span className="text-body-xs font-normal opacity-60">EGP</span></td>
-                            <td className="px-6 py-5 text-body-xs text-text-muted">{order.created_at}</td>
+                            <td className="px-6 py-5 text-body-xs text-text-muted">{formatDateTime(order.created_at)}</td>
                             <td className="px-6 py-5">
                               <span className={`px-2 py-0.5 rounded-tag text-label font-bold uppercase border ${
                                 order.order_status === 'paid' ? 'bg-status-success/10 text-status-success border-status-success/20' : 'bg-status-warning/10 text-status-warning border-status-warning/20'

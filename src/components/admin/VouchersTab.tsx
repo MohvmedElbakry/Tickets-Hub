@@ -2,6 +2,7 @@
 import React from 'react';
 import { RefreshCw } from 'lucide-react';
 import { Voucher } from '../../types';
+import { formatDate } from '../../lib/dateFormat';
 
 interface VouchersTabProps {
   allVouchers: Voucher[];
@@ -66,7 +67,7 @@ export const VouchersTab: React.FC<VouchersTabProps> = ({
                     {v.status}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-body-xs text-text-muted">{new Date(v.expiration_date).toLocaleDateString()}</td>
+                <td className="px-6 py-4 text-body-xs text-text-muted">{formatDate(v.expiration_date)}</td>
               </tr>
             )) : (
               <tr><td colSpan={6} className="px-6 py-12 text-center text-text-muted italic text-body-sm">No vouchers found.</td></tr>

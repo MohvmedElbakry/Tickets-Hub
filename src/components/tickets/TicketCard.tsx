@@ -4,6 +4,7 @@ import { Order } from '../../types';
 import { formatEventTime } from '../../lib/utils';
 import { TicketQRSection } from './TicketQRSection';
 import { TicketStatusBadge } from './TicketStatusBadge';
+import { formatDate } from '../../lib/dateFormat';
 
 interface TicketCardProps {
   order: Order;
@@ -108,7 +109,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
                 className="flex items-center gap-1.5 font-bold text-body-xs text-text-muted"
               >
                 <Calendar size={12} className="text-teal shrink-0" />
-                <span>{event?.event_date || 'Date TBD'}</span>
+                <span>{event?.event_date ? formatDate(event.event_date) : 'Date TBD'}</span>
               </div>
               <div 
                 className="flex items-center gap-1.5 font-bold text-body-xs text-text-muted"

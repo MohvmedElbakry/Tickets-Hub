@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { formatTime } from './dateFormat';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -76,11 +77,7 @@ export const formatEventTime = (eventDate?: string, eventTime?: string) => {
     if (eventTime.includes('T') || eventTime.length > 10) {
       const dateObj = new Date(eventTime);
       if (!isNaN(dateObj.getTime())) {
-        return dateObj.toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true
-        });
+        return formatTime(dateObj);
       }
     }
 
@@ -97,11 +94,7 @@ export const formatEventTime = (eventDate?: string, eventTime?: string) => {
     
     if (isNaN(dateObj.getTime())) return 'Time TBD';
 
-    return dateObj.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
+    return formatTime(dateObj);
   } catch (err) {
     return 'Time TBD';
   }

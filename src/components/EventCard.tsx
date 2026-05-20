@@ -3,6 +3,7 @@ import { Calendar, MapPin, Ticket, ChevronRight, Clock } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Event } from '../types';
 import { formatEventTime } from '../lib/utils';
+import { formatDate } from '../lib/dateFormat';
 
 interface EventCardProps {
   event: Event;
@@ -37,7 +38,7 @@ export const EventCard: React.FC<EventCardProps> = React.memo(({ event, onClick 
           <div className="space-y-2 text-text-muted">
             <div className="flex items-center gap-3">
               <Calendar size={14} className="text-teal" />
-              <span className="text-body-xs font-medium font-mono uppercase tracking-wider">{event.event_date}</span>
+              <span className="text-body-xs font-medium font-mono uppercase tracking-wider">{formatDate(event.event_date)}</span>
             </div>
             <div className="flex items-center gap-3">
               <MapPin size={14} className="text-teal" />

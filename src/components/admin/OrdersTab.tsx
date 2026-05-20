@@ -4,6 +4,7 @@ import { RefreshCw, Instagram } from 'lucide-react';
 import { Order } from '../../types';
 import { calculateAge } from '../../lib/utils';
 import { orderService } from '../../services/orderService';
+import { formatDateTime } from '../../lib/dateFormat';
 
 interface OrdersTabProps {
   allOrders: Order[];
@@ -215,7 +216,7 @@ export const OrdersTab: React.FC<OrdersTabProps> = ({
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-body-xs text-text-muted">{new Date(order.created_at).toLocaleDateString()}</td>
+                  <td className="px-6 py-4 text-body-xs text-text-muted">{formatDateTime(order.created_at)}</td>
                 </tr>
               );
             }) : (

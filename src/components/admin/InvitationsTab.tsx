@@ -4,6 +4,7 @@ import { RefreshCw, PlusCircle, Trash2 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { InvitationModal } from './InvitationModal';
 import { useEvents } from '../../context/EventsContext';
+import { formatDate } from '../../lib/dateFormat';
 
 interface InvitationsTabProps {
   allInvitations: any[];
@@ -84,7 +85,7 @@ export const InvitationsTab: React.FC<InvitationsTabProps> = ({
                     {inv.status}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-body-xs text-text-muted">{new Date(inv.created_at).toLocaleDateString()}</td>
+                <td className="px-6 py-4 text-body-xs text-text-muted">{formatDate(inv.created_at)}</td>
                 <td className="px-6 py-4 text-right">
                   <button 
                     onClick={() => setDeleteConfirm({ type: 'invitation', id: inv.id })}

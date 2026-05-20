@@ -17,6 +17,7 @@ import { UserProfile, Event, Notification as AppNotification } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useEvents } from '../context/EventsContext';
 import { useUI } from '../context/UIContext';
+import { formatDateTime } from '../lib/dateFormat';
 
 export const Navbar = () => {
   const navigate = useNavigate();
@@ -131,7 +132,7 @@ export const Navbar = () => {
                                     <div className="flex-1 content-stack gap-1">
                                       <p className="text-body-xs font-bold text-text-primary leading-tight">{n.title}</p>
                                       <p className="text-label text-text-muted line-clamp-2 leading-relaxed">{n.message}</p>
-                                      <p className="text-[8px] text-text-muted mt-1 font-mono uppercase opacity-60 tracking-wider font-bold">{n.created_at}</p>
+                                      <p className="text-[8px] text-text-muted mt-1 font-mono uppercase opacity-60 tracking-wider font-bold">{formatDateTime(n.created_at)}</p>
                                     </div>
                                   </div>
                                 </div>
