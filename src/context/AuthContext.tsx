@@ -160,6 +160,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => clearInterval(interval);
   }, [accessToken, refreshNotifications]);
 
+  // Sync state when token is refreshed globally
+  useEffect(() => {
+    const handleTokenRefreshed = (e: Event) => {
+      const customEvent = e as CustomEvent<{ accessToken: string; refreshToken: string }>;
+      const { accessToken: newAccess, refreshToken: newRefresh } = customEvent.detail;
+      console.log('[AuthContext] Token refreshed event received. Syncing state...');
+      setAccessToken(newAccess);
+      setRefreshToken(newRefresh);
+    };
+    window.addEventListener('app-token-refreshed', handleTokenRefreshed as EventListener);
+    return () => window.removeEventListener('app-token-refreshed', handleTokenRefreshed as EventListener);
+  }, []);
+
   // Handle unauthorized API calls globally
   useEffect(() => {
     const handleUnauthorized = () => {

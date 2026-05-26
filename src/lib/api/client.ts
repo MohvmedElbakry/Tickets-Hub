@@ -69,36 +69,49 @@ export const fetchWithAuth = async (endpoint: string, options: RequestInit = {})
       const refreshToken = localStorage.getItem('refreshToken');
       
       if (refreshToken && !options.headers?.hasOwnProperty('X-Retry-Attempt')) {
+        let newToken: string;
         if (!isRefreshing) {
           isRefreshing = true;
           try {
-            console.log('[API Client] Token expired, attempting refresh...');
+            console.log('🔄 [TOKEN REFRESH] Token expired, attempting refresh...');
             const newTokens = await refreshTokens(refreshToken);
+            console.log('🔄 [TOKEN REFRESH] Succeeded. Storing new tokens...');
             localStorage.setItem('accessToken', newTokens.accessToken);
             localStorage.setItem('refreshToken', newTokens.refreshToken);
+            
+            // Dispatch a custom event to synchronize across React state contexts
+            window.dispatchEvent(new CustomEvent('app-token-refreshed', { 
+              detail: { accessToken: newTokens.accessToken, refreshToken: newTokens.refreshToken } 
+            }));
+            
             isRefreshing = false;
+            newToken = newTokens.accessToken;
             onTokenRefreshed(newTokens.accessToken);
           } catch (refreshErr) {
             isRefreshing = false;
-            console.error('[API Client] Refresh failed, logging out...');
+            console.error('🔄 [TOKEN REFRESH] Refresh failed, logging out...', refreshErr);
             localStorage.removeItem('accessToken');
             localStorage.removeItem('refreshToken');
             window.dispatchEvent(new CustomEvent('api-unauthorized'));
             window.dispatchEvent(new CustomEvent('app-logout'));
             throw refreshErr;
           }
+        } else {
+          console.log('🔄 [TOKEN REFRESH] Refresh already in progress. Queuing request...');
+          newToken = await new Promise(resolve => subscribeTokenRefresh(resolve));
+          console.log('🔄 [TOKEN REFRESH] Request dequeued. Retrying...');
         }
 
-        // Wait for refresh to complete then retry once
-        const newToken: string = await new Promise(resolve => subscribeTokenRefresh(resolve));
         const newHeaders = new Headers(requestHeaders);
         newHeaders.set('Authorization', `Bearer ${newToken}`);
         newHeaders.set('X-Retry-Attempt', '1');
         
+        console.log(`🌍 [401 RETRY] Retrying ${method} ${url} with new token...`);
         const retryRes = await fetch(url, { ...options, headers: newHeaders });
         
         if (!retryRes.ok) {
           if (retryRes.status === 401) {
+            console.error('🔄 [401 RETRY] Retry failed with 401, triggering logout...');
             window.dispatchEvent(new CustomEvent('api-unauthorized'));
             window.dispatchEvent(new CustomEvent('app-logout'));
           }
@@ -112,6 +125,7 @@ export const fetchWithAuth = async (endpoint: string, options: RequestInit = {})
         return await (retryRes.headers.get('content-type')?.includes('application/json') ? retryRes.json() : retryRes.text());
       } else {
         // No refresh token available or retry already attempted
+        console.warn('🔄 [TOKEN REFRESH] No refresh token available or retry attempt exceeded, logging out...');
         window.dispatchEvent(new CustomEvent('api-unauthorized'));
         window.dispatchEvent(new CustomEvent('app-logout'));
       }
