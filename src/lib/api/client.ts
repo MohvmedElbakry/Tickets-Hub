@@ -65,7 +65,7 @@ export const fetchWithAuth = async (endpoint: string, options: RequestInit = {})
 
     console.log("🌐 RESPONSE STATUS:", res.status, url);
 
-    if (res.status === 401 && !url.includes('/api/auth/refresh')) {
+    if (res.status === 401 && !url.includes('/api/auth/refresh') && !url.includes('/api/auth/login') && !url.includes('/api/auth/signup')) {
       const refreshToken = localStorage.getItem('refreshToken');
       
       if (refreshToken && !options.headers?.hasOwnProperty('X-Retry-Attempt')) {

@@ -19,6 +19,8 @@ export const LoginModal = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [shake, setShake] = useState(false);
+  const passwordRef = React.useRef<HTMLInputElement>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,12 +37,26 @@ export const LoginModal = () => {
         onClose();
       }
     } catch (err: any) {
-      try {
-        const errorData = JSON.parse(err.message);
-        setError(errorData.error || 'Login failed');
-      } catch {
-        setError(err.message || 'Something went wrong. Please try again.');
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+      
+      if (err.status === 401) {
+        setError('Incorrect email or password.');
+      } else if (err.status === 429) {
+        setError('Too many login attempts. Please wait a moment and try again.');
+      } else if (err.status === 500) {
+        setError('Server error. Please try again later.');
+      } else if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('TypeError'))) {
+        setError('Network connection lost. Please verify your internet connection.');
+      } else {
+        try {
+          const errorData = JSON.parse(err.message);
+          setError(errorData.error || 'Login failed');
+        } catch {
+          setError(err.message || 'Something went wrong. Please try again.');
+        }
       }
+      passwordRef.current?.focus();
     } finally {
       setLoading(false);
     }
@@ -52,7 +68,8 @@ export const LoginModal = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-bg-page/80 backdrop-blur-md">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
+            animate={shake ? { x: [0, -10, 10, -10, 10, -5, 5, 0], scale: 1, y: 0, opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+            transition={shake ? { duration: 0.4 } : { duration: 0.3 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             className="bg-bg-card w-full max-w-md rounded-card-2xl p-8 border border-bg-border shadow-2xl relative overflow-hidden"
           >
@@ -100,7 +117,10 @@ export const LoginModal = () => {
                     type="email" 
                     required
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (error) setError('');
+                    }}
                     placeholder="name@example.com"
                     className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                   />
@@ -119,8 +139,12 @@ export const LoginModal = () => {
                   <input 
                     type="password" 
                     required
+                    ref={passwordRef}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (error) setError('');
+                    }}
                     placeholder="••••••••"
                     className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                   />

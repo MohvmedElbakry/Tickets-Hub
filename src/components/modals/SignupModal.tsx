@@ -38,6 +38,11 @@ export const SignupModal = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const handleFormChange = (updates: Partial<typeof signupForm>) => {
+    setSignupForm(prev => ({ ...prev, ...updates }));
+    if (error) setError('');
+  };
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -53,11 +58,21 @@ export const SignupModal = () => {
         onClose();
       }
     } catch (err: any) {
-      try {
-        const errorData = JSON.parse(err.message);
-        setError(errorData.error || 'Signup failed');
-      } catch {
-        setError(err.message || 'Something went wrong. Please try again.');
+      if (err.status === 409) {
+        setError('An account with this email address already exists.');
+      } else if (err.status === 429) {
+        setError('Too many signup attempts. Please wait a moment and try again.');
+      } else if (err.status === 500) {
+        setError('Server error. Please try again later.');
+      } else if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('TypeError'))) {
+        setError('Network connection lost. Please verify your internet connection.');
+      } else {
+        try {
+          const errorData = JSON.parse(err.message);
+          setError(errorData.error || 'Signup failed');
+        } catch {
+          setError(err.message || 'Something went wrong. Please try again.');
+        }
       }
     } finally {
       setLoading(false);
@@ -118,7 +133,7 @@ export const SignupModal = () => {
                     type="text" 
                     required
                     value={signupForm.name}
-                    onChange={(e) => setSignupForm({ ...signupForm, name: e.target.value })}
+                    onChange={(e) => handleFormChange({ name: e.target.value })}
                     placeholder="John Doe"
                     className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                   />
@@ -135,7 +150,7 @@ export const SignupModal = () => {
                     type="email" 
                     required
                     value={signupForm.email}
-                    onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
+                    onChange={(e) => handleFormChange({ email: e.target.value })}
                     placeholder="name@example.com"
                     className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                   />
@@ -152,7 +167,7 @@ export const SignupModal = () => {
                     type="text" 
                     required
                     value={signupForm.instagram}
-                    onChange={(e) => setSignupForm({ ...signupForm, instagram: e.target.value })}
+                    onChange={(e) => handleFormChange({ instagram: e.target.value })}
                     placeholder="@username"
                     className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                   />
@@ -164,7 +179,7 @@ export const SignupModal = () => {
                 <div className="flex gap-2">
                   <CountryCodeSelector 
                     value={signupForm.countryCode}
-                    onChange={(code) => setSignupForm({ ...signupForm, countryCode: code })}
+                    onChange={(code) => handleFormChange({ countryCode: code })}
                   />
                   <div className="relative flex-1 group">
                     <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-card flex items-center justify-center text-text-muted group-focus-within:text-teal group-focus-within:bg-teal/10 transition-all duration-base">
@@ -174,7 +189,7 @@ export const SignupModal = () => {
                       type="tel" 
                       required
                       value={signupForm.phone}
-                      onChange={(e) => setSignupForm({ ...signupForm, phone: e.target.value })}
+                      onChange={(e) => handleFormChange({ phone: e.target.value })}
                       placeholder="01xxxxxxxxx"
                       className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                     />
@@ -192,7 +207,7 @@ export const SignupModal = () => {
                     type="date" 
                     required
                     value={signupForm.birthdate}
-                    onChange={(e) => setSignupForm({ ...signupForm, birthdate: e.target.value })}
+                    onChange={(e) => handleFormChange({ birthdate: e.target.value })}
                     className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all [color-scheme:dark]"
                   />
                 </div>
@@ -206,7 +221,7 @@ export const SignupModal = () => {
                   </div>
                   <select 
                     value={signupForm.gender || ''}
-                    onChange={(e) => setSignupForm({ ...signupForm, gender: e.target.value })}
+                    onChange={(e) => handleFormChange({ gender: e.target.value })}
                     className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-10 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all appearance-none"
                   >
                     <option value="" disabled className="bg-bg-card">Select Gender</option>
@@ -232,7 +247,7 @@ export const SignupModal = () => {
                     type="password" 
                     required
                     value={signupForm.password}
-                    onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
+                    onChange={(e) => handleFormChange({ password: e.target.value })}
                     placeholder="••••••••"
                     className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
                   />
