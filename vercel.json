@@ -2,7 +2,7 @@
   "installCommand": "npm install --include=optional",
   "functions": {
     "api/[...all].ts": {
-      "includeFiles": "prisma/**"
+      "includeFiles": "api/dist/** prisma/**"
     }
   },
   "rewrites": [

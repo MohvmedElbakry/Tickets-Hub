@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "prisma generate && (prisma db push --accept-data-loss || echo 'Database push failed, check DATABASE_URL') && tsx api/server.ts",
-    "build:server": "esbuild api/server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build:server": "tsc -p tsconfig.server.json && esbuild api/server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "build": "prisma generate && npm run build:server && vite build",
     "postinstall": "prisma generate",
     "start": "node dist/server.cjs",

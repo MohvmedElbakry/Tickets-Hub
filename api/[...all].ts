@@ -1,3 +1,4 @@
 console.log('API ENTRY HIT');
-import app from './app.js';
+// @ts-ignore
+import app from './dist/app.js';
 export default app;
