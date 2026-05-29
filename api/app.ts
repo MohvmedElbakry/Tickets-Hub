@@ -164,9 +164,51 @@ app.get('/api/health', async (req, res) => {
 
 app.use(helmet({ contentSecurityPolicy: { directives: { ...helmet.contentSecurityPolicy.getDefaultDirectives(), "img-src": ["'self'", "data:", "https:", "blob:", "*"], "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'", "*"], "connect-src": ["'self'", "*"], "frame-ancestors": ["'self'", "*"], }, }, crossOriginEmbedderPolicy: false, crossOriginResourcePolicy: false, }));
 
-// --- DIAGNOSTIC MIDDLEWARE ---
+// --- DIAGNOSTIC & PRODUCTION-GRADE FAILURE MONITORING MIDDLEWARE ---
 app.use((req, res, next) => {
-  console.log('[API DIAGNOSTIC]', req.method, req.originalUrl || req.url, 'Headers:', JSON.stringify(req.headers));
+  const start = Date.now();
+  const path = req.originalUrl || req.url;
+  const isTargetRoute = path.startsWith('/api/auth') || 
+                        path.startsWith('/api/notifications') || 
+                        path.startsWith('/api/settings') || 
+                        path.startsWith('/api/events');
+
+  // Intercept json response body to capture and log backend mistakes and Prisma codes if any
+  const originalJson = res.json;
+  let responseSent = false;
+
+  res.json = function (body: any) {
+    if (responseSent) return originalJson.call(this, body);
+    responseSent = true;
+    
+    const duration = Date.now() - start;
+    const statusCode = res.statusCode;
+
+    if (isTargetRoute || statusCode >= 400) {
+      const timestamp = new Date().toISOString();
+      const hasPrismaError = body && (body.code?.startsWith('P') || body.prismaCode || (body.error && body.error.includes('Prisma')));
+      
+      console.log(`[API MONITOR] Prefix: ${isTargetRoute ? 'HARDENED' : 'STANDARD'} | ${req.method} ${path} | Status: ${statusCode} | Duration: ${duration}ms`);
+      
+      if (statusCode >= 500 || hasPrismaError) {
+        console.error(`🚨 [BACKEND SYSTEM FAULT] Error detected on: ${req.method} ${path}`);
+        console.error(`   Timestamp: ${timestamp}`);
+        console.error(`   HTTP Status: ${statusCode}`);
+        console.error(`   Duration: ${duration}ms`);
+        if (body?.code) {
+          console.error(`   Prisma Error Code: ${body.code}`);
+        }
+        if (body?.error || body?.message || body?.details) {
+          console.error(`   Details:`, JSON.stringify({ error: body.error, message: body.message, details: body.details }));
+        }
+      }
+    } else {
+      console.log(`[API TRACE] ${req.method} ${path} - ${statusCode} (${duration}ms)`);
+    }
+
+    return originalJson.call(this, body);
+  };
+
   next();
 });
 
@@ -1648,6 +1690,30 @@ app.use((req, res) => {
         url: req.url,
         timestamp: new Date().toISOString()
     });
+});
+
+// --- GLOBAL EXPRESS ERROR-HANDLING MIDDLEWARE ---
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const timestamp = new Date().toISOString();
+  const statusCode = err.status || err.statusCode || 500;
+  
+  console.error(`\n❌ [GLOBAL SEVERE UNHANDLED EXCEPTION] ${timestamp}`);
+  console.error(`   Method: ${req.method}`);
+  console.error(`   Path: ${req.originalUrl || req.url}`);
+  console.error(`   Prisma Error Code: ${err.code || 'N/A'}`);
+  console.error(`   Error Message: ${err.message || err}`);
+  if (err.stack) {
+    console.error(`   Stack Trace:\n${err.stack}`);
+  }
+  
+  res.status(statusCode).json({
+    error: 'An internal backend server error occurred.',
+    message: err.message || 'Unknown database or server failure.',
+    code: err.code || undefined,
+    path: req.originalUrl || req.url,
+    method: req.method,
+    timestamp
+  });
 });
 
 // Eagerly pre-warm Chromium and DB on module load (background)

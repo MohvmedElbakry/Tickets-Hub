@@ -24,4 +24,21 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 globalForPrisma.prisma = prisma
+
+// Graceful disconnect handling of Prisma Client to prevent database connection leaks on instance terminations
+const handleShutdown = async (signal: string) => {
+  console.log(`[Prisma Client] Received ${signal}. Gracefully disconnecting...`);
+  try {
+    await prisma.$disconnect();
+    console.log('[Prisma Client] Successfully disconnected.');
+  } catch (err) {
+    console.error('[Prisma Client] Error during graceful disconnect:', err);
+  } finally {
+    process.exit(0);
+  }
+};
+
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+
 export default prisma

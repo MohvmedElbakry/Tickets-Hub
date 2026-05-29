@@ -5,7 +5,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import prisma from './lib/prisma.js';
 import bcrypt from 'bcryptjs';
-import { exec } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,67 +39,29 @@ const seedAdmin = async () => {
     }
 };
 
-const reconcileDatabase = async () => {
-    console.log('[DB] Running database auto-reconciliation and alignment check...');
-    try {
-        // 1. Ensure the Setting table exists. If on PostgreSQL or raw SQL matching schema.prisma.
-        await prisma.$executeRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "Setting" (
-                id SERIAL PRIMARY KEY,
-                service_fee_percent DOUBLE PRECISION NOT NULL DEFAULT 10,
-                processing_fee_percent DOUBLE PRECISION NOT NULL DEFAULT 2.75,
-                fixed_fee_egp DOUBLE PRECISION NOT NULL DEFAULT 3
-            )
-        `);
-        console.log('[DB] Ensure Setting table exists - success.');
-
-        // 2. Add individual columns if they don't exist
-        await prisma.$executeRawUnsafe('ALTER TABLE "Setting" ADD COLUMN IF NOT EXISTS "service_fee_percent" DOUBLE PRECISION NOT NULL DEFAULT 10');
-        await prisma.$executeRawUnsafe('ALTER TABLE "Setting" ADD COLUMN IF NOT EXISTS "processing_fee_percent" DOUBLE PRECISION NOT NULL DEFAULT 2.75');
-        await prisma.$executeRawUnsafe('ALTER TABLE "Setting" ADD COLUMN IF NOT EXISTS "fixed_fee_egp" DOUBLE PRECISION NOT NULL DEFAULT 3');
-        console.log('[DB] Ensure Setting columns exist - success.');
-
-        // 3. Ensure we have at least one Setting record in the database
-        const countRaw: any[] = await prisma.$queryRawUnsafe('SELECT COUNT(*) FROM "Setting"');
-        const count = Number(countRaw[0]?.count || countRaw[0]?.['count(*)'] || 0);
-        if (count === 0) {
-            await prisma.$executeRawUnsafe('INSERT INTO "Setting" (service_fee_percent, processing_fee_percent, fixed_fee_egp) VALUES (10, 2.75, 3)');
-            console.log('[DB] Default Setting row seeded successfully.');
-        } else {
-            console.log('[DB] Setting row already exists.');
-        }
-    } catch (err: any) {
-        console.warn('[DB WARNING] Auto-reconciliation check encountered a non-fatal warning:', err.message);
-    }
-};
-
-const startDB = async () => {
-    try {
-        console.log('[DB] Connecting via Prisma...');
-        const dbUrl = process.env.DATABASE_URL || '';
-        const maskedUrl = dbUrl.replace(/:([^:@]+)@/, ':****@');
-        console.log('[DB] Connection URL:', maskedUrl);
-
-        await prisma.$connect();
-        console.log('[DB] Connected successfully.');
-        
-        // Run early auto-reconciliation diagnostics to align columns (preventing runtime P2022 errors)
-        await reconcileDatabase();
-        
-        await seedAdmin();
-
-        // Run migrations in the background so that any timeout/PgBouncer locking issues do not block starting the Node web server
-        console.log('[DB] Triggering background migrations (non-blocking)...');
-        exec('npx prisma migrate deploy', (error, stdout, stderr) => {
-            if (error) {
-                console.warn('[DB WARNING] Background migration command non-fatal warning:', error.message);
-                console.warn(stderr);
-                return;
+const startDB = async (retries = 3, delayMs = 2000) => {
+    const dbUrl = process.env.DATABASE_URL || '';
+    const maskedUrl = dbUrl.replace(/:([^:@]+)@/, ':****@');
+    console.log('[DB] Target Connection URL:', maskedUrl);
+    
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            console.log(`[DB] Connecting via Prisma (Attempt ${attempt}/${retries})...`);
+            await prisma.$connect();
+            console.log('[DB] Connected successfully to database.');
+            
+            // Seed the admin account safely
+            await seedAdmin();
+            return;
+        } catch (error: any) {
+            console.error(`[DB] Connection failure on attempt ${attempt}:`, error.message);
+            if (attempt === retries) {
+                console.error('[DB ERROR] All database connection retry attempts exhausted. Server running, but queries may fail until DB is accessible.');
+            } else {
+                console.log(`[DB] Retrying database connection in ${delayMs}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delayMs));
             }
-            console.log('[DB] Background migration command output:', stdout);
-        });
-    } catch (error: any) {
-        console.error('[DB] Connection failure:', error.message);
+        }
     }
 };
 
