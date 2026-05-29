@@ -1,3 +1,3 @@
 console.log('API ENTRY HIT');
-import app from './dist/app.js';
+import app from './app.js';
 export default app;
