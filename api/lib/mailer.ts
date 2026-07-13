@@ -25,6 +25,11 @@ export interface VerificationResult {
  * Validates the email configuration and performs diagnostic checks.
  */
 export async function verifyEmailConfig(): Promise<VerificationResult> {
+  console.log(`[2] Starting verifyEmailConfig()`);
+  console.log(`RESEND_API_KEY present: ${!!process.env.RESEND_API_KEY}`);
+  console.log(`MAIL_FROM present: ${!!process.env.MAIL_FROM}`);
+  console.log(`SMTP_FROM present: ${!!process.env.SMTP_FROM}`);
+
   const errors: string[] = [];
   const warnings: string[] = [];
   let mode: 'SMTP' | 'RESEND' | 'UNCONFIGURED' = 'UNCONFIGURED';
@@ -76,36 +81,67 @@ export async function verifyEmailConfig(): Promise<VerificationResult> {
         const domain = emailStr.split('@')[1].trim();
         dnsRecords = { domain };
         
+        console.log(`[2.2] dns.resolveMx start for domain: ${domain}`);
         // Asynchronously check MX and SPF records to diagnose potential deliverability issues
         const mxRecords = await new Promise<dns.MxRecord[]>((resolve) => {
-          dns.resolveMx(domain, (err, recs) => resolve(err ? [] : recs));
+          const t = setTimeout(() => {
+            console.log(`[2.2-timeout] dns.resolveMx timed out for domain: ${domain}`);
+            resolve([]);
+          }, 2000);
+          dns.resolveMx(domain, (err, recs) => {
+            clearTimeout(t);
+            resolve(err ? [] : recs);
+          });
         });
+        console.log(`[2.3] dns.resolveMx end`);
         dnsRecords.hasMx = mxRecords.length > 0;
         
+        console.log(`[2.4] dns.resolveTxt start for domain: ${domain}`);
         const txtRecords = await new Promise<string[][]>((resolve) => {
-          dns.resolveTxt(domain, (err, recs) => resolve(err ? [] : recs));
+          const t = setTimeout(() => {
+            console.log(`[2.4-timeout] dns.resolveTxt timed out for domain: ${domain}`);
+            resolve([]);
+          }, 2000);
+          dns.resolveTxt(domain, (err, recs) => {
+            clearTimeout(t);
+            resolve(err ? [] : recs);
+          });
         });
+        console.log(`[2.5] dns.resolveTxt end`);
         const flattenedTxt = txtRecords.flat();
         dnsRecords.hasSpf = flattenedTxt.some(txt => txt.includes('v=spf1'));
+        
+        console.log(`[2.6] dns.resolveTxt dmarc start for domain: _dmarc.${domain}`);
         dnsRecords.hasDmarc = await new Promise<boolean>((resolve) => {
+          const t = setTimeout(() => {
+            console.log(`[2.6-timeout] dns.resolveTxt dmarc timed out for domain: _dmarc.${domain}`);
+            resolve(false);
+          }, 2000);
           dns.resolveTxt(`_dmarc.${domain}`, (err, recs) => {
+            clearTimeout(t);
             if (err) return resolve(false);
             resolve(recs.flat().some(txt => txt.includes('v=DMARC1')));
           });
         });
+        console.log(`[2.7] dns.resolveTxt dmarc end`);
       }
     } catch (dnsErr: any) {
       warnings.push(`Deliverability DNS verification test warning: ${dnsErr.message}`);
     }
   }
 
-  return {
+  const result = {
     valid: errors.length === 0 && mode !== 'UNCONFIGURED',
     mode,
     errors,
     warnings,
     dnsRecords
   };
+  console.log(`[3] verifyEmailConfig finished. Valid: ${result.valid}, Mode: ${result.mode}`);
+  if (!result.valid) {
+    console.log(`verifyEmailConfig invalid details - Mode: ${result.mode}, Errors: ${JSON.stringify(result.errors)}, Warnings: ${JSON.stringify(result.warnings)}`);
+  }
+  return result;
 }
 
 /**
@@ -113,12 +149,15 @@ export async function verifyEmailConfig(): Promise<VerificationResult> {
  * Automatically switches between SMTP and Resend API.
  */
 export async function sendEmail(options: SendEmailOptions, retries = 2): Promise<{ messageId?: string; success: boolean }> {
+  console.log(`[1] Enter sendEmail()`);
   const timestamp = new Date().toISOString();
   console.log(`\n📨 [MAIL START] Email dispatch requested at ${timestamp}`);
   console.log(`   To: ${Array.isArray(options.to) ? options.to.join(', ') : options.to}`);
   console.log(`   Subject: "${options.subject}"`);
 
   const validation = await verifyEmailConfig();
+  console.log(`[4] validation.mode = ${validation.mode}`);
+  console.log(`[5] validation.valid = ${validation.valid}`);
   if (!validation.valid) {
     const errorMsg = `Configuration invalid for sender. Errors: ${validation.errors.join(' | ') || 'None'}. Mode: ${validation.mode}`;
     console.error(`🚨 [MAIL FATAL ERROR] ${errorMsg}`);
@@ -126,6 +165,7 @@ export async function sendEmail(options: SendEmailOptions, retries = 2): Promise
   }
 
   const sender = process.env.SMTP_FROM || process.env.MAIL_FROM!;
+  console.log(`[6] Selected sender = ${sender}`);
 
   for (let attempt = 1; attempt <= retries + 1; attempt++) {
     try {
@@ -199,6 +239,8 @@ async function sendViaSmtp(from: string, options: SendEmailOptions): Promise<str
  * Modern cloud transactional service sending via Resend HTTP Post
  */
 async function sendViaResend(from: string, options: SendEmailOptions): Promise<string> {
+  console.log(`[7] Enter sendViaResend()`);
+  console.log(`[8] Preparing payload`);
   const payload: any = {
     from,
     to: Array.isArray(options.to) ? options.to : [options.to],
@@ -216,26 +258,44 @@ async function sendViaResend(from: string, options: SendEmailOptions): Promise<s
     }));
   }
 
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
-    },
-    body: JSON.stringify(payload)
-  });
+  console.log(`[9] Payload validated. Payload size: ${JSON.stringify(payload).length} bytes. Sender: ${from}. Recipient: ${JSON.stringify(payload.to)}`);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Resend API returned non-okay response code: ${response.status}. Details: ${errorText}`);
+  console.log(`[10] About to call fetch()`);
+  const fetchStart = Date.now();
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
+      },
+      body: JSON.stringify(payload)
+    });
+    const fetchEnd = Date.now();
+    console.log(`[11] fetch() returned. Duration: ${fetchEnd - fetchStart}ms`);
+    console.log(`[12] HTTP status = ${response.status}`);
+
+    const responseText = await response.text();
+    console.log(`[13] Response text = ${responseText}`);
+
+    if (!response.ok) {
+      throw new Error(`Resend API returned non-okay response code: ${response.status}. Details: ${responseText}`);
+    }
+
+    const resData = JSON.parse(responseText) as any;
+    console.log(`[14] Parsed JSON = ${JSON.stringify(resData)}`);
+    if (!resData || !resData.id) {
+      throw new Error(`Resend payload structure in response was invalid: ${responseText}`);
+    }
+
+    const messageId = resData.id;
+    console.log(`[15] Message ID = ${messageId}`);
+    console.log(`[16] Email completed`);
+    return messageId;
+  } catch (fetchErr: any) {
+    console.error(`🚨 [fetch exception in sendViaResend]:`, fetchErr.stack || fetchErr.message || fetchErr);
+    throw fetchErr;
   }
-
-  const resData = await response.json() as any;
-  if (!resData || !resData.id) {
-    throw new Error(`Resend payload structure in response was invalid: ${JSON.stringify(resData)}`);
-  }
-
-  return resData.id;
 }
 
 /**

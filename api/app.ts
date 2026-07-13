@@ -537,14 +537,16 @@ Best regards,
 The TicketsHub Team
     `.trim();
 
-    sendEmail({
-      to: user.email,
-      subject: 'Reset Your TicketsHub Password 🔒',
-      html: forgotPasswordHtml,
-      text: forgotPasswordPlain
-    }).catch(err => {
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: 'Reset Your TicketsHub Password 🔒',
+        html: forgotPasswordHtml,
+        text: forgotPasswordPlain
+      });
+    } catch (err: any) {
       console.error('🚨 [FORGOT PASSWORD EMAIL EXCEPTION]', err);
-    });
+    }
 
     return res.json(successResponse);
   } catch (error: any) {
