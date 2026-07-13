@@ -20,8 +20,32 @@ import React from 'react';
 import ReactDOMServer from 'react-dom/server';
 import { TicketTemplate } from './pdf/TicketTemplate.js';
 import QRCode from 'qrcode';
+import { sendEmail, verifyEmailConfig } from './lib/mailer.js';
 
 dotenv.config();
+
+// Early startup verification
+verifyEmailConfig().then(report => {
+  console.log(`\n📬 [MAIL INIT] Startup diagnostic check complete.`);
+  console.log(`   Mode detected: ${report.mode}`);
+  if (report.valid) {
+    console.log(`   Status: VALID & READY 🚀`);
+  } else {
+    console.warn(`   Status: PARTIALLY CONFIGURED OR UNCONFIGURED ⚠️`);
+    report.errors.forEach(err => console.warn(`     - Error: ${err}`));
+  }
+  report.warnings.forEach(warn => console.warn(`     - Warning: ${warn}`));
+  if (report.dnsRecords) {
+    console.log(`   DNS Deliverability Profile:`);
+    console.log(`     - Domain Name: ${report.dnsRecords.domain}`);
+    console.log(`     - MX Records Found: ${report.dnsRecords.hasMx ? 'Yes (Pass)' : 'No (Fail)'}`);
+    console.log(`     - SPF Record Configured: ${report.dnsRecords.hasSpf ? 'Yes (Pass)' : 'No (Fail)'}`);
+    console.log(`     - DMARC Record Configured: ${report.dnsRecords.hasDmarc ? 'Yes (Pass)' : 'No (Fail)'}`);
+  }
+  console.log('');
+}).catch(err => {
+  console.error(`🚨 [MAIL INIT FAILED] Startup diagnostic failed:`, err);
+});
 
 // SHARED BROWSER SINGLETON (Safe for Vercel Warm Starts)
 let _cachedBrowser: Browser | null = null;
@@ -864,6 +888,10 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
       
       if (result.success) {
         console.log(`[API SUCCESS] Order #${order.id} confirmed via return.`);
+        // Dispatch email notification asynchronously without blocking response
+        sendTicketEmail(order.public_id).catch(err => {
+          console.error(`[ASYNC EMAIL DISPATCH ERROR]:`, err);
+        });
         return res.json({ success: true, is_paid: true, order: result.order });
       } else {
         console.warn(`[API FAILED] Order #${order.id} confirmation failed: ${result.reason}`);
@@ -915,6 +943,10 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
       if (order) {
         console.log(`[Webhook] Triggering markOrderAsPaid for order #${order.id} (Public: ${order.public_id})`);
         await db.markOrderAsPaid(order.id, transactionId);
+        // Dispatch email notification asynchronously without blocking response
+        sendTicketEmail(order.public_id).catch(err => {
+          console.error(`[ASYNC EMAIL DISPATCH ERROR]:`, err);
+        });
       }
 
       return res.status(200).send();
@@ -1154,13 +1186,15 @@ app.post(['/api/user/redeem', '/api/user/points/redeem'], authenticateToken, asy
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-// --- TICKET PRINT & PDF API ---
-app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
-  const publicId = req.params.publicId;
+// --- REAL PDF GENERATOR & EMAIL SYSTEM ---
+
+/**
+ * Reusable PDF Generation function utilizing a shared browser instance
+ */
+export async function generateTicketPdfBuffer(publicId: string): Promise<{ pdfBuffer: Buffer; order: any }> {
   const requestStart = Date.now();
-  console.log(`[PDF PERF] Starting export for order public ID #${publicId}`);
-  
-  let page;
+  console.log(`[PDF GEN] Starting ticket generation for order public ID: ${publicId}`);
+  let page: any = null;
   try {
     // 1. Parallelize DB Fetch and Browser Acquisition
     const parallelStart = Date.now();
@@ -1179,7 +1213,9 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     const { info: browserInfo, time: acquireTime } = browserResult;
     const { browser, reused } = browserInfo;
 
-    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!order) {
+      throw new Error(`Order not found for public ID: ${publicId}`);
+    }
 
     const isPaid = order.is_paid || order.order_status === 'paid';
     const event: any = order.event || {};
@@ -1243,7 +1279,7 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     
     // Minimal interception
     await page.setRequestInterception(true);
-    page.on('request', (request) => {
+    page.on('request', (request: any) => {
       request.abort(); 
     });
 
@@ -1284,7 +1320,7 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
     const totalTime = Date.now() - requestStart;
 
     console.log(`
-[PDF PERF REPORT] - #${publicId}
+[PDF REPORT] - #${publicId}
 ---------------------------------------
 Warm/Reused:        ${reused ? 'YES' : 'NO (Cold)'}
 HTML Size:          ${(htmlSize / 1024).toFixed(2)} KB
@@ -1307,26 +1343,471 @@ TOTAL:              ${totalTime}ms
        throw new Error(`Invalid PDF buffer generated`);
     }
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="Ticket-${publicId}.pdf"`);
-    res.setHeader('Content-Length', pdfBuffer.length);
-    
-    const sendStart = Date.now();
-    res.end(pdfBuffer);
-    console.log(`[PDF PERF] Response Send: ${Date.now() - sendStart}ms`);
-    return;
+    return { pdfBuffer, order };
 
   } catch (error: any) {
-    console.error(`[PDF PERF ERROR] #${publicId}:`, error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Failed to generate PDF ticket', details: error.message });
-    }
+    console.error(`[PDF GENERATION EXCEPTION] #${publicId}:`, error);
+    throw error;
   } finally {
     if (page) {
       await page.close().catch(() => {});
     }
   }
+}
+
+/**
+ * Automates emailing ticket PDFs to buyers upon successful order payment.
+ */
+export async function sendTicketEmail(publicId: string): Promise<{ success: boolean; messageId?: string }> {
+  console.log(`📡 [EMAIL DISPATCH] Dispatching ticket email for order #${publicId}...`);
+  try {
+    // 1. Generate PDF (which also fetches the order)
+    const { pdfBuffer, order } = await generateTicketPdfBuffer(publicId);
+    
+    // 2. Fetch User associated with the order from DB
+    const user = await prisma.user.findUnique({ where: { id: order.user_id } });
+    if (!user || !user.email) {
+      throw new Error(`Recipient user or email address not found for order public ID: ${publicId}`);
+    }
+
+    const eventTitle = order.event?.title || 'Your Event';
+    const eventDate = order.event?.event_date ? new Date(order.event.event_date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A';
+    const eventTime = order.event?.event_time || 'N/A';
+    const eventVenue = order.event?.venue || 'N/A';
+    const orderNum = order.id;
+
+    // 3. Compose high-polish HTML template
+    const htmlText = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f4f7; color: #51545e; margin: 0; padding: 0; }
+            .wrapper { width: 100%; table-layout: fixed; background-color: #f4f4f7; padding-bottom: 40px; }
+            .content { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; margin-top: 40px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); }
+            .header { background-color: #0A0F0E; padding: 32px; text-align: center; border-bottom: 2px solid #1E2D2A; }
+            .header h1 { color: #10B981; font-size: 24px; margin: 0; font-weight: 700; letter-spacing: 0.05em; }
+            .body { padding: 32px; line-height: 1.6; }
+            .body h2 { color: #1E2D2A; font-size: 20px; margin-top: 0; }
+            .order-details { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin: 24px 0; }
+            .details-table { width: 100%; border-collapse: collapse; }
+            .details-table td { padding: 6px 0; font-size: 14px; }
+            .details-table td.label { font-weight: 600; color: #475569; width: 120px; }
+            .details-table td.value { color: #0f172a; }
+            .footer { text-align: center; padding: 24px; font-size: 12px; color: #94a3b8; }
+          </style>
+        </head>
+        <body>
+          <div class="wrapper">
+            <div class="content">
+              <div class="header">
+                <h1 style="color: #10B981;">🎟️ TicketsHub</h1>
+              </div>
+              <div class="body">
+                <h2>Your Order is Confirmed!</h2>
+                <p>Hi ${user.name || 'Valued Customer'},</p>
+                <p>Thank you for your purchase. Your payment was successful, and your ticket for <strong>${eventTitle}</strong> is secured!</p>
+                
+                <p>We've attached your printable PDF ticket to this email. You can also view/present it directly from your dashboard.</p>
+                
+                <div class="order-details">
+                  <h3 style="margin-top: 0; color: #0f172a; font-size: 16px;">Order Receipt Summary</h3>
+                  <table class="details-table">
+                    <tr>
+                      <td class="label">Order ID:</td>
+                      <td class="value">#${orderNum}</td>
+                    </tr>
+                    <tr>
+                      <td class="label">Event:</td>
+                      <td class="value"><strong>${eventTitle}</strong></td>
+                    </tr>
+                    <tr>
+                      <td class="label">Date:</td>
+                      <td class="value">${eventDate}</td>
+                    </tr>
+                    <tr>
+                      <td class="label">Time:</td>
+                      <td class="value">${eventTime}</td>
+                    </tr>
+                    <tr>
+                      <td class="label">Venue:</td>
+                      <td class="value">${eventVenue}</td>
+                    </tr>
+                  </table>
+                </div>
+
+                <p><strong>Instructions:</strong> Please print or save the attached PDF ticket. The QR code on the ticket will be scanned at the entrance. Note that QR codes are activated as per the event rules (usually 1 hour before the gate opens).</p>
+                
+                <p>If you have any questions or require support, reply directly to this email or visit our website.</p>
+                
+                <p>Warm regards,<br/>The TicketsHub Team</p>
+              </div>
+              <div class="footer">
+                <p>&copy; 2026 TicketsHub Inc. All rights reserved.</p>
+                <p>This is an automated operational email. If you did not make this purchase, please contact security immediately.</p>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const plainText = `
+Hi ${user.name || 'Valued Customer'},
+
+Thank you for your purchase. Your payment was successful, and your ticket for "${eventTitle}" is secured!
+
+We have attached your printable PDF ticket to this email.
+
+Order Details:
+- Order ID: #${orderNum}
+- Event: ${eventTitle}
+- Date: ${eventDate}
+- Time: ${eventTime}
+- Venue: ${eventVenue}
+
+Instructions:
+Please present the attached PDF ticket at the entrance. The QR code located on the ticket will be scanned at the gates.
+
+If you have any questions, reply to this email or contact support.
+
+Best regards,
+The TicketsHub Team
+    `;
+
+    // 4. Send email
+    const mailResult = await sendEmail({
+      to: user.email,
+      subject: `🎟️ Your TicketsHub Ticket: ${eventTitle} (#${orderNum})`,
+      html: htmlText,
+      text: plainText,
+      attachments: [
+        {
+          filename: `Ticket-${publicId}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ]
+    });
+
+    console.log(`✨ [EMAIL DISPATCH SUCCESS] Ticket emailed successfully for order #${orderNum} (Public: ${publicId})`);
+    return mailResult;
+
+  } catch (error: any) {
+    console.error(`🚨 [EMAIL DISPATCH ERROR] Failed to email ticket for order public ID: ${publicId}. Error: ${error.stack || error.message}`);
+    return { success: false };
+  }
+}
+
+/**
+ * Automates emailing invitation information to users.
+ */
+export async function sendInvitationEmail(email: string, eventId: number): Promise<void> {
+  console.log(`📡 [EMAIL DISPATCH] Dispatching invitation email to ${email} for event #${eventId}...`);
+  try {
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) {
+      throw new Error(`Event not found for invitation email: ${eventId}`);
+    }
+    const eventTitle = event.title;
+    const eventDate = event.event_date ? new Date(event.event_date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A';
+    const eventTime = event.event_time || 'N/A';
+    const eventVenue = event.venue || 'N/A';
+
+    const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}`;
+
+    const htmlText = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f4f7; color: #51545e; margin: 0; padding: 0; }
+            .wrapper { width: 100%; table-layout: fixed; background-color: #f4f4f7; padding-bottom: 40px; }
+            .content { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; margin-top: 40px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); }
+            .header { background-color: #0A0F0E; padding: 32px; text-align: center; border-bottom: 2px solid #1E2D2A; }
+            .header h1 { color: #10B981; font-size: 24px; margin: 0; font-weight: 700; letter-spacing: 0.05em; }
+            .body { padding: 32px; line-height: 1.6; }
+            .body h2 { color: #1E2D2A; font-size: 20px; margin-top: 0; }
+            .event-details { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin: 24px 0; }
+            .details-table { width: 100%; border-collapse: collapse; }
+            .details-table td { padding: 6px 0; font-size: 14px; }
+            .details-table td.label { font-weight: 600; color: #475569; width: 120px; }
+            .details-table td.value { color: #0f172a; }
+            .btn { display: inline-block; background-color: #10B981; color: #ffffff; text-decoration: none; padding: 12px 24px; font-weight: bold; border-radius: 6px; margin: 20px 0; text-align: center; }
+            .footer { text-align: center; padding: 24px; font-size: 12px; color: #94a3b8; }
+          </style>
+        </head>
+        <body>
+          <div class="wrapper">
+            <div class="content">
+              <div class="header">
+                <h1 style="color: #10B981;">🎟️ TicketsHub</h1>
+              </div>
+              <div class="body">
+                <h2>You're Invited!</h2>
+                <p>Hello,</p>
+                <p>You have been personally invited to attend <strong>${eventTitle}</strong>!</p>
+                
+                <div class="event-details">
+                  <h3 style="margin-top: 0; color: #0f172a; font-size: 16px;">Event Details</h3>
+                  <table class="details-table">
+                    <tr>
+                      <td class="label">Event:</td>
+                      <td class="value"><strong>${eventTitle}</strong></td>
+                    </tr>
+                    <tr>
+                      <td class="label">Date:</td>
+                      <td class="value">${eventDate}</td>
+                    </tr>
+                    <tr>
+                      <td class="label">Time:</td>
+                      <td class="value">${eventTime}</td>
+                    </tr>
+                    <tr>
+                      <td class="label">Venue:</td>
+                      <td class="value">${eventVenue}</td>
+                    </tr>
+                  </table>
+                </div>
+
+                <p>To accept this invitation and claim your tickets, log in or sign up on our platform using your email address, and check your digital tickets dashboard.</p>
+                
+                <div style="text-align: center;">
+                  <a href="${loginUrl}" class="btn" style="color: #ffffff;">Access Your Portal</a>
+                </div>
+
+                <p>Warm regards,<br/>The TicketsHub Team</p>
+              </div>
+              <div class="footer">
+                <p>&copy; 2026 TicketsHub Inc. All rights reserved.</p>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    // Send the email
+    await sendEmail({
+      to: email,
+      subject: `🎟️ Personal Invitation: ${eventTitle}`,
+      html: htmlText
+    });
+    console.log(`✨ [EMAIL DISPATCH SUCCESS] Invitation email dispatched to ${email} for event #${eventId}`);
+
+  } catch (error: any) {
+    console.error(`🚨 [EMAIL DISPATCH ERROR] Failed to send invitation email to ${email}. Error: ${error.stack || error.message}`);
+  }
+}
+
+// --- TICKET PRINT & PDF API ---
+app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
+  const publicId = req.params.publicId;
+  const requestStart = Date.now();
+  console.log(`[PDF DOWNLOAD] Starting export for order public ID ${publicId}`);
+  
+  try {
+    const { pdfBuffer } = await generateTicketPdfBuffer(publicId);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Ticket-${publicId}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    
+    res.end(pdfBuffer);
+    console.log(`[PDF DOWNLOAD SUCCESS] Sent PDF file response in: ${Date.now() - requestStart}ms`);
+  } catch (error: any) {
+    console.error(`[PDF DOWNLOAD ERROR] Error downloading PDF ticket #${publicId}:`, error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to generate PDF ticket', details: error.message });
+    }
+  }
 });
+
+
+// --- SAFE EMAIL TEST ENDPOINT ---
+app.post('/api/debug/test-email', async (req: any, res: any) => {
+  console.log('📡 [DEBUG API] Received request on /api/debug/test-email');
+  
+  // Guard check: strictly require admin role OR allow in development mode without token
+  const devMode = process.env.NODE_ENV !== 'production';
+  let isAuthorized = devMode;
+
+  if (!isAuthorized) {
+    // If not in dev, try to authenticate standard token
+    try {
+      const authHeader = req.headers['authorization'];
+      const token = authHeader && authHeader.split(' ')[1];
+      if (token) {
+        const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+        if (decoded && decoded.role === 'admin') {
+          isAuthorized = true;
+        }
+      }
+    } catch (err) {
+      console.warn('[DEBUG API AUTHERR] Auth check failed on test-email endpoint:', err);
+    }
+  }
+
+  if (!isAuthorized) {
+    return res.status(403).json({ 
+      success: false, 
+      error: 'Forbidden. This endpoint is restricted to administrators or local dev environment only.' 
+    });
+  }
+
+  try {
+    const { email, publicId } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Recipient address "email" is required.' });
+    }
+
+    const report: any = {
+      timestamp: new Date().toISOString(),
+      validationChecks: {},
+      pdfGeneration: {},
+      deliveryResult: {}
+    };
+
+    // 1. Diagnose Configuration & DNS
+    console.log('[DEBUG API] Running Mailer configuration diagnostics...');
+    const configReport = await verifyEmailConfig();
+    report.validationChecks = {
+      valid: configReport.valid,
+      mode: configReport.mode,
+      errors: configReport.errors,
+      warnings: configReport.warnings,
+      dns: configReport.dnsRecords
+    };
+
+    // 2. Validate/Generate PDF attachment
+    let pdfBuffer: Buffer | null = null;
+    let targetPublicId = publicId;
+
+    if (targetPublicId) {
+      try {
+        console.log(`[DEBUG API] Generating PDF content for order public_id: ${targetPublicId}`);
+        const genResult = await generateTicketPdfBuffer(targetPublicId);
+        pdfBuffer = genResult.pdfBuffer;
+        report.pdfGeneration = {
+          success: true,
+          publicId: targetPublicId,
+          pdfSizeKb: (pdfBuffer.length / 1024).toFixed(2),
+          orderId: genResult.order.id,
+          eventTitle: genResult.order.event?.title
+        };
+      } catch (err: any) {
+        console.error(`[DEBUG API PDF ERR] Failed to generate PDF for ${targetPublicId}:`, err);
+        report.pdfGeneration = {
+          success: false,
+          error: err.message,
+          stack: err.stack
+        };
+      }
+    } else {
+      // Find a mock or existing paid order in DB to test on if no publicId was supplied!
+      try {
+        const existingOrder = await prisma.order.findFirst({
+          where: { is_paid: true },
+          select: { public_id: true }
+        });
+        if (existingOrder) {
+          targetPublicId = existingOrder.public_id;
+          console.log(`[DEBUG API] Automatically selected paid order public_id: ${targetPublicId} for generation validation.`);
+          const genResult = await generateTicketPdfBuffer(targetPublicId);
+          pdfBuffer = genResult.pdfBuffer;
+          report.pdfGeneration = {
+            success: true,
+            automaticallySelected: true,
+            publicId: targetPublicId,
+            pdfSizeKb: (pdfBuffer.length / 1024).toFixed(2),
+            orderId: genResult.order.id,
+            eventTitle: genResult.order.event?.title
+          };
+        } else {
+          report.pdfGeneration = {
+            success: false,
+            error: 'No is_paid order exists in the database to run PDF generation test. Bypass PDF test.'
+          };
+        }
+      } catch (err: any) {
+        console.error('[DEBUG API] DB lookup / auto PDF generation test failed:', err);
+        report.pdfGeneration = {
+          success: false,
+          error: `Auto lookup failed: ${err.message}`
+        };
+      }
+    }
+
+    // 3. Dispatch test email
+    console.log(`[DEBUG API] Dispatching transaction email test to ${email}...`);
+    const attachments = pdfBuffer ? [
+      {
+        filename: `Test-Ticket-Order-${targetPublicId || 'none'}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      }
+    ] : [];
+
+    const mailResult = await sendEmail({
+      to: email,
+      subject: `🧪 TicketsHub Production Email Test System`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+          <h2 style="color: #10B981; border-bottom: 2px solid #10B981; padding-bottom: 10px;">🧪 Test Email Delivery Audit</h2>
+          <p>This is a real-time production email delivery test from your **TicketsHub App**.</p>
+          <p><strong>Execution Time:</strong> ${new Date().toUTCString()} (UTC)</p>
+          <p><strong>Configured Mode:</strong> ${configReport.mode}</p>
+          <p><strong>SMTP/Resend Credentials Valid:</strong> ${configReport.valid ? '✅ YES' : '❌ NO'}</p>
+          
+          <h3>Diagnostic Summary:</h3>
+          <ul>
+            <li><strong>PDF Attachment Rendered:</strong> ${pdfBuffer ? '✅ YES' : '❌ NO'}</li>
+            ${pdfBuffer ? `<li><strong>Attachment Size:</strong> ${(pdfBuffer.length / 1024).toFixed(2)} KB</li>` : ''}
+            <li><strong>MX Records check:</strong> ${configReport.dnsRecords?.hasMx ? 'Passed' : 'Failed'}</li>
+            <li><strong>SPF Record check:</strong> ${configReport.dnsRecords?.hasSpf ? 'Passed' : 'Failed'}</li>
+            <li><strong>DMARC Record check:</strong> ${configReport.dnsRecords?.hasDmarc ? 'Passed/Active' : 'Missing/Inactive'}</li>
+          </ul>
+          
+          <p>If you see the PDF ticket attached to this email and can open it, then your **Puppeteer Chrome headless instance, React-SSR template parser, and attachments pipeline are 100% operationally sound!** 🚀</p>
+          <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
+          <p style="font-size: 12px; color: #777;">Admin Delivery Diagnosis Panel &copy; 2026 TicketsHub.</p>
+        </div>
+      `,
+      text: `Production Delivery Test: Real-time SMTP/Resend checks completed successfully. Attachment presence: ${!!pdfBuffer}`,
+      attachments
+    });
+
+    report.deliveryResult = mailResult;
+
+    if (mailResult.success) {
+      console.log(`✨ [DEBUG API SUCCESS] Delivery audit completed successfully for recipient ${email}`);
+      return res.status(200).json({
+        success: true,
+        message: 'Delivery audit dispatched successfully. Check your mailbox/attachment.',
+        report
+      });
+    } else {
+      console.warn(`🚨 [DEBUG API WARNING] Email dispatched but failed to deliver. Report:`, report);
+      return res.status(502).json({
+        success: false,
+        error: 'Email dispatcher completed with delivery failure. Check logs.',
+        report
+      });
+    }
+
+  } catch (error: any) {
+    console.error('🚨 [DEBUG API EXCEPTION] Encountered crash inside /api/debug/test-email endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Crash inside delivery test dispatcher route',
+      details: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 
 // --- TICKET RESALE API ---
 app.post('/api/tickets/resale', authenticateToken, async (req: any, res) => {
@@ -1640,6 +2121,10 @@ app.post('/api/admin/invitations', authenticateToken, authorizeRole(['admin']), 
         });
       }
       return invitation;
+    });
+    // Trigger invitation email as non-blocking async call
+    sendInvitationEmail(email, parseInt(event_id)).catch(err => {
+      console.error(`[ASYNC INVITATION DISPATCH ERROR]:`, err);
     });
     res.status(201).json(result);
   } catch (error: any) { res.status(500).json({ error: error.message }); }
