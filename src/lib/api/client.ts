@@ -36,6 +36,8 @@ export const fetchWithAuth = async (endpoint: string, options: RequestInit = {})
   if (!token && 
       !url.includes('/api/auth/login') && 
       !url.includes('/api/auth/signup') && 
+      !url.includes('/api/auth/forgot-password') && 
+      !url.includes('/api/auth/reset-password') && 
       !url.includes('/api/events') && 
       !url.includes('/api/payments/verify') &&
       !url.includes('/api/orders') &&

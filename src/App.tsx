@@ -37,6 +37,7 @@ import { AdminRoute } from './components/AdminRoute';
 import { NotFoundPage } from './components/NotFoundPage';
 import PageContainer from './components/layout/PageContainer';
 import TicketPrintPage from './pages/TicketPrintPage';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
 
 export default function App() {
   const [appKey, setAppKey] = useState(0);
@@ -167,6 +168,7 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
                 <Route path="/payment/pending" element={<ProtectedRoute><PaymentPendingPage /></ProtectedRoute>} />
                 <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
                 <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/ticket/print/:publicId" element={<TicketPrintPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>

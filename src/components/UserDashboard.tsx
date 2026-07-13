@@ -14,7 +14,9 @@ import {
   Clock, 
   RefreshCw,
   Users,
-  History
+  History,
+  AlertCircle,
+  CheckCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/Button';
@@ -37,9 +39,49 @@ import { formatDateTime, formatDate } from '../lib/dateFormat';
 
 export const UserDashboard = () => {
   const navigate = useNavigate();
-  const { user, logout: handleLogout } = useAuth();
+  const { user, login: updateSession, logout: handleLogout } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Logged-in password change states
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [changeLoading, setChangeLoading] = useState(false);
+  const [changeSuccess, setChangeSuccess] = useState(false);
+  const [changeError, setChangeError] = useState('');
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setChangeLoading(true);
+    setChangeError('');
+    setChangeSuccess(false);
+
+    try {
+      const data = await authService.changePassword({
+        currentPassword,
+        newPassword,
+        confirmPassword: confirmNewPassword
+      });
+      setChangeSuccess(true);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      
+      if (data && data.accessToken && data.user) {
+        // Update session in the context to keep user logged in on this client
+        updateSession({
+          user: data.user,
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken
+        });
+      }
+    } catch (err: any) {
+      setChangeError(err.message || 'Failed to change password.');
+    } finally {
+      setChangeLoading(false);
+    }
+  };
 
   const [points, setPoints] = useState({ balance: 0, history: [] as PointsHistory[] });
   const [isResaleModalOpen, setIsResaleModalOpen] = useState(false);
@@ -589,6 +631,83 @@ export const UserDashboard = () => {
 
                 <div className="pt-6">
                   <Button variant="outline" className="w-full sm:w-auto px-10">Edit Profile Details</Button>
+                </div>
+
+                <div className="pt-8 border-t border-bg-border content-stack gap-6">
+                  <div>
+                    <h4 className="text-h4 mb-1">Update Security</h4>
+                    <p className="text-body-xs text-text-muted">Change your account password. Note: This will invalidate all other active sessions for safety.</p>
+                  </div>
+                  
+                  <form onSubmit={handleChangePassword} className="content-stack gap-5 max-w-md">
+                    {changeSuccess && (
+                      <div className="bg-teal/10 border border-teal/20 text-teal p-4 rounded-card flex items-center gap-3 text-body-sm font-medium">
+                        <CheckCircle size={14} className="shrink-0 animate-bounce" />
+                        <span>Password updated successfully. Other active sessions have been securely signed out.</span>
+                      </div>
+                    )}
+                    
+                    {changeError && (
+                      <div className="bg-status-error/10 border border-status-error/20 text-status-error p-4 rounded-card flex items-center gap-3 text-body-sm font-medium">
+                        <AlertCircle size={14} className="shrink-0" />
+                        <span>{changeError}</span>
+                      </div>
+                    )}
+
+                    <div className="content-stack gap-2">
+                      <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Current Password</label>
+                      <input 
+                        type="password" 
+                        required
+                        value={currentPassword}
+                        onChange={(e) => {
+                          setCurrentPassword(e.target.value);
+                          if (changeError) setChangeError('');
+                        }}
+                        placeholder="••••••••"
+                        className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 px-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
+                      />
+                    </div>
+
+                    <div className="content-stack gap-2">
+                      <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">New Password</label>
+                      <input 
+                        type="password" 
+                        required
+                        value={newPassword}
+                        onChange={(e) => {
+                          setNewPassword(e.target.value);
+                          if (changeError) setChangeError('');
+                        }}
+                        placeholder="••••••••"
+                        className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 px-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
+                      />
+                    </div>
+
+                    <div className="content-stack gap-2">
+                      <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Confirm New Password</label>
+                      <input 
+                        type="password" 
+                        required
+                        value={confirmNewPassword}
+                        onChange={(e) => {
+                          setConfirmNewPassword(e.target.value);
+                          if (changeError) setChangeError('');
+                        }}
+                        placeholder="••••••••"
+                        className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 px-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
+                      />
+                    </div>
+
+                    <Button 
+                      type="submit" 
+                      variant="accent"
+                      className="w-full py-4 text-button font-black uppercase tracking-widest"
+                      disabled={changeLoading}
+                    >
+                      {changeLoading ? 'Updating Security...' : 'Update Password'}
+                    </Button>
+                  </form>
                 </div>
               </div>
             </div>

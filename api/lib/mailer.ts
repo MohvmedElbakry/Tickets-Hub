@@ -237,3 +237,180 @@ async function sendViaResend(from: string, options: SendEmailOptions): Promise<s
 
   return resData.id;
 }
+
+/**
+ * Standardizes name presentation for customer-facing emails.
+ * Only falls back to the email address if absolutely no name exists.
+ * Trims whitespace and prevents placeholders like undefined/null.
+ */
+export function getPersonalizedName(name?: string | null, email?: string | null): string {
+  if (name) {
+    const trimmed = name.trim();
+    if (
+      trimmed && 
+      trimmed.toLowerCase() !== 'undefined' && 
+      trimmed.toLowerCase() !== 'null' && 
+      trimmed !== '""' && 
+      trimmed !== "''"
+    ) {
+      return trimmed;
+    }
+  }
+  if (email) {
+    const trimmedEmail = email.trim();
+    if (
+      trimmedEmail && 
+      trimmedEmail.toLowerCase() !== 'undefined' && 
+      trimmedEmail.toLowerCase() !== 'null' && 
+      trimmedEmail !== '""' && 
+      trimmedEmail !== "''"
+    ) {
+      return trimmedEmail;
+    }
+  }
+  return 'Valued Customer';
+}
+
+export interface EmailTemplateOptions {
+  recipientName: string;
+  title: string;
+  preheader?: string;
+  bodyHtml: string;
+  ctaText?: string;
+  ctaUrl?: string;
+}
+
+/**
+ * Reusable HTML template matching TicketsHub styling.
+ */
+export function generateEmailHtml(options: EmailTemplateOptions): string {
+  const brandColor = '#10B981';
+  const headerBg = '#0A0F0E';
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        ${options.preheader ? `<title>${options.preheader}</title>` : ''}
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f4f7; color: #51545e; margin: 0; padding: 0; }
+          .wrapper { width: 100%; table-layout: fixed; background-color: #f4f4f7; padding-bottom: 40px; }
+          .content { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; margin-top: 40px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); }
+          .header { background-color: ${headerBg}; padding: 32px; text-align: center; border-bottom: 2px solid #1E2D2A; }
+          .header h1 { color: ${brandColor}; font-size: 24px; margin: 0; font-weight: 700; letter-spacing: 0.05em; text-decoration: none; }
+          .body { padding: 32px; line-height: 1.6; }
+          .body h2 { color: #1E2D2A; font-size: 20px; margin-top: 0; }
+          .btn { display: inline-block; background-color: ${brandColor}; color: #ffffff; text-decoration: none; padding: 12px 24px; font-weight: bold; border-radius: 6px; margin: 24px 0; text-align: center; }
+          .footer { text-align: center; padding: 24px; font-size: 12px; color: #94a3b8; }
+          ul { padding-left: 20px; margin: 16px 0; }
+          li { margin-bottom: 8px; }
+        </style>
+      </head>
+      <body>
+        <div class="wrapper">
+          <div class="content">
+            <div class="header">
+              <h1 style="color: ${brandColor};">🎟️ TicketsHub</h1>
+            </div>
+            <div class="body">
+              <h2>${options.title}</h2>
+              <p>Hi ${options.recipientName},</p>
+              ${options.bodyHtml}
+              ${options.ctaUrl && options.ctaText ? `
+                <div style="text-align: center; margin: 24px 0;">
+                  <a href="${options.ctaUrl}" class="btn" style="color: #ffffff; text-decoration: none;">${options.ctaText}</a>
+                </div>
+              ` : ''}
+              <p>Warm regards,<br/>The TicketsHub Team</p>
+            </div>
+            <div class="footer">
+              <p>&copy; 2026 TicketsHub Inc. All rights reserved.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+export interface WelcomeTemplateData {
+  title: string;
+  intro: string;
+  featuresTitle: string;
+  features: string[];
+  closing: string;
+  ctaText: string;
+  ctaUrl: string;
+}
+
+/**
+ * Automates emailing welcome notifications to registered users.
+ * Does not block registration flow, logging successes and failures cleanly.
+ */
+export async function sendWelcomeEmail(
+  recipient: string,
+  userName: string,
+  subject: string,
+  templateData: WelcomeTemplateData,
+  userId: number | string
+): Promise<{ success: boolean; messageId?: string }> {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] 📨 Welcome email queued | User ID: ${userId} | Email: ${recipient}`);
+
+  const recipientName = getPersonalizedName(userName, recipient);
+
+  const featuresHtml = templateData.features.map(f => `<li>${f}</li>`).join('');
+  const htmlText = generateEmailHtml({
+    recipientName,
+    title: templateData.title,
+    bodyHtml: `
+      <p>${templateData.intro}</p>
+      <h3 style="color: #1E2D2A; font-size: 16px; margin-top: 24px; margin-bottom: 12px;">${templateData.featuresTitle}</h3>
+      <ul style="margin: 12px 0; padding-left: 20px; line-height: 1.6;">
+        ${featuresHtml}
+      </ul>
+      <p>${templateData.closing}</p>
+    `,
+    ctaText: templateData.ctaText,
+    ctaUrl: templateData.ctaUrl
+  });
+
+  const plainTextFeatures = templateData.features.map(f => `- ${f}`).join('\n');
+  const plainText = `
+Hi ${recipientName},
+
+${templateData.title}
+
+${templateData.intro}
+
+${templateData.featuresTitle}:
+${plainTextFeatures}
+
+${templateData.closing}
+
+Access here: ${templateData.ctaUrl}
+
+Best regards,
+The TicketsHub Team
+  `.trim();
+
+  try {
+    const res = await sendEmail({
+      to: recipient,
+      subject,
+      html: htmlText,
+      text: plainText
+    });
+    
+    const successTimestamp = new Date().toISOString();
+    console.log(`[${successTimestamp}] ✅ Welcome email sent | User ID: ${userId} | Email: ${recipient} | Message ID: ${res.messageId || 'n/a'}`);
+    return res;
+  } catch (err: any) {
+    const failTimestamp = new Date().toISOString();
+    console.error(`[${failTimestamp}] ⚠️ Welcome email failed | User ID: ${userId} | Email: ${recipient} | Error: ${err.message}`);
+    return { success: false };
+  }
+}
+

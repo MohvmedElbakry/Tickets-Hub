@@ -70,3 +70,28 @@ export const redeemPoints = async (points: number): Promise<any> => {
     body: JSON.stringify({ points })
   });
 };
+
+export const forgotPassword = async (email: string): Promise<{ message: string }> => {
+  return await fetchWithAuth('/api/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email })
+  });
+};
+
+export const verifyResetPassword = async (token: string): Promise<{ valid: boolean, email: string, name: string }> => {
+  return await fetchWithAuth(`/api/auth/reset-password/verify?token=${encodeURIComponent(token)}`);
+};
+
+export const resetPassword = async (data: any): Promise<{ message: string }> => {
+  return await fetchWithAuth('/api/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+};
+
+export const changePassword = async (data: any): Promise<any> => {
+  return await fetchWithAuth('/api/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+};

@@ -48,5 +48,21 @@ export const authService = {
 
   async redeemPoints(points: number) {
     return await authApi.redeemPoints(points);
+  },
+
+  async forgotPassword(email: string) {
+    return await authApi.forgotPassword(email);
+  },
+
+  async verifyResetPassword(token: string) {
+    return await authApi.verifyResetPassword(token);
+  },
+
+  async resetPassword(data: any) {
+    return await authApi.resetPassword(data);
+  },
+
+  async changePassword(data: any) {
+    return await authApi.changePassword(data);
   }
 };

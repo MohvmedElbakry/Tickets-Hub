@@ -20,7 +20,7 @@ import React from 'react';
 import ReactDOMServer from 'react-dom/server';
 import { TicketTemplate } from './pdf/TicketTemplate.js';
 import QRCode from 'qrcode';
-import { sendEmail, verifyEmailConfig } from './lib/mailer.js';
+import { sendEmail, verifyEmailConfig, getPersonalizedName, sendWelcomeEmail } from './lib/mailer.js';
 
 dotenv.config();
 
@@ -97,7 +97,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_fallback_123';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || (JWT_SECRET + '_refresh');
 
 const generateTokens = (user: any) => {
-  const payload = { id: user.id, name: user.name, email: user.email, role: user.role, gender: user.gender };
+  const payload = { id: user.id, name: user.name, email: user.email, role: user.role, gender: user.gender, tokenVersion: user.token_version ?? 0 };
   const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' });
   const refreshToken = jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: '7d' });
   return { accessToken, refreshToken, user: payload };
@@ -259,11 +259,20 @@ const authenticateToken = (req: any, res: any, next: any) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
-  jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {
+  jwt.verify(token, JWT_SECRET, async (err: any, decoded: any) => {
     if (err) return res.status(401).json({ error: 'Invalid or expired token.' });
     if (!decoded || !decoded.id) return res.status(401).json({ error: 'Invalid token payload.' });
-    req.user = decoded;
-    next();
+    
+    try {
+      const user = await db.getUserById(decoded.id);
+      if (!user || (user.token_version ?? 0) !== (decoded.tokenVersion ?? 0)) {
+        return res.status(401).json({ error: 'Session expired or invalidated. Please login again.' });
+      }
+      req.user = decoded;
+      next();
+    } catch (dbErr) {
+      return res.status(501).json({ error: 'Internal auth service error.' });
+    }
   });
 };
 
@@ -274,13 +283,23 @@ const optionalAuthenticate = (req: any, res: any, next: any) => {
     req.user = null;
     return next();
   }
-  jwt.verify(token, JWT_SECRET, (err: any, decoded: any) => {
-    if (err) {
+  jwt.verify(token, JWT_SECRET, async (err: any, decoded: any) => {
+    if (err || !decoded || !decoded.id) {
       req.user = null;
       return next();
     }
-    req.user = decoded;
-    next();
+    try {
+      const user = await db.getUserById(decoded.id);
+      if (!user || (user.token_version ?? 0) !== (decoded.tokenVersion ?? 0)) {
+        req.user = null;
+        return next();
+      }
+      req.user = decoded;
+      next();
+    } catch {
+      req.user = null;
+      return next();
+    }
   });
 };
 
@@ -327,6 +346,27 @@ app.post('/api/auth/signup', async (req, res) => {
       gender 
     });
     const { accessToken, refreshToken, user } = generateTokens(newUser);
+
+    // Asynchronously dispatch the welcome email matching TicketsHub branding
+    const welcomeData = {
+      title: 'Welcome to TicketsHub 🎉',
+      intro: 'Thank you for creating an account with TicketsHub! We are thrilled to have you join our community.',
+      featuresTitle: 'Here is what you can do with TicketsHub:',
+      features: [
+        '✨ Discover exciting live events, festivals, concerts, and conferences.',
+        '🎟️ Buy tickets seamlessly with safe and secure payment options.',
+        '📅 Manage your bookings and access all digital tickets in your personal dashboard.',
+        '📱 Present your scan-ready ticket PDFs at any event entrance.'
+      ],
+      closing: 'Explore available events today and secure your spot! If you have any questions, feel free to reply directly to this email.',
+      ctaText: 'Discover Events Now',
+      ctaUrl: process.env.FRONTEND_URL || 'http://localhost:3000'
+    };
+
+    sendWelcomeEmail(newUser.email, newUser.name, 'Welcome to TicketsHub 🎉', welcomeData, newUser.id).catch(err => {
+      console.error(`🚨 [WELCOME EMAIL DISPATCH EXCEPTION] Async welcome email delivery crashed:`, err);
+    });
+
     res.status(201).json({ user, accessToken, refreshToken });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
@@ -361,6 +401,390 @@ app.post('/api/auth/refresh', async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found.' });
     res.json(generateTokens(user));
   });
+});
+
+// --- PASSWORD RECOVERY & CHANGE SYSTEM ---
+
+// Rate limit for forgot password requests (5 per hour per IP)
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many password reset requests from this IP. Please try again after an hour.' },
+  skip: (req) => process.env.NODE_ENV !== 'production' || !!process.env.AIS_PREVIEW,
+});
+
+// Account-based throttling (3 per hour per account)
+const accountResetRequestTracker = new Map<string, { count: number; firstRequestTime: number }>();
+function checkAccountForgotPasswordRateLimit(email: string): boolean {
+  const normalizedEmail = email.toLowerCase().trim();
+  const now = Date.now();
+  const userTracker = accountResetRequestTracker.get(normalizedEmail);
+  if (!userTracker) {
+    accountResetRequestTracker.set(normalizedEmail, { count: 1, firstRequestTime: now });
+    return true;
+  }
+  if (now - userTracker.firstRequestTime > 60 * 60 * 1000) {
+    accountResetRequestTracker.set(normalizedEmail, { count: 1, firstRequestTime: now });
+    return true;
+  }
+  if (userTracker.count >= 3) {
+    return false;
+  }
+  userTracker.count++;
+  return true;
+}
+
+// Password rules: at least 8 chars, 1 uppercase, 1 lowercase, 1 number, not common
+function validatePassword(password: string): string | null {
+  if (password.length < 8) {
+    return 'Password must be at least 8 characters long.';
+  }
+  if (!/[A-Z]/.test(password)) {
+    return 'Password must contain at least one uppercase letter.';
+  }
+  if (!/[a-z]/.test(password)) {
+    return 'Password must contain at least one lowercase letter.';
+  }
+  if (!/[0-9]/.test(password)) {
+    return 'Password must contain at least one number.';
+  }
+  const commonPasswords = ['password', 'password123', '12345678', 'qwertyuiop', 'tickets', 'ticketshub'];
+  if (commonPasswords.includes(password.toLowerCase())) {
+    return 'This password is too common. Please choose a more secure password.';
+  }
+  return null;
+}
+
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+// 1. Forgot Password Endpoint
+app.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Email address is required.' });
+  }
+
+  const successResponse = { message: 'If an account exists, a password reset email has been sent.' };
+
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    // Check account-based limit (3 per hour)
+    if (!checkAccountForgotPasswordRateLimit(normalizedEmail)) {
+      return res.json(successResponse);
+    }
+
+    const user = await db.getUserByEmail(normalizedEmail);
+    if (!user) {
+      return res.json(successResponse);
+    }
+
+    // Generate secure random token (32 bytes)
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = hashToken(rawToken);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    // Store hashed token in DB
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password_reset_token: hashedToken,
+        password_reset_expires: expiresAt
+      }
+    });
+
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${rawToken}`;
+    const recipientName = getPersonalizedName(user.name, user.email);
+
+    // Reuse mailer utility and generate responsive HTML template
+    const { generateEmailHtml } = await import('./lib/mailer.js');
+    const forgotPasswordHtml = generateEmailHtml({
+      recipientName,
+      title: 'Reset Your TicketsHub Password 🔒',
+      bodyHtml: `
+        <p>You recently requested to reset your password for your TicketsHub account. Click the button below to proceed with setting a new password.</p>
+        <p>This password reset link is valid for <strong>15 minutes</strong>.</p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${resetUrl}" class="btn" style="color: #ffffff; text-decoration: none;">Reset Password</a>
+        </div>
+        <p>If the button doesn't work, copy and paste the link below into your browser:</p>
+        <p style="word-break: break-all; font-size: 13px; color: #64748b;">${resetUrl}</p>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+        <p style="font-size: 13px; color: #64748b;">If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.</p>
+        <p style="font-size: 13px; color: #64748b;">For any issues, please contact our support team.</p>
+      `,
+      ctaText: 'Reset Password',
+      ctaUrl: resetUrl
+    });
+
+    const forgotPasswordPlain = `
+Hi ${recipientName},
+
+You recently requested to reset your password for your TicketsHub account.
+
+Click the link below to set a new password:
+${resetUrl}
+
+This link is valid for 15 minutes.
+
+If you did not request this, please ignore this email.
+
+Best regards,
+The TicketsHub Team
+    `.trim();
+
+    sendEmail({
+      to: user.email,
+      subject: 'Reset Your TicketsHub Password 🔒',
+      html: forgotPasswordHtml,
+      text: forgotPasswordPlain
+    }).catch(err => {
+      console.error('🚨 [FORGOT PASSWORD EMAIL EXCEPTION]', err);
+    });
+
+    return res.json(successResponse);
+  } catch (error: any) {
+    console.error('🚨 [FORGOT PASSWORD EXCEPTION]', error);
+    return res.status(500).json({ error: 'Internal server error processing forgot password request.' });
+  }
+});
+
+// 2. Verify Reset Password Token Endpoint
+app.get('/api/auth/reset-password/verify', async (req, res) => {
+  const { token } = req.query;
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ error: 'Token is required.' });
+  }
+
+  try {
+    const hashedToken = hashToken(token);
+    const user = await prisma.user.findFirst({
+      where: { password_reset_token: hashedToken }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or already used password reset token.' });
+    }
+
+    if (user.password_reset_expires && new Date() > user.password_reset_expires) {
+      return res.status(410).json({ error: 'The password reset token has expired.' });
+    }
+
+    return res.status(200).json({ valid: true, email: user.email, name: user.name });
+  } catch (error: any) {
+    console.error('🚨 [VERIFY TOKEN EXCEPTION]', error);
+    return res.status(500).json({ error: 'Internal server error verifying token.' });
+  }
+});
+
+// 3. Reset Password (Unauthenticated execution)
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { token, password, confirmPassword } = req.body;
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ error: 'Token is required.' });
+  }
+  if (!password || !confirmPassword) {
+    return res.status(400).json({ error: 'Password and password confirmation are required.' });
+  }
+  if (password !== confirmPassword) {
+    return res.status(400).json({ error: 'Passwords do not match.' });
+  }
+
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ error: passwordError });
+  }
+
+  try {
+    const hashedToken = hashToken(token);
+    const user = await prisma.user.findFirst({
+      where: { password_reset_token: hashedToken }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or already used password reset token.' });
+    }
+
+    if (user.password_reset_expires && new Date() > user.password_reset_expires) {
+      return res.status(410).json({ error: 'The password reset token has expired.' });
+    }
+
+    // Hash the password
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    // Invalidate ALL previous sessions by incrementing token_version
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password_hash: passwordHash,
+        password_reset_token: null,
+        password_reset_expires: null,
+        password_changed_at: new Date(),
+        token_version: { increment: 1 }
+      }
+    });
+
+    const recipientName = getPersonalizedName(updatedUser.name, updatedUser.email);
+    const { generateEmailHtml } = await import('./lib/mailer.js');
+    const confirmationHtml = generateEmailHtml({
+      recipientName,
+      title: 'Your Password Was Successfully Reset 🔒',
+      bodyHtml: `
+        <p>This email confirms that the password for your TicketsHub account has been successfully reset.</p>
+        <p>All of your previous sessions on other devices have been securely logged out.</p>
+        <p>If you did this, you can safely ignore this email and log in with your new password.</p>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+        <p style="font-weight: bold; color: #ef4444;">If you did not reset your password:</p>
+        <p>Please contact our support team immediately to secure your account.</p>
+      `,
+      ctaText: 'Login to TicketsHub',
+      ctaUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`
+    });
+
+    const confirmationPlain = `
+Hi ${recipientName},
+
+This email confirms that the password for your TicketsHub account has been successfully reset.
+All of your previous sessions on other devices have been securely logged out.
+
+If you did this, you can log in with your new password.
+
+If you did not reset your password, please contact our support team immediately.
+
+Best regards,
+The TicketsHub Team
+    `.trim();
+
+    sendEmail({
+      to: updatedUser.email,
+      subject: 'TicketsHub Password Reset Confirmed 🎟️',
+      html: confirmationHtml,
+      text: confirmationPlain
+    }).catch(err => {
+      console.error('🚨 [RESET CONFIRMATION EMAIL EXCEPTION]', err);
+    });
+
+    return res.json({ message: 'Password has been reset successfully.' });
+  } catch (error: any) {
+    console.error('🚨 [RESET PASSWORD EXCEPTION]', error);
+    return res.status(500).json({ error: 'Internal server error resetting password.' });
+  }
+});
+
+// 4. Logged-in Password Change (Authenticated execution)
+app.post('/api/auth/change-password', authenticateToken, async (req: any, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    return res.status(400).json({ error: 'Current password, new password, and password confirmation are required.' });
+  }
+  if (newPassword !== confirmPassword) {
+    return res.status(400).json({ error: 'New passwords do not match.' });
+  }
+  if (currentPassword === newPassword) {
+    return res.status(400).json({ error: 'New password cannot be the same as your current password.' });
+  }
+
+  const passwordError = validatePassword(newPassword);
+  if (passwordError) {
+    return res.status(400).json({ error: passwordError });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: parseInt(req.user.id) }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Incorrect current password.' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    // Increment token_version to invalidate all other device sessions
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password_hash: passwordHash,
+        password_changed_at: new Date(),
+        token_version: { increment: 1 }
+      }
+    });
+
+    // Generate new tokens to keep current session alive
+    const { accessToken, refreshToken, user: userPayload } = generateTokens(updatedUser);
+
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'Unknown IP';
+    const device = req.headers['user-agent'] || 'Unknown Device';
+    const changeTime = new Date().toLocaleString();
+
+    const recipientName = getPersonalizedName(updatedUser.name, updatedUser.email);
+    const { generateEmailHtml } = await import('./lib/mailer.js');
+    const changeHtml = generateEmailHtml({
+      recipientName,
+      title: 'Your Password Was Changed Successfully 🔐',
+      bodyHtml: `
+        <p>This email confirms that the password for your TicketsHub account was recently changed.</p>
+        <p><strong>Change Details:</strong></p>
+        <ul style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 6px; list-style-type: none;">
+          <li>⏰ <strong>Time:</strong> ${changeTime}</li>
+          <li>🌐 <strong>IP Address:</strong> ${ip}</li>
+          <li>📱 <strong>Device/Browser:</strong> ${device}</li>
+        </ul>
+        <p>All other active sessions on other devices have been signed out to ensure your account security.</p>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+        <p style="font-weight: bold; color: #ef4444;">If you did not make this change:</p>
+        <p>Please contact our support team immediately or reset your password to secure your account.</p>
+      `,
+      ctaText: 'Manage Your Account',
+      ctaUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard`
+    });
+
+    const changePlain = `
+Hi ${recipientName},
+
+This email confirms that the password for your TicketsHub account was recently changed.
+
+Change Details:
+- Time: ${changeTime}
+- IP Address: ${ip}
+- Device/Browser: ${device}
+
+All other active sessions on other devices have been signed out.
+
+If you did not make this change, please contact our support team immediately.
+
+Best regards,
+The TicketsHub Team
+    `.trim();
+
+    sendEmail({
+      to: updatedUser.email,
+      subject: 'TicketsHub Password Change Notification 🎟️',
+      html: changeHtml,
+      text: changePlain
+    }).catch(err => {
+      console.error('🚨 [PASSWORD CHANGE EMAIL EXCEPTION]', err);
+    });
+
+    return res.json({
+      message: 'Password has been updated successfully. Other devices have been logged out.',
+      accessToken,
+      refreshToken,
+      user: userPayload
+    });
+  } catch (error: any) {
+    console.error('🚨 [CHANGE PASSWORD EXCEPTION]', error);
+    return res.status(500).json({ error: 'Internal server error changing password.' });
+  }
 });
 
 // --- NOTIFICATION ROUTES ---
@@ -1370,6 +1794,8 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
       throw new Error(`Recipient user or email address not found for order public ID: ${publicId}`);
     }
 
+    const recipientName = getPersonalizedName(user.name, user.email);
+
     const eventTitle = order.event?.title || 'Your Event';
     const eventDate = order.event?.event_date ? new Date(order.event.event_date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A';
     const eventTime = order.event?.event_time || 'N/A';
@@ -1406,7 +1832,7 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
               </div>
               <div class="body">
                 <h2>Your Order is Confirmed!</h2>
-                <p>Hi ${user.name || 'Valued Customer'},</p>
+                <p>Hi ${recipientName},</p>
                 <p>Thank you for your purchase. Your payment was successful, and your ticket for <strong>${eventTitle}</strong> is secured!</p>
                 
                 <p>We've attached your printable PDF ticket to this email. You can also view/present it directly from your dashboard.</p>
@@ -1454,7 +1880,7 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
     `;
 
     const plainText = `
-Hi ${user.name || 'Valued Customer'},
+Hi ${recipientName},
 
 Thank you for your purchase. Your payment was successful, and your ticket for "${eventTitle}" is secured!
 
@@ -1479,7 +1905,7 @@ The TicketsHub Team
     // 4. Send email
     const mailResult = await sendEmail({
       to: user.email,
-      subject: `🎟️ Your TicketsHub Ticket: ${eventTitle} (#${orderNum})`,
+      subject: `🎟️ Your Event Ticket: ${eventTitle} (#${orderNum})`,
       html: htmlText,
       text: plainText,
       attachments: [
@@ -1517,6 +1943,10 @@ export async function sendInvitationEmail(email: string, eventId: number): Promi
 
     const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}`;
 
+    // Look up user by email to personalize greeting
+    const user = await prisma.user.findUnique({ where: { email } });
+    const recipientName = getPersonalizedName(user?.name, email);
+
     const htmlText = `
       <!DOCTYPE html>
       <html>
@@ -1547,7 +1977,7 @@ export async function sendInvitationEmail(email: string, eventId: number): Promi
               </div>
               <div class="body">
                 <h2>You're Invited!</h2>
-                <p>Hello,</p>
+                <p>Hi ${recipientName},</p>
                 <p>You have been personally invited to attend <strong>${eventTitle}</strong>!</p>
                 
                 <div class="event-details">
