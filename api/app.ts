@@ -21,6 +21,7 @@ import ReactDOMServer from 'react-dom/server';
 import { TicketTemplate } from './pdf/TicketTemplate.js';
 import QRCode from 'qrcode';
 import { sendEmail, verifyEmailConfig, getPersonalizedName, sendWelcomeEmail } from './lib/mailer.js';
+import { validatePassword as sharedValidatePassword } from './lib/passwordValidator.js';
 
 dotenv.config();
 
@@ -317,6 +318,16 @@ app.post('/api/auth/signup', async (req, res) => {
   try {
     const { name, email, password, phone, role, birthdate, gender } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'Required fields missing.' });
+
+    const validationResult = sharedValidatePassword(password);
+    if (!validationResult.isValid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Password does not meet security requirements.',
+        message: 'Password does not meet security requirements.'
+      });
+    }
+
     const existingUser = await db.getUserByEmail(email);
     if (existingUser) return res.status(400).json({ error: 'Email already in use.' });
     const passwordHash = await bcrypt.hash(password, 10);
@@ -436,19 +447,11 @@ function checkAccountForgotPasswordRateLimit(email: string): boolean {
   return true;
 }
 
-// Password rules: at least 8 chars, 1 uppercase, 1 lowercase, 1 number, not common
+// Password rules: at least 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special, no leading/trailing spaces
 function validatePassword(password: string): string | null {
-  if (password.length < 8) {
-    return 'Password must be at least 8 characters long.';
-  }
-  if (!/[A-Z]/.test(password)) {
-    return 'Password must contain at least one uppercase letter.';
-  }
-  if (!/[a-z]/.test(password)) {
-    return 'Password must contain at least one lowercase letter.';
-  }
-  if (!/[0-9]/.test(password)) {
-    return 'Password must contain at least one number.';
+  const result = sharedValidatePassword(password);
+  if (!result.isValid) {
+    return 'Password does not meet security requirements.';
   }
   const commonPasswords = ['password', 'password123', '12345678', 'qwertyuiop', 'tickets', 'ticketshub'];
   if (commonPasswords.includes(password.toLowerCase())) {

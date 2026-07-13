@@ -36,6 +36,7 @@ import { useQRStatus } from '../hooks/useQRStatus';
 import { useOrder } from '../hooks/useOrder';
 import { formatEventTime } from '../lib/utils';
 import { formatDateTime, formatDate } from '../lib/dateFormat';
+import { PasswordChecklist } from './ui/PasswordChecklist';
 
 export const UserDashboard = () => {
   const navigate = useNavigate();
@@ -99,9 +100,14 @@ export const UserDashboard = () => {
   const [changeLoading, setChangeLoading] = useState(false);
   const [changeSuccess, setChangeSuccess] = useState(false);
   const [changeError, setChangeError] = useState('');
+  const [isPasswordValid, setIsPasswordValid] = useState(false);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isPasswordValid) {
+      setChangeError('Password does not satisfy all security requirements.');
+      return;
+    }
     setChangeLoading(true);
     setChangeError('');
     setChangeSuccess(false);
@@ -843,11 +849,18 @@ export const UserDashboard = () => {
                       />
                     </div>
 
+                    {/* Password complexity checklist */}
+                    <PasswordChecklist 
+                      password={newPassword} 
+                      confirmPassword={confirmNewPassword} 
+                      onValidationChange={setIsPasswordValid} 
+                    />
+
                     <Button 
                       type="submit" 
                       variant="accent"
                       className="w-full py-4 text-button font-black uppercase tracking-widest"
-                      disabled={changeLoading}
+                      disabled={changeLoading || !isPasswordValid}
                     >
                       {changeLoading ? 'Updating Security...' : 'Update Password'}
                     </Button>

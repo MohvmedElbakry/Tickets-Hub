@@ -6,6 +6,7 @@ import { CountryCodeSelector } from '../ui/CountryCodeSelector';
 import { authService } from '../../services/authService';
 import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
+import { PasswordChecklist } from '../ui/PasswordChecklist';
 
 export const SignupModal = () => {
   const { 
@@ -28,9 +29,14 @@ export const SignupModal = () => {
     role: 'user' as 'user' | 'organizer'
   });
 
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isPasswordValid, setIsPasswordValid] = useState(false);
+
   const onClose = () => {
     setIsSignupModalOpen(false);
     setLoginModalNotice(null);
+    setConfirmPassword('');
+    setIsPasswordValid(false);
   };
   const onOpenLogin = () => setIsLoginModalOpen(true);
   
@@ -237,7 +243,7 @@ export const SignupModal = () => {
                 </div>
               </div>
 
-              <div className="content-stack gap-2">
+               <div className="content-stack gap-2">
                 <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Password</label>
                 <div className="relative group">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-card flex items-center justify-center text-text-muted group-focus-within:text-teal group-focus-within:bg-teal/10 transition-all duration-base">
@@ -254,11 +260,35 @@ export const SignupModal = () => {
                 </div>
               </div>
 
+              <div className="content-stack gap-2">
+                <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Confirm Password</label>
+                <div className="relative group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-card flex items-center justify-center text-text-muted group-focus-within:text-teal group-focus-within:bg-teal/10 transition-all duration-base">
+                    <Lock size={16} />
+                  </div>
+                  <input 
+                    type="password" 
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => { setConfirmPassword(e.target.value); if (error) setError(''); }}
+                    placeholder="••••••••"
+                    className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 pl-14 pr-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all placeholder:text-text-muted/40"
+                  />
+                </div>
+              </div>
+
+              {/* Password complexity checklist */}
+              <PasswordChecklist 
+                password={signupForm.password} 
+                confirmPassword={confirmPassword} 
+                onValidationChange={setIsPasswordValid} 
+              />
+
               <Button 
                 type="submit" 
                 variant="accent"
                 className="w-full py-4 text-button font-black uppercase tracking-widest mt-6" 
-                disabled={loading}
+                disabled={loading || !isPasswordValid}
               >
                 {loading ? 'Creating Experience...' : 'Join TicketsHub'}
               </Button>

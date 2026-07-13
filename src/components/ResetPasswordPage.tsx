@@ -5,6 +5,7 @@ import { motion } from 'motion/react';
 import { Button } from './ui/Button';
 import { authService } from '../services/authService';
 import { useUI } from '../context/UIContext';
+import { PasswordChecklist } from './ui/PasswordChecklist';
 
 export const ResetPasswordPage = () => {
   const [searchParams] = useSearchParams();
@@ -26,25 +27,7 @@ export const ResetPasswordPage = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  // Password rules validation helper
-  const [rules, setRules] = useState({
-    length: false,
-    uppercase: false,
-    lowercase: false,
-    number: false,
-    match: false,
-  });
-
-  useEffect(() => {
-    // Validate rules live
-    setRules({
-      length: password.length >= 8,
-      uppercase: /[A-Z]/.test(password),
-      lowercase: /[a-z]/.test(password),
-      number: /[0-9]/.test(password),
-      match: password === confirmPassword && password.length > 0,
-    });
-  }, [password, confirmPassword]);
+  const [isPasswordValid, setIsPasswordValid] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -82,13 +65,8 @@ export const ResetPasswordPage = () => {
     e.preventDefault();
     if (!token) return;
 
-    if (!rules.length || !rules.uppercase || !rules.lowercase || !rules.number) {
+    if (!isPasswordValid) {
       setError('Password does not satisfy all security requirements.');
-      return;
-    }
-
-    if (!rules.match) {
-      setError('Passwords do not match.');
       return;
     }
 
@@ -287,47 +265,17 @@ export const ResetPasswordPage = () => {
           </div>
 
           {/* Password complexity checklist */}
-          <div className="bg-bg-elevated p-4 rounded-card border border-bg-border/60">
-            <h4 className="text-body-sm font-semibold text-text-primary mb-3">Password Requirements</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-              <div className="flex items-center gap-2">
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center ${rules.length ? 'bg-teal/20 text-teal' : 'bg-bg-border text-text-muted'}`}>
-                  ✓
-                </div>
-                <span className={rules.length ? 'text-teal font-medium' : 'text-text-muted'}>At least 8 characters</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center ${rules.uppercase ? 'bg-teal/20 text-teal' : 'bg-bg-border text-text-muted'}`}>
-                  ✓
-                </div>
-                <span className={rules.uppercase ? 'text-teal font-medium' : 'text-text-muted'}>Uppercase letter</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center ${rules.lowercase ? 'bg-teal/20 text-teal' : 'bg-bg-border text-text-muted'}`}>
-                  ✓
-                </div>
-                <span className={rules.lowercase ? 'text-teal font-medium' : 'text-text-muted'}>Lowercase letter</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center ${rules.number ? 'bg-teal/20 text-teal' : 'bg-bg-border text-text-muted'}`}>
-                  ✓
-                </div>
-                <span className={rules.number ? 'text-teal font-medium' : 'text-text-muted'}>Include a number</span>
-              </div>
-              <div className="flex items-center gap-2 sm:col-span-2 border-t border-bg-border/40 pt-2 mt-1">
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center ${rules.match ? 'bg-teal/20 text-teal' : 'bg-bg-border text-text-muted'}`}>
-                  ✓
-                </div>
-                <span className={rules.match ? 'text-teal font-medium' : 'text-text-muted'}>Passwords match</span>
-              </div>
-            </div>
-          </div>
+          <PasswordChecklist 
+            password={password} 
+            confirmPassword={confirmPassword} 
+            onValidationChange={setIsPasswordValid} 
+          />
 
           <Button 
             type="submit" 
             variant="accent"
             className="w-full py-4 text-button font-black uppercase tracking-widest mt-2" 
-            disabled={submitting}
+            disabled={submitting || !isPasswordValid}
           >
             {submitting ? 'Updating Password...' : 'Reset My Password'}
           </Button>
