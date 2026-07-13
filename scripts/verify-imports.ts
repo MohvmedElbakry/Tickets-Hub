@@ -78,9 +78,10 @@ function getLineNumber(content: string, importPathStr: string): number {
 // Main verification logic
 function verifyImports() {
   const files = getAllFiles(TARGET_DIR, EXCLUDED_DIRS)
-    .filter(file => file.endsWith('.ts') || file.endsWith('.tsx') || file.endsWith('.js') || file.endsWith('.jsx'));
+    .filter(file => file.endsWith('.ts') || file.endsWith('.tsx') || file.endsWith('.js') || file.endsWith('.jsx'))
+    .filter(file => !file.endsWith('[...all].ts'));
 
-  console.log(`📄 Found ${files.length} source file(s) to scan.\n`);
+  console.log(`📄 Found ${files.length} source file(s) to scan (excluding deployment entrypoints).\n`);
 
   const IMPORT_PATTERNS = [
     /(?:import|export)\s+(?:[\w*\s{},]*\s+from\s+)?['"]([^'"]+)['"]/g,
@@ -104,6 +105,11 @@ function verifyImports() {
         
         // Skip package dependencies
         if (!importPath.startsWith('.')) {
+          continue;
+        }
+
+        // Skip imports targeting generated build outputs (e.g. dist/ or build/)
+        if (importPath.includes('/dist/') || importPath.startsWith('./dist/')) {
           continue;
         }
 
