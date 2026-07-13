@@ -39,9 +39,58 @@ import { formatDateTime, formatDate } from '../lib/dateFormat';
 
 export const UserDashboard = () => {
   const navigate = useNavigate();
-  const { user, login: updateSession, logout: handleLogout } = useAuth();
+  const { user, accessToken, refreshToken, login: updateSession, logout: handleLogout } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Profile edit states
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editGender, setEditGender] = useState('');
+  const [editError, setEditError] = useState('');
+  const [editSuccess, setEditSuccess] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+
+  const startEditing = () => {
+    setEditName(user?.name || '');
+    setEditPhone(user?.phone || '');
+    setEditGender(user?.gender || '');
+    setEditError('');
+    setEditSuccess('');
+    setIsEditingProfile(false); // To clear any previous state
+    setIsEditingProfile(true);
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setEditLoading(true);
+    setEditError('');
+    setEditSuccess('');
+
+    try {
+      const updatedUser = await authService.updateProfile(user.id, {
+        name: editName,
+        phone: editPhone,
+        gender: editGender
+      });
+      
+      if (updatedUser) {
+        updateSession({
+          user: { ...user, ...updatedUser },
+          accessToken: accessToken!,
+          refreshToken: refreshToken!
+        });
+        setEditSuccess('Profile details updated successfully.');
+        setIsEditingProfile(false);
+      }
+    } catch (err: any) {
+      setEditError(err.message || 'Failed to update profile details.');
+    } finally {
+      setEditLoading(false);
+    }
+  };
 
   // Logged-in password change states
   const [currentPassword, setCurrentPassword] = useState('');
@@ -606,32 +655,127 @@ export const UserDashboard = () => {
                   </div>
                 </div>
 
-                <div className="grid sm:grid-cols-2 gap-8 pt-8 border-t border-bg-border">
-                  <div className="content-stack gap-1.5">
-                    <label className="text-label font-bold text-text-muted uppercase tracking-widest">Full Name</label>
-                    <p className="text-body-base font-bold text-text-primary">{user?.name}</p>
-                  </div>
-                  <div className="content-stack gap-1.5">
-                    <label className="text-label font-bold text-text-muted uppercase tracking-widest">Email Address</label>
-                    <p className="text-body-base font-bold text-text-primary">{user?.email}</p>
-                  </div>
-                  <div className="content-stack gap-1.5">
-                    <label className="text-label font-bold text-text-muted uppercase tracking-widest">Phone Number</label>
-                    <p className="text-body-base font-bold text-text-primary">{user?.phone || 'Not provided'}</p>
-                  </div>
-                  <div className="content-stack gap-1.5">
-                    <label className="text-label font-bold text-text-muted uppercase tracking-widest">Gender</label>
-                    <p className="text-body-base font-bold text-text-primary">{user?.gender || 'Not specified'}</p>
-                  </div>
-                  <div className="content-stack gap-1.5 sm:col-span-2">
-                    <label className="text-label font-bold text-text-muted uppercase tracking-widest">Member Since</label>
-                    <p className="text-body-base font-bold text-text-primary">{user?.created_at ? formatDate(user.created_at) : 'N/A'}</p>
-                  </div>
-                </div>
+                {isEditingProfile ? (
+                  <form onSubmit={handleSaveProfile} className="content-stack gap-6 w-full">
+                    {editError && (
+                      <div className="bg-status-error/10 border border-status-error/20 text-status-error p-4 rounded-card flex items-center gap-3 text-body-sm font-medium">
+                        <AlertCircle size={14} className="shrink-0" />
+                        <span>{editError}</span>
+                      </div>
+                    )}
+                    
+                    <div className="grid sm:grid-cols-2 gap-6 pt-4">
+                      <div className="content-stack gap-2">
+                        <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Full Name</label>
+                        <input 
+                          type="text" 
+                          required
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          placeholder="Your Name"
+                          className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 px-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all"
+                        />
+                      </div>
+                      <div className="content-stack gap-2">
+                        <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Email Address (Read Only)</label>
+                        <input 
+                          type="email" 
+                          disabled
+                          value={user?.email || ''}
+                          className="w-full bg-bg-elevated/40 border border-bg-border rounded-card py-4 px-5 text-body-base text-text-muted cursor-not-allowed"
+                        />
+                      </div>
+                      <div className="content-stack gap-2">
+                        <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Phone Number</label>
+                        <input 
+                          type="text" 
+                          value={editPhone}
+                          onChange={(e) => setEditPhone(e.target.value)}
+                          placeholder="e.g. +201000000000"
+                          className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 px-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all"
+                        />
+                      </div>
+                      <div className="content-stack gap-2">
+                        <label className="text-label text-text-muted font-black uppercase tracking-widest ml-1">Gender</label>
+                        <div className="relative">
+                          <select
+                            value={editGender}
+                            onChange={(e) => setEditGender(e.target.value)}
+                            className="w-full bg-bg-elevated border border-bg-border rounded-card py-4 px-5 text-body-base text-text-primary focus:outline-none focus:border-teal focus:ring-1 focus:ring-teal/20 transition-all appearance-none"
+                          >
+                            <option value="">Not specified</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                            <option value="Prefer not to say">Prefer not to say</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
 
-                <div className="pt-6">
-                  <Button variant="outline" className="w-full sm:w-auto px-10">Edit Profile Details</Button>
-                </div>
+                    <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-bg-border">
+                      <Button 
+                        type="submit" 
+                        variant="accent" 
+                        className="px-10 py-4 uppercase font-black tracking-widest text-button"
+                        disabled={editLoading}
+                      >
+                        {editLoading ? 'Saving...' : 'Save Changes'}
+                      </Button>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        onClick={() => setIsEditingProfile(false)}
+                        className="px-10 py-4 uppercase font-black tracking-widest text-button"
+                        disabled={editLoading}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    {editSuccess && (
+                      <div className="bg-teal/10 border border-teal/20 text-teal p-4 rounded-card flex items-center gap-3 text-body-sm font-medium w-full">
+                        <CheckCircle size={14} className="shrink-0 animate-bounce" />
+                        <span>{editSuccess}</span>
+                      </div>
+                    )}
+
+                    <div className="grid sm:grid-cols-2 gap-8 pt-8 border-t border-bg-border w-full">
+                      <div className="content-stack gap-1.5">
+                        <label className="text-label font-bold text-text-muted uppercase tracking-widest">Full Name</label>
+                        <p className="text-body-base font-bold text-text-primary">{user?.name}</p>
+                      </div>
+                      <div className="content-stack gap-1.5">
+                        <label className="text-label font-bold text-text-muted uppercase tracking-widest">Email Address</label>
+                        <p className="text-body-base font-bold text-text-primary">{user?.email}</p>
+                      </div>
+                      <div className="content-stack gap-1.5">
+                        <label className="text-label font-bold text-text-muted uppercase tracking-widest">Phone Number</label>
+                        <p className="text-body-base font-bold text-text-primary">{user?.phone || 'Not provided'}</p>
+                      </div>
+                      <div className="content-stack gap-1.5">
+                        <label className="text-label font-bold text-text-muted uppercase tracking-widest">Gender</label>
+                        <p className="text-body-base font-bold text-text-primary">{user?.gender || 'Not specified'}</p>
+                      </div>
+                      <div className="content-stack gap-1.5 sm:col-span-2">
+                        <label className="text-label font-bold text-text-muted uppercase tracking-widest">Member Since</label>
+                        <p className="text-body-base font-bold text-text-primary">{user?.created_at ? formatDate(user.created_at) : 'N/A'}</p>
+                      </div>
+                    </div>
+
+                    <div className="pt-6 w-full">
+                      <Button 
+                        variant="outline" 
+                        onClick={startEditing}
+                        className="w-full sm:w-auto px-10"
+                      >
+                        Edit Profile Details
+                      </Button>
+                    </div>
+                  </>
+                )}
 
                 <div className="pt-8 border-t border-bg-border content-stack gap-6">
                   <div>

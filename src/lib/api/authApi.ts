@@ -95,3 +95,10 @@ export const changePassword = async (data: any): Promise<any> => {
     body: JSON.stringify(data)
   });
 };
+
+export const updateProfile = async (id: number, data: any): Promise<any> => {
+  return await fetchWithAuth(`/api/admin/users/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data)
+  });
+};

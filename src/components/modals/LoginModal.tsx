@@ -29,6 +29,15 @@ export const LoginModal = () => {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState('');
 
+  React.useEffect(() => {
+    if (!isOpen) {
+      setIsForgotView(false);
+      setForgotEmail('');
+      setForgotSuccess('');
+      setForgotError('');
+    }
+  }, [isOpen]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
