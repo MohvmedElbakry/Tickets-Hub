@@ -23,7 +23,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem('user');
-    try { return saved ? JSON.parse(saved) : null; } catch { return null; }
+    try { 
+      const parsed = saved ? JSON.parse(saved) : null;
+      if (parsed) {
+        parsed.emailVerified = parsed.emailVerified ?? parsed.email_verified ?? false;
+      }
+      return parsed; 
+    } catch { return null; }
   });
   const [accessToken, setAccessToken] = useState<string | null>(() => localStorage.getItem('accessToken'));
   const [refreshToken, setRefreshToken] = useState<string | null>(() => localStorage.getItem('refreshToken'));
@@ -39,12 +45,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const login = useCallback((data: { user: UserProfile; accessToken: string; refreshToken: string }) => {
+    const normalizedUser = {
+      ...data.user,
+      emailVerified: data.user.emailVerified ?? (data.user as any).email_verified ?? false
+    };
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
-    localStorage.setItem('user', JSON.stringify(data.user));
+    localStorage.setItem('user', JSON.stringify(normalizedUser));
     setAccessToken(data.accessToken);
     setRefreshToken(data.refreshToken);
-    setUser(data.user);
+    setUser(normalizedUser);
     // Dispatch global event for login
     window.dispatchEvent(new CustomEvent('app-login'));
   }, []);
@@ -91,7 +101,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setAccessToken(token);
         if (refresh) setRefreshToken(refresh);
         if (savedUser) {
-          try { setUser(JSON.parse(savedUser)); } catch {}
+          try { 
+            const parsed = JSON.parse(savedUser);
+            if (parsed) {
+              parsed.emailVerified = parsed.emailVerified ?? parsed.email_verified ?? false;
+            }
+            setUser(parsed); 
+          } catch {}
         }
       }
 
@@ -103,8 +119,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('[AuthContext] Validating session in background...');
           const userData = await authService.getCurrentUser();
           if (userData && userData.id) {
-            setUser(userData);
-            localStorage.setItem('user', JSON.stringify(userData));
+            const normalizedUser = {
+              ...userData,
+              emailVerified: userData.emailVerified ?? (userData as any).email_verified ?? false
+            };
+            setUser(normalizedUser);
+            localStorage.setItem('user', JSON.stringify(normalizedUser));
             console.log('[AuthContext] Session validated for user:', userData.id);
           }
         } catch (err: any) {

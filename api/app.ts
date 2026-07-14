@@ -427,7 +427,10 @@ app.get('/api/auth/me', authenticateToken, async (req: any, res) => {
     const user = await db.getUserById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found.' });
     const { password_hash, ...userWithoutPassword } = user;
-    res.json(userWithoutPassword);
+    res.json({
+      ...userWithoutPassword,
+      emailVerified: !!user.email_verified
+    });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
@@ -1039,7 +1042,7 @@ app.put('/api/events/:id', authenticateToken, authorizeRole(['admin']), requireE
   }
 });
 
-app.delete('/api/events/:id', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+app.delete('/api/events/:id', authenticateToken, authorizeRole(['admin']), requireEmailVerification, async (req: any, res) => {
   try { await db.deleteEvent(parseInt(req.params.id)); res.json({ message: 'Deleted' }); }
   catch (error: any) { res.status(500).json({ error: error.message }); }
 });
@@ -1257,7 +1260,7 @@ app.get('/api/settings', async (req, res) => {
   catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEmailVerification, async (req: any, res) => {
   try { res.json(await db.updateSettings(req.body)); }
   catch (error: any) { res.status(500).json({ error: error.message }); }
 });
@@ -1553,7 +1556,10 @@ app.get('/api/admin/users/:id', authenticateToken, async (req: any, res) => {
     const user = await db.getUserById(userId);
     if (!user) return res.status(404).json({ error: 'User not found.' });
     const { password_hash, ...u } = user;
-    res.json(u);
+    res.json({
+      ...u,
+      emailVerified: !!user.email_verified
+    });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
@@ -1564,7 +1570,10 @@ app.put('/api/admin/users/:id', authenticateToken, async (req: any, res) => {
     const updated = await db.updateUser(userId, req.body);
     if (!updated) return res.status(404).json({ error: 'User not found.' });
     const { password_hash, ...u } = updated;
-    res.json(u);
+    res.json({
+      ...u,
+      emailVerified: !!updated.email_verified
+    });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
@@ -1591,12 +1600,12 @@ app.get('/api/ticket-types/:eventId', async (req, res) => {
   catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/ticket-types', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+app.post('/api/ticket-types', authenticateToken, authorizeRole(['admin']), requireEmailVerification, async (req, res) => {
   try { res.status(201).json(await db.addTicketType(req.body)); }
   catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.put('/api/ticket-types/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+app.put('/api/ticket-types/:id', authenticateToken, authorizeRole(['admin']), requireEmailVerification, async (req, res) => {
   try {
     const updated = await db.updateTicketType(parseInt(req.params.id), req.body);
     if (!updated) return res.status(404).json({ error: 'Not found' });
@@ -1604,7 +1613,7 @@ app.put('/api/ticket-types/:id', authenticateToken, authorizeRole(['admin']), as
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.delete('/api/ticket-types/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+app.delete('/api/ticket-types/:id', authenticateToken, authorizeRole(['admin']), requireEmailVerification, async (req, res) => {
   try {
     await db.deleteTicketType(parseInt(req.params.id));
     res.json({ message: 'Deleted' });
@@ -1623,7 +1632,7 @@ app.get('/api/pre-registrations', authenticateToken, async (req: any, res) => {
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/events/:id/pre-register', authenticateToken, async (req: any, res: any) => {
+app.post('/api/events/:id/pre-register', authenticateToken, requireEmailVerification, async (req: any, res: any) => {
   try {
     const eventId = parseInt(req.params.id);
     const userId = parseInt(req.user.id);
@@ -1680,7 +1689,7 @@ app.post('/api/events/:id/pre-register', authenticateToken, async (req: any, res
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.delete('/api/events/:id/pre-register', authenticateToken, async (req: any, res) => {
+app.delete('/api/events/:id/pre-register', authenticateToken, requireEmailVerification, async (req: any, res) => {
   try {
     const eventId = parseInt(req.params.id);
     const userId = parseInt(req.user.id);
@@ -1731,7 +1740,7 @@ app.get('/api/user/points', authenticateToken, async (req: any, res) => {
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post(['/api/user/redeem', '/api/user/points/redeem'], authenticateToken, async (req: any, res: any) => {
+app.post(['/api/user/redeem', '/api/user/points/redeem'], authenticateToken, requireEmailVerification, async (req: any, res: any) => {
   try {
     const points_to_redeem = req.body.points_to_redeem || req.body.points;
     const user = await db.getUserById(req.user.id);
@@ -2394,7 +2403,7 @@ app.post('/api/debug/test-email', async (req: any, res: any) => {
 
 
 // --- TICKET RESALE API ---
-app.post('/api/tickets/resale', authenticateToken, async (req: any, res) => {
+app.post('/api/tickets/resale', authenticateToken, requireEmailVerification, async (req: any, res) => {
   try {
     const { ticket_id } = req.body;
     const result = await prisma.$transaction(async (tx) => {
@@ -2473,7 +2482,7 @@ app.get('/api/admin/vouchers', authenticateToken, authorizeRole(['admin']), asyn
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/admin/vouchers', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+app.post('/api/admin/vouchers', authenticateToken, authorizeRole(['admin']), requireEmailVerification, async (req: any, res) => {
   try {
     const { code, discount_percent, max_uses, expiration_date, name } = req.body;
     res.status(201).json(await db.addVoucher({
@@ -2489,7 +2498,7 @@ app.post('/api/admin/vouchers', authenticateToken, authorizeRole(['admin']), asy
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.delete('/api/admin/vouchers/:id', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+app.delete('/api/admin/vouchers/:id', authenticateToken, authorizeRole(['admin']), requireEmailVerification, async (req: any, res) => {
   try {
     await db.deleteVoucher(parseInt(req.params.id));
     res.json({ success: true, message: 'Voucher deleted.' });
