@@ -109,7 +109,7 @@ export const SignupModal = () => {
                   <Mail className="w-8 h-8 text-teal" />
                 </div>
                 
-                <h3 className="text-2xl font-bold text-white mb-2">Check Your Inbox! 📬</h3>
+                <h3 className="text-2xl font-bold text-white mb-2">Check Your Inbox!</h3>
                 <p className="text-teal font-medium text-sm mb-4">Your account has been created successfully.</p>
                 
                 <p className="text-text-muted text-sm leading-relaxed mb-6">
@@ -336,7 +336,7 @@ export const SignupModal = () => {
                 className="w-full py-4 text-button font-black uppercase tracking-widest mt-6" 
                 disabled={loading || !isPasswordValid}
               >
-                {loading ? 'Creating Experience...' : 'Join TicketsHub'}
+                {loading ? 'Registering...' : 'Join TicketsHub'}
               </Button>
             </form>
 
