@@ -20,7 +20,7 @@ import React from 'react';
 import ReactDOMServer from 'react-dom/server';
 import { TicketTemplate } from './pdf/TicketTemplate.js';
 import QRCode from 'qrcode';
-import { sendEmail, verifyEmailConfig, getPersonalizedName, sendWelcomeEmail, sendVerificationEmail } from './lib/mailer.js';
+import { sendEmail, verifyEmailConfig, getPersonalizedName, sendWelcomeEmail, sendVerificationEmail, generateEmailHtml } from './lib/mailer.js';
 import { validatePassword as sharedValidatePassword } from './lib/passwordValidator.js';
 
 dotenv.config();
@@ -274,7 +274,7 @@ const authenticateToken = (req: any, res: any, next: any) => {
     
     try {
       const user = await db.getUserById(decoded.id);
-      if (!user || (user.token_version ?? 0) !== (decoded.tokenVersion ?? 0)) {
+      if (!user || user.is_deleted || (user.token_version ?? 0) !== (decoded.tokenVersion ?? 0)) {
         return res.status(401).json({ error: 'Session expired or invalidated. Please login again.' });
       }
       req.user = { ...decoded, emailVerified: !!user.email_verified };
@@ -299,7 +299,7 @@ const optionalAuthenticate = (req: any, res: any, next: any) => {
     }
     try {
       const user = await db.getUserById(decoded.id);
-      if (!user || (user.token_version ?? 0) !== (decoded.tokenVersion ?? 0)) {
+      if (!user || user.is_deleted || (user.token_version ?? 0) !== (decoded.tokenVersion ?? 0)) {
         req.user = null;
         return next();
       }
@@ -417,6 +417,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!email || !password) return res.status(400).json({ error: 'Required fields missing.' });
     const user = await db.getUserByEmail(email);
     if (!user || !(await bcrypt.compare(password, user.password_hash))) return res.status(401).json({ error: 'Invalid email or password.' });
+    if (user.is_deleted) return res.status(401).json({ error: 'This account has been deleted.' });
     const { accessToken, refreshToken, user: userPayload } = generateTokens(user);
     res.json({ user: userPayload, accessToken, refreshToken });
   } catch (error: any) { res.status(500).json({ error: 'Failed to login', details: error.message }); }
@@ -513,7 +514,7 @@ app.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res) =>
     }
 
     const user = await db.getUserByEmail(normalizedEmail);
-    if (!user) {
+    if (!user || user.is_deleted) {
       return res.json(successResponse);
     }
 
@@ -941,6 +942,317 @@ app.post('/api/auth/resend-verification', authenticateToken, async (req: any, re
     res.json({ message: 'Verification email has been sent successfully. Please check your inbox.' });
   } catch (error: any) {
     res.status(500).json({ error: 'failed_resend', message: error.message });
+  }
+});
+
+// --- ACCOUNT DELETION ENDPOINTS ---
+
+// Request account deletion link
+app.post('/api/auth/request-account-deletion', authenticateToken, async (req: any, res) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ error: 'password_required', message: 'Current password is required to request account deletion.' });
+  }
+
+  try {
+    const user = await db.getUserById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'user_not_found', message: 'User not found.' });
+    }
+
+    // Verify current password against stored hash
+    const isPasswordCorrect = await bcrypt.compare(password, user.password_hash);
+    if (!isPasswordCorrect) {
+      return res.status(400).json({ error: 'invalid_password', message: 'Incorrect password.' });
+    }
+
+    // --- PRE-DELETION VALIDATIONS ---
+
+    // 1. Does not own upcoming events
+    const upcomingEvent = await prisma.event.findFirst({
+      where: {
+        organizer_id: user.id,
+        date: { gte: new Date() }
+      }
+    });
+    if (upcomingEvent) {
+      return res.status(400).json({
+        error: 'owns_upcoming_events',
+        message: `You cannot delete your account because you are organizing the upcoming event "${upcomingEvent.title}". Please cancel or transfer ownership of this event first.`
+      });
+    }
+
+    // 2. Does not have future paid tickets
+    const futurePaidTicket = await prisma.order.findFirst({
+      where: {
+        user_id: user.id,
+        is_paid: true,
+        order_status: 'paid',
+        event: {
+          date: { gte: new Date() }
+        }
+      },
+      include: {
+        event: true
+      }
+    });
+    if (futurePaidTicket) {
+      return res.status(400).json({
+        error: 'has_future_tickets',
+        message: `You cannot delete your account because you have active paid tickets for the upcoming event "${futurePaidTicket.event?.title}".`
+      });
+    }
+
+    // 3. Does not have active resale listings
+    const activeResale = await prisma.resellRequest.findFirst({
+      where: {
+        user_id: user.id,
+        status: 'pending'
+      }
+    });
+    if (activeResale) {
+      return res.status(400).json({
+        error: 'has_active_resales',
+        message: 'You cannot delete your account because you have active ticket resale listings in progress. Please withdraw them before proceeding.'
+      });
+    }
+
+    // 4. Does not have unfinished payment sessions
+    const unfinishedOrder = await prisma.order.findFirst({
+      where: {
+        user_id: user.id,
+        is_paid: false,
+        order_status: { in: ['pending', 'pending_approval', 'approved', 'invited'] }
+      },
+      include: {
+        event: true
+      }
+    });
+    if (unfinishedOrder) {
+      return res.status(400).json({
+        error: 'has_unfinished_orders',
+        message: `You cannot delete your account because you have an unfinished order/payment session for "${unfinishedOrder.event?.title}". Please complete or let it expire first.`
+      });
+    }
+
+    // 5. Does not have pending invitations requiring action
+    const pendingInvitation = await prisma.invitation.findFirst({
+      where: {
+        email: user.email,
+        status: 'pending'
+      },
+      include: {
+        event: true
+      }
+    });
+    if (pendingInvitation) {
+      return res.status(400).json({
+        error: 'has_pending_invitations',
+        message: `You cannot delete your account because you have a pending invitation to "${pendingInvitation.event?.title}" requiring action.`
+      });
+    }
+
+    // Generate secure token and store its hash in the database
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = hashToken(rawToken);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        deletion_token_hash: hashedToken,
+        deletion_token_expires: expiresAt
+      }
+    });
+
+    const deletionUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/confirm-delete-account?token=${rawToken}`;
+    const recipientName = getPersonalizedName(user.name, user.email);
+
+    const emailHtml = generateEmailHtml({
+      recipientName,
+      title: 'Confirm Your Account Deletion Request ⚠️',
+      bodyHtml: `
+        <p>We received a request to permanently delete your TicketsHub account.</p>
+        <p>Please note that deleting your account is a permanent, high-risk action. If you proceed:</p>
+        <ul style="margin: 16px 0; padding-left: 20px; line-height: 1.6;">
+          <li>Your profile and login credentials will be permanently deactivated.</li>
+          <li>Your reward points (${user.points} pts) and entire purchase history will be inaccessible.</li>
+          <li>You will no longer be able to log back into this account.</li>
+          <li>Existing ticket orders, resale logs, and system data will be preserved as anonymized archives in compliance with platform policies.</li>
+        </ul>
+        <p>To authorize this deletion request, please click the button below. This link is valid for <strong>15 minutes</strong> and can only be used once.</p>
+        <p>If the button doesn't work, copy and paste the link below into your browser:</p>
+        <p style="word-break: break-all; font-size: 13px; color: #64748b;">${deletionUrl}</p>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+        <p style="font-size: 13px; color: #64748b;">If you did not make this request, your account is secure and you can safely ignore this email.</p>
+      `,
+      ctaText: 'Delete My Account Permanently',
+      ctaUrl: deletionUrl
+    });
+
+    await sendEmail({
+      to: user.email,
+      subject: 'Authorize Account Deletion Request - TicketsHub 🎟️',
+      html: emailHtml
+    });
+
+    res.json({ message: 'A verification link has been sent to your email. Please check your inbox within 15 minutes.' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'failed_request_deletion', message: error.message });
+  }
+});
+
+// Confirm account deletion via token
+app.post('/api/auth/confirm-account-deletion', async (req, res) => {
+  const { token, reason } = req.body;
+  if (!token) {
+    return res.status(400).json({ error: 'token_required', message: 'Deletion token is required.' });
+  }
+
+  try {
+    const hashedToken = hashToken(token);
+
+    // Find user with this token
+    const user = await prisma.user.findFirst({
+      where: {
+        deletion_token_hash: hashedToken
+      }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'invalid_link', message: 'The deletion confirmation link is invalid or has already been used.' });
+    }
+
+    if (user.deletion_token_expires && user.deletion_token_expires < new Date()) {
+      // Clear token even if expired for safety
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          deletion_token_hash: null,
+          deletion_token_expires: null
+        }
+      });
+      return res.status(400).json({ error: 'expired_link', message: 'The deletion confirmation link has expired.' });
+    }
+
+    // --- SECOND PASS PRE-DELETION VALIDATIONS (FOR SAFETY) ---
+
+    // 1. Does not own upcoming events
+    const upcomingEvent = await prisma.event.findFirst({
+      where: {
+        organizer_id: user.id,
+        date: { gte: new Date() }
+      }
+    });
+    if (upcomingEvent) {
+      return res.status(400).json({
+        error: 'owns_upcoming_events',
+        message: `Account deletion blocked: you own upcoming event "${upcomingEvent.title}".`
+      });
+    }
+
+    // 2. Does not have future paid tickets
+    const futurePaidTicket = await prisma.order.findFirst({
+      where: {
+        user_id: user.id,
+        is_paid: true,
+        order_status: 'paid',
+        event: {
+          date: { gte: new Date() }
+        }
+      }
+    });
+    if (futurePaidTicket) {
+      return res.status(400).json({
+        error: 'has_future_tickets',
+        message: 'Account deletion blocked: you have active tickets for an upcoming event.'
+      });
+    }
+
+    // 3. Does not have active resale listings
+    const activeResale = await prisma.resellRequest.findFirst({
+      where: {
+        user_id: user.id,
+        status: 'pending'
+      }
+    });
+    if (activeResale) {
+      return res.status(400).json({
+        error: 'has_active_resales',
+        message: 'Account deletion blocked: you have active ticket resale listings.'
+      });
+    }
+
+    // 4. Does not have unfinished payment sessions
+    const unfinishedOrder = await prisma.order.findFirst({
+      where: {
+        user_id: user.id,
+        is_paid: false,
+        order_status: { in: ['pending', 'pending_approval', 'approved', 'invited'] }
+      }
+    });
+    if (unfinishedOrder) {
+      return res.status(400).json({
+        error: 'has_unfinished_orders',
+        message: 'Account deletion blocked: you have pending/unfinished order sessions.'
+      });
+    }
+
+    // 5. Does not have pending invitations requiring action
+    const pendingInvitation = await prisma.invitation.findFirst({
+      where: {
+        email: user.email,
+        status: 'pending'
+      }
+    });
+    if (pendingInvitation) {
+      return res.status(400).json({
+        error: 'has_pending_invitations',
+        message: 'Account deletion blocked: you have pending invitations.'
+      });
+    }
+
+    // Perform soft-deletion
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        is_deleted: true,
+        deleted_at: new Date(),
+        deleted_reason: reason || 'Requested by user',
+        deletion_token_hash: null,
+        deletion_token_expires: null,
+        password_reset_token: null,
+        password_reset_expires: null,
+        email_verification_token: null,
+        email_verification_expires: null,
+        token_version: { increment: 1 } // Invalidate all active sessions!
+      }
+    });
+
+    // Send Email 2 (success confirmation)
+    const recipientName = getPersonalizedName(user.name, user.email);
+    const emailHtml = generateEmailHtml({
+      recipientName,
+      title: 'Your Account Has Been Soft-Deleted 🛡️',
+      bodyHtml: `
+        <p>We are writing to confirm that your TicketsHub account has been successfully deleted.</p>
+        <p>In accordance with our privacy policy, your login credentials and profile have been permanently deactivated. You will no longer receive transactional updates, and you cannot log into this account anymore.</p>
+        <p>Your previous orders, tickets, and payment transaction history have been preserved as secure, anonymized records for reporting, compliance, and auditing purposes. No further charges or actions can be initiated on this account.</p>
+        <p>Thank you for using TicketsHub. If you ever decide to return, you are welcome to sign up for a fresh account at any time.</p>
+      `
+    });
+
+    await sendEmail({
+      to: user.email,
+      subject: 'Account Successfully Deleted - TicketsHub 🎟️',
+      html: emailHtml
+    }).catch(err => {
+      console.error(`🚨 [DELETION CONFIRMATION EMAIL EXCEPTION] Delivery failed:`, err);
+    });
+
+    res.json({ message: 'Your account has been deleted successfully.' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'failed_confirm_deletion', message: error.message });
   }
 });
 

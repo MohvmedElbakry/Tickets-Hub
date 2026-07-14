@@ -16,7 +16,8 @@ import {
   Users,
   History,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/Button';
@@ -139,6 +140,32 @@ export const UserDashboard = () => {
   };
 
   const [points, setPoints] = useState({ balance: 0, history: [] as PointsHistory[] });
+  
+  // Account Deletion states
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteSuccess, setDeleteSuccess] = useState('');
+
+  const handleDeleteRequestSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDeleteLoading(true);
+    setDeleteError('');
+    setDeleteSuccess('');
+
+    try {
+      const res = await authService.requestAccountDeletion(deletePassword);
+      setDeleteSuccess(res.message || 'A verification link has been sent to your email. Please check your inbox within 15 minutes.');
+      setDeletePassword('');
+      setDeleteReason('');
+    } catch (err: any) {
+      setDeleteError(err.message || 'Failed to request account deletion.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
   const [isResaleModalOpen, setIsResaleModalOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<OrderTicket | null>(null);
   const [payoutMethod, setPayoutMethod] = useState<'instapay' | 'vodafone'>('instapay');
@@ -866,6 +893,43 @@ export const UserDashboard = () => {
                     </Button>
                   </form>
                 </div>
+
+                {/* Danger Zone */}
+                <div className="pt-8 border-t border-status-error/20 content-stack gap-6">
+                  <div>
+                    <h4 className="text-h4 text-status-error mb-1">Danger Zone</h4>
+                    <p className="text-body-xs text-text-muted">Permanently delete your account and de-authorize all services. This is an irreversible, high-risk action.</p>
+                  </div>
+
+                  <div className="bg-status-error/5 border border-status-error/10 p-6 rounded-card content-stack gap-4">
+                    <p className="text-body-sm text-text-primary font-medium">To proceed with account deletion, we require that you satisfy all pre-deletion check requirements:</p>
+                    <ul className="text-body-xs text-text-muted list-disc pl-5 space-y-1">
+                      <li>You must not own or organize any upcoming events.</li>
+                      <li>You must not hold active/future tickets or orders for upcoming events.</li>
+                      <li>You must not have any active resale listings in progress.</li>
+                      <li>You must not have any unfinished or active reservation/payment sessions.</li>
+                      <li>You must not have pending event invitations.</li>
+                    </ul>
+                    
+                    <div className="pt-2">
+                      <Button 
+                        type="button" 
+                        variant="ghost"
+                        className="text-status-error hover:bg-status-error/10 border border-status-error/20 px-6 py-3 font-bold text-label"
+                        onClick={() => {
+                          setDeletePassword('');
+                          setDeleteReason('');
+                          setDeleteError('');
+                          setDeleteSuccess('');
+                          setIsDeleteModalOpen(true);
+                        }}
+                      >
+                        <Trash2 size={16} className="mr-2 inline" /> Request Account Deletion
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
           )}
@@ -1078,6 +1142,120 @@ export const UserDashboard = () => {
                     Submit Request
                   </Button>
                 </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Account Deletion Confirmation Modal */}
+        <AnimatePresence>
+          {isDeleteModalOpen && (
+            <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-bg-page/80 backdrop-blur-md">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-bg-card w-full max-w-md rounded-card-2xl p-10 border border-bg-border shadow-2xl content-stack gap-8"
+              >
+                <div className="flex justify-between items-center">
+                  <h2 className="text-h2 text-status-error flex items-center gap-2">
+                    <Trash2 size={24} /> Delete Account
+                  </h2>
+                  <button 
+                    onClick={() => {
+                      if (!deleteLoading) setIsDeleteModalOpen(false);
+                    }} 
+                    className="p-2 hover:bg-bg-elevated rounded-pill transition-colors text-text-primary"
+                    disabled={deleteLoading}
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                {deleteSuccess ? (
+                  <div className="content-stack gap-6 text-center">
+                    <div className="w-16 h-16 bg-status-success/10 text-status-success rounded-pill flex items-center justify-center mx-auto">
+                      <CheckCircle size={32} />
+                    </div>
+                    <div className="content-stack gap-2">
+                      <h4 className="text-h3 text-status-success">Request Authorized</h4>
+                      <p className="text-body-sm text-text-muted">
+                        We have sent an authorization email to your registered address:
+                      </p>
+                      <p className="font-bold text-text-primary text-body-sm bg-bg-elevated py-2 rounded-card border border-bg-border select-all">
+                        {user?.email}
+                      </p>
+                      <p className="text-body-xs text-text-muted mt-2">
+                        To permanently delete your account, click the link inside the email within the next <strong>15 minutes</strong>. If you don't receive it shortly, please verify your spam folder.
+                      </p>
+                    </div>
+                    <Button 
+                      className="w-full mt-4" 
+                      variant="outline" 
+                      onClick={() => setIsDeleteModalOpen(false)}
+                    >
+                      Close Window
+                    </Button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleDeleteRequestSubmit} className="content-stack gap-6">
+                    <p className="text-body-sm text-text-muted">
+                      This is a permanent, high-risk security action. Enter your current password and optionally state your reason for deletion below to send the one-time authorization link.
+                    </p>
+
+                    {deleteError && (
+                      <div className="bg-status-error/10 border border-status-error/20 text-status-error p-4 rounded-card flex items-start gap-3 text-body-xs font-medium leading-normal">
+                        <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                        <span>{deleteError}</span>
+                      </div>
+                    )}
+
+                    <div className="content-stack gap-2">
+                      <label className="text-label text-text-muted uppercase tracking-widest font-black ml-1">Current Password</label>
+                      <input 
+                        type="password" 
+                        required
+                        value={deletePassword}
+                        onChange={(e) => setDeletePassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full bg-bg-page border border-bg-border rounded-card px-5 py-4 focus:ring-2 focus:ring-status-error/10 focus:border-status-error outline-none transition-all text-body-base text-text-primary"
+                        disabled={deleteLoading}
+                      />
+                    </div>
+
+                    <div className="content-stack gap-2">
+                      <label className="text-label text-text-muted uppercase tracking-widest font-black ml-1">Reason for leaving (Optional)</label>
+                      <textarea
+                        value={deleteReason}
+                        onChange={(e) => setDeleteReason(e.target.value)}
+                        placeholder="e.g. No longer planning to attend events"
+                        rows={3}
+                        className="w-full bg-bg-page border border-bg-border rounded-card px-5 py-4 focus:ring-2 focus:ring-status-error/10 focus:border-status-error outline-none transition-all text-body-sm text-text-primary resize-none"
+                        disabled={deleteLoading}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mt-2">
+                      <Button 
+                        type="submit" 
+                        variant="ghost" 
+                        className="py-5 text-status-error hover:bg-status-error/10 border border-status-error/20 rounded-card font-black uppercase tracking-widest text-button"
+                        disabled={deleteLoading || !deletePassword}
+                      >
+                        {deleteLoading ? 'Processing...' : 'Confirm'}
+                      </Button>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        className="py-5 rounded-card font-black uppercase tracking-widest text-button border-bg-border text-text-primary"
+                        onClick={() => setIsDeleteModalOpen(false)}
+                        disabled={deleteLoading}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                )}
               </motion.div>
             </div>
           )}

@@ -115,3 +115,17 @@ export const updateProfile = async (id: number, data: any): Promise<any> => {
     body: JSON.stringify(data)
   });
 };
+
+export const requestAccountDeletion = async (password: string): Promise<{ message: string }> => {
+  return await fetchWithAuth('/api/auth/request-account-deletion', {
+    method: 'POST',
+    body: JSON.stringify({ password })
+  });
+};
+
+export const confirmAccountDeletion = async (token: string, reason?: string): Promise<{ message: string }> => {
+  return await fetchWithAuth('/api/auth/confirm-account-deletion', {
+    method: 'POST',
+    body: JSON.stringify({ token, reason })
+  });
+};

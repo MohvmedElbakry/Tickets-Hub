@@ -39,6 +39,7 @@ import PageContainer from './components/layout/PageContainer';
 import TicketPrintPage from './pages/TicketPrintPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { VerifyEmailPage } from './components/VerifyEmailPage';
+import { ConfirmDeleteAccountPage } from './components/ConfirmDeleteAccountPage';
 import { EmailVerificationBanner } from './components/EmailVerificationBanner';
 
 export default function App() {
@@ -173,6 +174,7 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
                 <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/verify-email" element={<VerifyEmailPage />} />
+                <Route path="/confirm-delete-account" element={<ConfirmDeleteAccountPage />} />
                 <Route path="/ticket/print/:publicId" element={<TicketPrintPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>

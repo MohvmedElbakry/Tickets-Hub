@@ -28,6 +28,11 @@ model User {
   email_verified            Boolean           @default(false)
   email_verification_token  String?
   email_verification_expires DateTime?
+  is_deleted                Boolean           @default(false)
+  deleted_at                DateTime?
+  deleted_reason            String?
+  deletion_token_hash       String?
+  deletion_token_expires    DateTime?
   orders             Order[]
   resell_requests    ResellRequest[]
   points_history     PointsHistory[]

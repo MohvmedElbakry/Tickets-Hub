@@ -76,5 +76,13 @@ export const authService = {
 
   async updateProfile(id: number, data: any) {
     return await authApi.updateProfile(id, data);
+  },
+
+  async requestAccountDeletion(password: string) {
+    return await authApi.requestAccountDeletion(password);
+  },
+
+  async confirmAccountDeletion(token: string, reason?: string) {
+    return await authApi.confirmAccountDeletion(token, reason);
   }
 };
