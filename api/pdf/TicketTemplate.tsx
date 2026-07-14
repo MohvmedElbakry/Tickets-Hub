@@ -4,7 +4,8 @@ import React from 'react';
 // Zero dependencies on hooks or browser APIs
 
 interface TicketTemplateProps {
-  order: any;
+  order?: any;
+  ticket?: any;
   qrDataUrl?: string;
   isPaid: boolean;
   statusText: string;
@@ -12,13 +13,16 @@ interface TicketTemplateProps {
 
 export const TicketTemplate: React.FC<TicketTemplateProps> = ({ 
   order, 
+  ticket,
   qrDataUrl, 
   isPaid, 
   statusText 
 }) => {
-  const event = order.event || {};
-  const items = order.items || [];
+  const event = ticket ? (ticket.order?.event || {}) : (order?.event || {});
+  const items = order?.items || [];
   const accentColor = isPaid ? '#00C9B1' : '#F59E0B';
+  const displayOrderId = ticket ? (ticket.order?.id || ticket.order_id) : (order?.id || '---');
+  const qrCodeToken = ticket ? ticket.qr_token : (order?.qr_code_token || 'PENDING');
 
   return (
     <div style={{ 
@@ -80,7 +84,7 @@ export const TicketTemplate: React.FC<TicketTemplateProps> = ({
              </div>
              <div style={{ textAlign: 'center' }}>
                <p style={{ margin: 0, opacity: 0.6, fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#A7B5B2' }}>Order Reference</p>
-               <p style={{ margin: 0, fontWeight: 'bold', fontSize: '12px', color: '#00C9B1', fontFamily: 'monospace' }}>#{order.id}</p>
+               <p style={{ margin: 0, fontWeight: 'bold', fontSize: '12px', color: '#00C9B1', fontFamily: 'monospace' }}>#{displayOrderId}</p>
              </div>
           </div>
 
@@ -140,8 +144,8 @@ export const TicketTemplate: React.FC<TicketTemplateProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', paddingTop: '24px', borderTop: '1px solid #24302D', gap: '12px' }}>
               <p style={{ margin: 0, fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#A7B5B2' }}>Entry Details</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {items.slice(0, 3).map((item: any, idx: number) => (
-                  <div key={idx} style={{ 
+                {ticket ? (
+                  <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
                     gap: '12px', 
@@ -162,18 +166,53 @@ export const TicketTemplate: React.FC<TicketTemplateProps> = ({
                       backgroundColor: 'rgba(0, 201, 177, 0.1)', 
                       color: '#00C9B1' 
                     }}>
-                      {idx + 1}
+                      1
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                       <p style={{ margin: 0, fontSize: '12px', fontWeight: 'bold', color: '#F3F7F6', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {item.holder_name || 'Attendee'}
+                        {ticket.attendee_name || ticket.owner?.name || 'Attendee'}
                       </p>
                       <p style={{ margin: 0, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '-0.02em', fontSize: '9px', color: '#A7B5B2' }}>
-                        {item.ticket_type?.name || 'Ticket'}
+                        {ticket.ticket_type?.name || 'Ticket'}
                       </p>
                     </div>
                   </div>
-                ))}
+                ) : (
+                  items.slice(0, 3).map((item: any, idx: number) => (
+                    <div key={idx} style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '12px', 
+                      padding: '12px', 
+                      border: '1px solid #24302D', 
+                      borderRadius: '12px', 
+                      backgroundColor: '#161F1D' 
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        fontWeight: 900, 
+                        width: '32px', 
+                        height: '32px', 
+                        borderRadius: '8px', 
+                        fontSize: '10px', 
+                        backgroundColor: 'rgba(0, 201, 177, 0.1)', 
+                        color: '#00C9B1' 
+                      }}>
+                        {idx + 1}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                        <p style={{ margin: 0, fontSize: '12px', fontWeight: 'bold', color: '#F3F7F6', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.holder_name || 'Attendee'}
+                        </p>
+                        <p style={{ margin: 0, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '-0.02em', fontSize: '9px', color: '#A7B5B2' }}>
+                          {item.ticket_type?.name || 'Ticket'}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -190,7 +229,7 @@ export const TicketTemplate: React.FC<TicketTemplateProps> = ({
           <div>
             <p style={{ margin: 0, fontSize: '8px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#A7B5B2' }}>Authentication Seal</p>
             <p style={{ margin: 0, fontFamily: 'monospace', fontWeight: 'bold', fontSize: '10px', color: 'rgba(0, 201, 177, 0.4)' }}>
-              SECURE-AUTH-{order.qr_code_token || 'PENDING'}
+              SECURE-AUTH-{qrCodeToken}
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.6 }}>

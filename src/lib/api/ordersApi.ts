@@ -114,3 +114,15 @@ export const createPaymentSession = async (orderId: OrderPublicId): Promise<any>
     body: JSON.stringify({ order_id: orderId })
   });
 };
+
+export const getTickets = async (): Promise<any[]> => {
+  return await fetchWithAuth('/api/tickets');
+};
+
+export const getTicket = async (publicId: string): Promise<any> => {
+  return await fetchWithAuth(`/api/tickets/${publicId}`);
+};
+
+export const getTicketQRStatus = async (publicId: string): Promise<any> => {
+  return await fetchWithAuth(`/api/tickets/${publicId}/qr-status`);
+};

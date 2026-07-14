@@ -64,15 +64,66 @@ export const getQRStatus = async (orderId: string, forceRefresh = false): Promis
   return requestPromise;
 };
 
+const ticketCache = new Map<string, CacheEntry<QRStatus>>();
+const ticketInFlight = new Map<string, Promise<QRStatus>>();
+
+/**
+ * Deduplicated QR status fetcher for individual ticket instances.
+ */
+export const getTicketQRStatus = async (publicId: string, forceRefresh = false): Promise<QRStatus> => {
+  const cached = ticketCache.get(publicId);
+  const now = Date.now();
+
+  if (!forceRefresh && cached && (now - cached.timestamp < QR_TTL_MS)) {
+    return cached.data;
+  }
+
+  if (ticketInFlight.has(publicId)) {
+    return ticketInFlight.get(publicId)!;
+  }
+
+  const refresh = async (): Promise<QRStatus> => {
+    try {
+      const status = await orderService.getTicketQRStatus(publicId);
+      if (status) {
+        const currentCached = ticketCache.get(publicId);
+        if (!currentCached || JSON.stringify(currentCached.data) !== JSON.stringify(status)) {
+          ticketCache.set(publicId, { data: status, timestamp: Date.now() });
+        } else {
+          currentCached.timestamp = Date.now();
+        }
+      }
+      return status;
+    } catch (error) {
+      console.error(`Failed to fetch QR status for ticket ${publicId}:`, error);
+      throw error;
+    } finally {
+      ticketInFlight.delete(publicId);
+    }
+  };
+
+  if (!forceRefresh && cached) {
+    refresh().catch(() => {});
+    return cached.data;
+  }
+
+  const requestPromise = refresh();
+  ticketInFlight.set(publicId, requestPromise);
+  return requestPromise;
+};
+
 /**
  * Clears the QR status cache for all or a specific order
  */
 export const clearQRStatusCache = (orderId?: string) => {
   if (orderId) {
     cache.delete(orderId);
+    ticketCache.delete(orderId);
   } else {
     cache.clear();
+    ticketCache.clear();
     inFlight.clear();
+    ticketInFlight.clear();
   }
 };
 

@@ -7,7 +7,8 @@ import { TicketStatusBadge } from './TicketStatusBadge';
 import { formatDate } from '../../lib/dateFormat';
 
 interface TicketCardProps {
-  order: Order;
+  order?: Order | null;
+  ticket?: any;
   qrData?: string;
   qrVisible?: boolean;
   qrReason?: string;
@@ -17,17 +18,21 @@ interface TicketCardProps {
 
 export const TicketCard: React.FC<TicketCardProps> = ({
   order,
+  ticket,
   qrData,
   qrVisible,
   qrReason,
   loadingQr,
   isPdf = false
 }) => {
-  if (!order) return null;
+  if (!order && !ticket) return null;
 
-  const isPaid = order.is_paid || order.order_status === 'paid';
-  const event = order.event;
-  const orderStatus = (order.order_status || 'pending').toUpperCase();
+  const activeOrder = ticket ? ticket.order : order;
+  if (!activeOrder) return null;
+
+  const isPaid = activeOrder.is_paid || activeOrder.order_status === 'paid';
+  const event = activeOrder.event;
+  const orderStatus = (activeOrder.order_status || 'pending').toUpperCase();
 
   // TODO: Refactor 'isPdf' to 'isPrint' to support server-side PDF layouts
   // The old inline style-based rasterization pipeline is deprecated.
@@ -35,7 +40,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
 
   return (
     <div 
-      id={`ticket-card-${order.id}`}
+      id={`ticket-card-${ticket ? ticket.id : activeOrder.id}`}
       className="border rounded-card-xl overflow-hidden relative bg-bg-page border-bg-border w-full shadow-ticket hover:shadow-card-glow transition-all duration-slow"
     >
       {/* Cinematic Top Border */}
@@ -64,7 +69,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
           />
           <div className="text-center">
             <p className="opacity-60 text-[10px] font-black uppercase tracking-widest text-text-muted">Order Reference</p>
-            <p className="font-mono font-bold text-body-xs text-teal">#{order.id}</p>
+            <p className="font-mono font-bold text-body-xs text-teal">#{activeOrder.id}</p>
           </div>
         </div>
 
@@ -84,7 +89,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
             <div 
               className="flex flex-col content-stack gap-1"
             >
-              <TicketStatusBadge status={isPaid ? 'CONFIRMED' : orderStatus} isPdf={isPdf} />
+              <TicketStatusBadge status={ticket ? (ticket.status === 'VALID' ? 'CONFIRMED' : ticket.status) : (isPaid ? 'CONFIRMED' : orderStatus)} isPdf={isPdf} />
               <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-text-muted">Access Credential</p>
             </div>
             <div 
@@ -134,15 +139,14 @@ export const TicketCard: React.FC<TicketCardProps> = ({
             <div 
               className="grid grid-cols-1 sm:grid-cols-2 gap-3 pr-2 custom-scrollbar max-h-32 overflow-y-auto"
             >
-              {(order.items || []).map((item: any, idx) => (
+              {ticket ? (
                 <div 
-                  key={item.id || idx} 
                   className="flex items-center gap-3 p-2.5 border rounded-card bg-bg-elevated/30 border-bg-border/20 group/holder hover:border-teal/30 transition-colors"
                 >
                   <div 
                     className="flex items-center justify-center font-black shrink-0 w-8 h-8 rounded-card text-[10px] bg-teal/10 text-teal"
                   >
-                    {idx + 1}
+                    1
                   </div>
                   <div 
                     className="flex flex-col gap-0 overflow-hidden content-stack"
@@ -150,12 +154,35 @@ export const TicketCard: React.FC<TicketCardProps> = ({
                     <p 
                       className="text-[11px] font-bold line-clamp-1 text-text-primary group/holder:text-teal transition-colors"
                     >
-                      {item.name || 'Attendee'}
+                      {ticket.attendee_name || ticket.owner?.name || 'Attendee'}
                     </p>
-                    <p className="font-bold uppercase tracking-tighter line-clamp-1 text-[9px] text-text-muted">{item.ticket_type?.name || 'Ticket'}</p>
+                    <p className="font-bold uppercase tracking-tighter line-clamp-1 text-[9px] text-text-muted">{ticket.ticket_type?.name || 'Ticket'}</p>
                   </div>
                 </div>
-              ))}
+              ) : (
+                (activeOrder.items || []).map((item: any, idx) => (
+                  <div 
+                    key={item.id || idx} 
+                    className="flex items-center gap-3 p-2.5 border rounded-card bg-bg-elevated/30 border-bg-border/20 group/holder hover:border-teal/30 transition-colors"
+                  >
+                    <div 
+                      className="flex items-center justify-center font-black shrink-0 w-8 h-8 rounded-card text-[10px] bg-teal/10 text-teal"
+                    >
+                      {idx + 1}
+                    </div>
+                    <div 
+                      className="flex flex-col gap-0 overflow-hidden content-stack"
+                    >
+                      <p 
+                        className="text-[11px] font-bold line-clamp-1 text-text-primary group/holder:text-teal transition-colors"
+                      >
+                        {item.name || 'Attendee'}
+                      </p>
+                      <p className="font-bold uppercase tracking-tighter line-clamp-1 text-[9px] text-text-muted">{item.ticket_type?.name || 'Ticket'}</p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -172,7 +199,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
           <p 
             className="font-mono font-bold truncate text-[10px] text-teal/40 max-w-[200px]"
           >
-            SECURE-AUTH-{order.qr_code_token || 'PENDING'}
+            SECURE-AUTH-{ticket ? ticket.qr_token : (activeOrder.qr_code_token || 'PENDING')}
           </p>
         </div>
         <div 

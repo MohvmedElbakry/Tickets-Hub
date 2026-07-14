@@ -1426,7 +1426,8 @@ app.post('/api/orders', authenticateToken, requireEmailVerification, async (req:
           voucher_id: voucherId,
           is_paid: false,
           processing_payment: false,
-          points_awarded: false
+          points_awarded: false,
+          ticket_holders_raw: ticket_holders ? JSON.stringify(ticket_holders) : null
         }
       });
 
@@ -2092,15 +2093,29 @@ app.post(['/api/user/redeem', '/api/user/points/redeem'], authenticateToken, req
  */
 export async function generateTicketPdfBuffer(publicId: string): Promise<{ pdfBuffer: Buffer; order: any }> {
   const requestStart = Date.now();
-  console.log(`[PDF GEN] Starting ticket generation for order public ID: ${publicId}`);
+  console.log(`[PDF GEN] Starting ticket generation for public ID: ${publicId}`);
   let page: any = null;
   try {
     // 1. Parallelize DB Fetch and Browser Acquisition
     const parallelStart = Date.now();
     const [dbResult, browserResult] = await Promise.all([
       (async () => {
+        // Try fetching ticket instance first
+        const ticket = await db.getTicketInstanceByPublicId(publicId);
+        if (ticket) {
+          await db.ensureTicketInstancesForOrder(ticket.order_id);
+          const freshTicket = await db.getTicketInstanceByPublicId(publicId);
+          return { ticket: freshTicket || ticket, order: null, time: Date.now() - parallelStart };
+        }
+        
+        // Otherwise try fetching legacy order
         const o = await db.getOrderByPublicId(publicId);
-        return { order: o, time: Date.now() - parallelStart };
+        if (o) {
+          if (o.is_paid || o.order_status === 'paid') {
+            await db.ensureTicketInstancesForOrder(o.id);
+          }
+        }
+        return { ticket: null, order: o, time: Date.now() - parallelStart };
       })(),
       (async () => {
         const info = await getSharedBrowser();
@@ -2108,14 +2123,14 @@ export async function generateTicketPdfBuffer(publicId: string): Promise<{ pdfBu
       })()
     ]);
 
-    const { order, time: dbTime } = dbResult;
+    const { ticket, order: fetchedOrder, time: dbTime } = dbResult;
     const { info: browserInfo, time: acquireTime } = browserResult;
     const { browser, reused } = browserInfo;
 
+    const order = ticket ? ticket.order : fetchedOrder;
     if (!order) {
       throw new Error(`Order not found for public ID: ${publicId}`);
     }
-
     const isPaid = order.is_paid || order.order_status === 'paid';
     const event: any = order.event || {};
     
@@ -2124,34 +2139,59 @@ export async function generateTicketPdfBuffer(publicId: string): Promise<{ pdfBu
     let qrDataUrl = '';
     let statusText = isPaid ? 'CONFIRMED' : (order.order_status || 'PENDING').toUpperCase();
 
-    if (isPaid && order.qr_code_token) {
-       const eventTimeStr = event.event_time || '00:00';
-       const eventDateStr = event.event_date ? event.event_date.split('T')[0] : new Date().toISOString().split('T')[0];
-       const eventDateTime = new Date(`${eventDateStr}T${eventTimeStr.includes(':') ? eventTimeStr : eventTimeStr + ':00'}`);
-       
-       let visible = false;
-       if (event.qr_enabled_manual === true) {
-         visible = true;
-       } else if (!isNaN(eventDateTime.getTime()) && Date.now() >= eventDateTime.getTime() - (60 * 60 * 1000)) {
-         visible = true;
-       }
+    if (ticket) {
+      if (isPaid && ticket.status !== 'PENDING' && ticket.qr_token) {
+        const eventTimeStr = event.event_time || '00:00';
+        const eventDateStr = event.event_date ? (typeof event.event_date === 'string' ? event.event_date.split('T')[0] : event.event_date.toISOString().split('T')[0]) : new Date().toISOString().split('T')[0];
+        const eventDateTime = new Date(`${eventDateStr}T${eventTimeStr.includes(':') ? eventTimeStr : eventTimeStr + ':00'}`);
+        
+        let visible = false;
+        if (event.qr_enabled_manual === true) {
+          visible = true;
+        } else if (!isNaN(eventDateTime.getTime()) && Date.now() >= eventDateTime.getTime() - (60 * 60 * 1000)) {
+          visible = true;
+        }
 
-       if (visible) {
-         const qrData = `TicketsHub-Order-${order.qr_code_token}`;
-         qrDataUrl = await QRCode.toDataURL(qrData, { 
-           margin: 1, 
-           width: 256,
-           errorCorrectionLevel: 'H',
-           color: { dark: '#000000', light: '#FFFFFF' }
-         });
-       }
+        if (visible) {
+          const qrData = `TicketsHub-Ticket-${ticket.qr_token}`;
+          qrDataUrl = await QRCode.toDataURL(qrData, { 
+            margin: 1, 
+            width: 256,
+            errorCorrectionLevel: 'H',
+            color: { dark: '#000000', light: '#FFFFFF' }
+          });
+        }
+      }
+    } else {
+      if (isPaid && order.qr_code_token) {
+        const eventTimeStr = event.event_time || '00:00';
+        const eventDateStr = event.event_date ? (typeof event.event_date === 'string' ? event.event_date.split('T')[0] : event.event_date.toISOString().split('T')[0]) : new Date().toISOString().split('T')[0];
+        const eventDateTime = new Date(`${eventDateStr}T${eventTimeStr.includes(':') ? eventTimeStr : eventTimeStr + ':00'}`);
+        
+        let visible = false;
+        if (event.qr_enabled_manual === true) {
+          visible = true;
+        } else if (!isNaN(eventDateTime.getTime()) && Date.now() >= eventDateTime.getTime() - (60 * 60 * 1000)) {
+          visible = true;
+        }
+
+        if (visible) {
+          const qrData = `TicketsHub-Order-${order.qr_code_token}`;
+          qrDataUrl = await QRCode.toDataURL(qrData, { 
+            margin: 1, 
+            width: 256,
+            errorCorrectionLevel: 'H',
+            color: { dark: '#000000', light: '#FFFFFF' }
+          });
+        }
+      }
     }
     const qrTime = Date.now() - qrStart;
 
     // 3. SSR Rendering (Zero Hydration)
     const ssrStart = Date.now();
     const htmlBody = ReactDOMServer.renderToStaticMarkup(
-      React.createElement(TicketTemplate, { order, qrDataUrl, isPaid, statusText })
+      React.createElement(TicketTemplate, { order, ticket, qrDataUrl, isPaid, statusText })
     );
 
     const fullHtml = `
@@ -2939,21 +2979,192 @@ app.put('/api/orders/:publicId/pay', authenticateToken, requireEmailVerification
 app.post('/api/admin/scan', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
   try {
     const { ticket_id, event_id } = req.body;
-    const ticket = await db.getOrderTicketById(parseInt(ticket_id));
+    if (!ticket_id || !event_id) {
+      return res.status(400).json({ error: 'Ticket ID and Event ID are required.' });
+    }
+
+    // 1. Try finding by TicketInstance qr_token or public_id
+    let ticketInstance = await db.getTicketInstanceByQrToken(ticket_id);
+    if (!ticketInstance) {
+      ticketInstance = await db.getTicketInstanceByPublicId(ticket_id);
+    }
+
+    if (ticketInstance) {
+      const order = ticketInstance.order;
+      if (!order || order.event_id !== parseInt(event_id)) {
+        return res.status(400).json({ error: 'Mismatch event' });
+      }
+      if (order.order_status !== 'paid') {
+        return res.status(400).json({ error: 'Order not paid' });
+      }
+      if (ticketInstance.status === 'CHECKED_IN') {
+        return res.status(400).json({ error: 'Already scanned', scanned_count: 1 });
+      }
+      if (ticketInstance.status !== 'VALID') {
+        return res.status(400).json({ error: `Invalid ticket status: ${ticketInstance.status}` });
+      }
+
+      await db.updateTicketInstance(ticketInstance.id, {
+        status: 'CHECKED_IN',
+        checked_in_at: new Date()
+      });
+
+      return res.json({ 
+        message: 'Approved', 
+        ticket: {
+          id: ticketInstance.id,
+          public_id: ticketInstance.public_id,
+          name: ticketInstance.ticket_type.name,
+          attendee_name: ticketInstance.attendee_name,
+          status: 'CHECKED_IN'
+        } 
+      });
+    }
+
+    // 2. Try finding by legacy Order qr_code_token
+    const legacyOrder = await prisma.order.findFirst({
+      where: { qr_code_token: ticket_id, event_id: parseInt(event_id) },
+      include: { order_tickets: { include: { ticket_type: true } } }
+    });
+
+    if (legacyOrder) {
+      if (legacyOrder.order_status !== 'paid') {
+        return res.status(400).json({ error: 'Not paid' });
+      }
+      
+      const unusedOrderTicket = legacyOrder.order_tickets.find(ot => !ot.is_used);
+      if (!unusedOrderTicket) {
+        return res.status(400).json({ 
+          error: 'Already scanned', 
+          scanned_count: legacyOrder.order_tickets.reduce((acc, t) => acc + t.scanned_count, 0) 
+        });
+      }
+
+      await db.updateOrderTicket(unusedOrderTicket.id, { is_used: true, scanned_count: 1 });
+      
+      // Also ensure ticket instances are backfilled and check in the first one
+      const instances = await db.ensureTicketInstancesForOrder(legacyOrder.id);
+      const unusedInstance = instances.find(inst => inst.status === 'VALID');
+      if (unusedInstance) {
+        await db.updateTicketInstance(unusedInstance.id, { status: 'CHECKED_IN', checked_in_at: new Date() });
+      }
+
+      return res.json({
+        message: 'Approved (Legacy Order)',
+        ticket: {
+          id: unusedOrderTicket.id,
+          name: unusedOrderTicket.ticket_type.name,
+          status: 'CHECKED_IN'
+        }
+      });
+    }
+
+    // 3. Fallback to legacy numeric OrderTicket ID
+    if (!isNaN(parseInt(ticket_id))) {
+      const ticket = await db.getOrderTicketById(parseInt(ticket_id));
+      if (ticket) {
+        const order = await db.getOrderById(ticket.order_id);
+        if (!order || order.event_id !== parseInt(event_id)) {
+          return res.status(400).json({ error: 'Mismatch event' });
+        }
+        if (order.order_status !== 'paid') {
+          return res.status(400).json({ error: 'Not paid' });
+        }
+        if (ticket.is_used) {
+          return res.status(400).json({ error: 'Already scanned', scanned_count: ticket.scanned_count });
+        }
+        
+        await db.updateOrderTicket(ticket.id, { is_used: true, scanned_count: 1 });
+        
+        // Also update any corresponding backfilled instance
+        const instances = await db.ensureTicketInstancesForOrder(order.id);
+        const unusedInstance = instances.find(inst => inst.status === 'VALID');
+        if (unusedInstance) {
+          await db.updateTicketInstance(unusedInstance.id, { status: 'CHECKED_IN', checked_in_at: new Date() });
+        }
+
+        return res.json({ message: 'Approved', ticket });
+      }
+    }
+
+    return res.status(404).json({ error: 'Ticket not found' });
+  } catch (error: any) { 
+    console.error('[API ERROR] /api/admin/scan:', error);
+    res.status(500).json({ error: error.message }); 
+  }
+});
+
+app.get('/api/tickets', authenticateToken, async (req: any, res) => {
+  try {
+    // Lazy migration backfill of legacy orders
+    const orders = await db.getOrdersByUserId(req.user.id);
+    for (const o of orders) {
+      if (o.is_paid || o.order_status === 'paid') {
+        await db.ensureTicketInstancesForOrder(o.id);
+      }
+    }
+
+    const tickets = await db.getTicketInstancesByOwnerId(req.user.id);
+    res.json(tickets);
+  } catch (error: any) {
+    console.error('[API ERROR] /api/tickets:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/tickets/:publicId', authenticateToken, async (req: any, res) => {
+  try {
+    const ticket = await db.getTicketInstanceByPublicId(req.params.publicId);
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
-    const order = await db.getOrderById(ticket.order_id);
-    if (!order || order.event_id !== parseInt(event_id)) return res.status(400).json({ error: 'Mismatch event' });
-    if (order.order_status !== 'paid') return res.status(400).json({ error: 'Not paid' });
-    if (ticket.is_used) return res.status(400).json({ error: 'Already scanned', scanned_count: ticket.scanned_count });
-    await db.updateOrderTicket(ticket.id, { is_used: true, scanned_count: 1 });
-    res.json({ message: 'Approved', ticket });
-  } catch (error: any) { res.status(500).json({ error: error.message }); }
+    if (ticket.owner_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    res.json(ticket);
+  } catch (error: any) {
+    console.error('[API ERROR] /api/tickets/:publicId:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/tickets/:publicId/qr-status', async (req: any, res) => {
+  try {
+    const ticket = await db.getTicketInstanceByPublicId(req.params.publicId);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+    const order = ticket.order;
+    const event = order?.event;
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+    if (order.order_status !== 'paid' || ticket.status === 'PENDING') {
+      return res.json({ visible: false, reason: 'Payment pending' });
+    }
+    if (ticket.status === 'CHECKED_IN') {
+      return res.json({ visible: false, reason: 'Already scanned' });
+    }
+    if (ticket.status !== 'VALID') {
+      return res.json({ visible: false, reason: `Ticket status is ${ticket.status}` });
+    }
+
+    const qrData = `TicketsHub-Ticket-${ticket.qr_token}`;
+    if (event.qr_enabled_manual === true) {
+      return res.json({ visible: true, qr_data: qrData });
+    }
+
+    const eventDate = event.event_date;
+    if (!eventDate) return res.json({ visible: false, reason: 'Event date not set' });
+    const eventTime = new Date(eventDate).getTime();
+    if (Date.now() >= eventTime - (60 * 60 * 1000)) {
+      return res.json({ visible: true, qr_data: qrData });
+    }
+    res.json({ visible: false, reason: 'Available 1h before event' });
+  } catch (error: any) {
+    console.error('[API ERROR] /api/tickets/:publicId/qr-status:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/api/orders/:publicId/qr-status', async (req: any, res) => {
   try {
     const publicId = req.params.publicId;
-    // PROPER LOOKUP: Public APIs use Public ID (UUID)
     const order = await db.getOrderByPublicId(publicId);
 
     if (!order) return res.status(404).json({ error: 'Not found' });
@@ -2961,7 +3172,6 @@ app.get('/api/orders/:publicId/qr-status', async (req: any, res) => {
     if (!event) return res.status(404).json({ error: 'Event not found' });
     if (!order.is_paid || !order.qr_code_token) return res.json({ visible: false, reason: 'Payment pending' });
     
-    // Check if QR is manually enabled or if it's within the 1h window
     const qrData = `TicketsHub-Order-${order.qr_code_token}`;
     if (event.qr_enabled_manual === true) return res.json({ visible: true, qr_data: qrData });
     

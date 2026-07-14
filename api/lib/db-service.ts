@@ -739,6 +739,54 @@ class PrismaDB {
         if (!order.qr_code_token) updateData.qr_code_token = crypto.randomBytes(16).toString('hex');
         if (kashierOrderId) updateData.kashier_order_id = kashierOrderId;
         const updatedOrder = await tx.order.update({ where: { id: orderId }, data: updateData });
+
+        // Atomically create TicketInstance records for each individual ticket
+        try {
+          const orderTickets = await tx.orderTicket.findMany({ where: { order_id: orderId } });
+          const ticketHolders = order.ticket_holders_raw ? JSON.parse(order.ticket_holders_raw) : [];
+          let holderIdx = 0;
+
+          const userRecord = await tx.user.findUnique({ where: { id: updatedOrder.user_id } });
+
+          for (const ot of orderTickets) {
+            const qty = ot.quantity || 1;
+            for (let i = 0; i < qty; i++) {
+              const holder = ticketHolders[holderIdx] || null;
+              holderIdx++;
+
+              let attendeeName = '';
+              if (holder) {
+                attendeeName = [holder.first_name, holder.last_name].filter(Boolean).join(' ');
+              }
+              if (!attendeeName && ot.holder_name) {
+                const names = ot.holder_name.split(',').map((n: string) => n.trim());
+                attendeeName = names[i] || names[0] || '';
+              }
+              if (!attendeeName) {
+                attendeeName = userRecord?.name || 'Guest';
+              }
+
+              const publicId = 'TKT_' + crypto.randomBytes(4).toString('hex').toUpperCase();
+              const qrToken = crypto.randomBytes(16).toString('hex');
+
+              await tx.ticketInstance.create({
+                data: {
+                  public_id: publicId,
+                  qr_token: qrToken,
+                  order_id: orderId,
+                  ticket_type_id: ot.ticket_type_id,
+                  owner_id: updatedOrder.user_id,
+                  attendee_name: attendeeName,
+                  attendee_email: userRecord?.email || null,
+                  status: 'VALID'
+                }
+              });
+            }
+          }
+        } catch (tInstanceError) {
+          console.error('[DB TRANSACTION WARNING] Failed to create TicketInstance records in markOrderAsPaid:', tInstanceError);
+        }
+
         if (!updatedOrder.points_awarded) {
           try {
             const points = Math.floor(updatedOrder.total_price * 0.1);
@@ -821,6 +869,160 @@ class PrismaDB {
     } catch (err) {
       console.error('[DB ERROR] addPointsHistory:', err);
       throw err;
+    }
+  }
+
+  // --- TICKET INSTANCE METHODS ---
+  async getTicketInstanceById(id: number) {
+    try {
+      return await prisma.ticketInstance.findUnique({
+        where: { id },
+        include: { order: { include: { event: true } }, ticket_type: true }
+      });
+    } catch (err) {
+      console.error(`[DB ERROR] getTicketInstanceById(${id}):`, err);
+      throw err;
+    }
+  }
+
+  async getTicketInstanceByPublicId(publicId: string) {
+    try {
+      return await prisma.ticketInstance.findUnique({
+        where: { public_id: publicId },
+        include: { order: { include: { event: true } }, ticket_type: true }
+      });
+    } catch (err) {
+      console.error(`[DB ERROR] getTicketInstanceByPublicId(${publicId}):`, err);
+      throw err;
+    }
+  }
+
+  async getTicketInstanceByQrToken(qrToken: string) {
+    try {
+      return await prisma.ticketInstance.findUnique({
+        where: { qr_token: qrToken },
+        include: { order: { include: { event: true } }, ticket_type: true }
+      });
+    } catch (err) {
+      console.error(`[DB ERROR] getTicketInstanceByQrToken(${qrToken}):`, err);
+      throw err;
+    }
+  }
+
+  async getTicketInstancesByOrderId(orderId: number) {
+    try {
+      return await prisma.ticketInstance.findMany({
+        where: { order_id: orderId },
+        include: { ticket_type: true }
+      });
+    } catch (err) {
+      console.error(`[DB ERROR] getTicketInstancesByOrderId(${orderId}):`, err);
+      throw err;
+    }
+  }
+
+  async getTicketInstancesByOwnerId(ownerId: number) {
+    try {
+      return await prisma.ticketInstance.findMany({
+        where: { owner_id: ownerId },
+        include: { order: { include: { event: true } }, ticket_type: true },
+        orderBy: { created_at: 'desc' }
+      });
+    } catch (err) {
+      console.error(`[DB ERROR] getTicketInstancesByOwnerId(${ownerId}):`, err);
+      throw err;
+    }
+  }
+
+  async updateTicketInstance(id: number, data: any) {
+    try {
+      return await prisma.ticketInstance.update({
+        where: { id },
+        data
+      });
+    } catch (err) {
+      console.error(`[DB ERROR] updateTicketInstance(${id}):`, err);
+      throw err;
+    }
+  }
+
+  async updateTicketInstanceByPublicId(publicId: string, data: any) {
+    try {
+      return await prisma.ticketInstance.update({
+        where: { public_id: publicId },
+        data
+      });
+    } catch (err) {
+      console.error(`[DB ERROR] updateTicketInstanceByPublicId(${publicId}):`, err);
+      throw err;
+    }
+  }
+
+  async ensureTicketInstancesForOrder(orderId: number) {
+    try {
+      const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        include: {
+          order_tickets: { include: { ticket_type: true } },
+          user: true
+        }
+      });
+      if (!order || !order.is_paid) return [];
+
+      const existing = await prisma.ticketInstance.findMany({
+        where: { order_id: orderId },
+        include: { ticket_type: true }
+      });
+      
+      if (existing.length > 0) return existing;
+
+      // Backfill ticket instances!
+      const instances = [];
+      const ticketHolders = order.ticket_holders_raw ? JSON.parse(order.ticket_holders_raw) : [];
+      let holderIdx = 0;
+
+      for (const ot of order.order_tickets) {
+        const qty = ot.quantity || 1;
+        for (let i = 0; i < qty; i++) {
+          const holder = ticketHolders[holderIdx] || null;
+          holderIdx++;
+
+          let attendeeName = '';
+          if (holder) {
+            attendeeName = [holder.first_name, holder.last_name].filter(Boolean).join(' ');
+          }
+          if (!attendeeName && ot.holder_name) {
+            const names = ot.holder_name.split(',').map((n: string) => n.trim());
+            attendeeName = names[i] || names[0] || '';
+          }
+          if (!attendeeName) {
+            attendeeName = order.user?.name || 'Guest';
+          }
+
+          const publicId = 'TKT_' + crypto.randomBytes(4).toString('hex').toUpperCase();
+          const qrToken = crypto.randomBytes(16).toString('hex');
+
+          const newInstance = await prisma.ticketInstance.create({
+            data: {
+              public_id: publicId,
+              qr_token: qrToken,
+              order_id: order.id,
+              ticket_type_id: ot.ticket_type_id,
+              owner_id: order.user_id,
+              attendee_name: attendeeName,
+              attendee_email: order.user?.email || null,
+              status: ot.is_used ? 'CHECKED_IN' : 'VALID',
+              checked_in_at: ot.is_used ? new Date() : null
+            },
+            include: { ticket_type: true }
+          });
+          instances.push(newInstance);
+        }
+      }
+      return instances;
+    } catch (err) {
+      console.error(`[DB ERROR] ensureTicketInstancesForOrder(${orderId}):`, err);
+      return [];
     }
   }
 

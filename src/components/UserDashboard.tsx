@@ -33,7 +33,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { handleDownloadPDF } from '../lib/ticketUtils';
 import { TicketCard } from './tickets';
-import { useQRStatus } from '../hooks/useQRStatus';
+import { useQRStatus, useTicketQRStatus } from '../hooks/useQRStatus';
 import { useOrder } from '../hooks/useOrder';
 import { formatEventTime } from '../lib/utils';
 import { formatDateTime, formatDate } from '../lib/dateFormat';
@@ -43,6 +43,7 @@ export const UserDashboard = () => {
   const navigate = useNavigate();
   const { user, accessToken, refreshToken, login: updateSession, logout: handleLogout } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Profile edit states
@@ -170,9 +171,10 @@ export const UserDashboard = () => {
   const [selectedTicket, setSelectedTicket] = useState<OrderTicket | null>(null);
   const [payoutMethod, setPayoutMethod] = useState<'instapay' | 'vodafone'>('instapay');
   const [payoutAddress, setPayoutAddress] = useState('');
-  const [activeTab, setActiveTab] = useState<'info' | 'tickets' | 'rewards' | 'profile' | 'payments'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'info' | 'tickets' | 'rewards' | 'profile' | 'payments' | 'dashboard'>('dashboard');
   const [ticketFilter, setTicketFilter] = useState<'all' | 'pending' | 'paid' | 'invited'>('all');
   const [viewingTicket, setViewingTicket] = useState<Order | null>(null);
+  const [viewingTicketInstance, setViewingTicketInstance] = useState<any | null>(null);
   const [exportingOrder, setExportingOrder] = useState<Order | null>(null);
   
       // Phase 3.2.4: Use single source of truth for the viewing ticket
@@ -182,7 +184,7 @@ export const UserDashboard = () => {
   // const { qrStatus: exportingQrStatus, loading: loadingExportingQr } = useQRStatus(...)
   
   // PDF Export
-  const handleExport = (order: Order) => {
+  const handleExport = (order: any) => {
     handleDownloadPDF(order);
   };
 
@@ -194,12 +196,24 @@ export const UserDashboard = () => {
     viewingTicket?.is_paid === true
   );
 
+  const {
+    qrStatus: viewingTicketInstanceQrStatus,
+    loading: loadingViewingTicketInstanceQr
+  } = useTicketQRStatus(
+    viewingTicketInstance?.public_id || undefined,
+    viewingTicketInstance ? (viewingTicketInstance.status !== 'PENDING') : false
+  );
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [ordersData, pointsData] = await Promise.all([
+        const [ordersData, ticketsData, pointsData] = await Promise.all([
           orderService.getOrders(),
+          orderService.getTickets().catch(err => {
+            console.error('Failed to fetch ticket instances:', err);
+            return [];
+          }),
           authService.getUserPoints()
         ]);
         if (ordersData && Array.isArray(ordersData)) {
@@ -209,6 +223,9 @@ export const UserDashboard = () => {
             displayStatus: o.is_paid ? 'paid' : o.order_status
           }));
           setOrders(normalizedOrders);
+        }
+        if (ticketsData && Array.isArray(ticketsData)) {
+          setTickets(ticketsData);
         }
         if (pointsData) setPoints(pointsData);
       } catch (err: any) {
@@ -223,22 +240,35 @@ export const UserDashboard = () => {
   }, []);
 
   const filteredTickets = useMemo(() => {
-    // Ultra-defensive check to prevent "map is not a function"
+    const ticketsList = Array.isArray(tickets) ? tickets : [];
     const ordersList = Array.isArray(orders) ? orders : [];
 
-    const orderItems = ordersList.map(o => ({ 
-      ...o, 
-      type: 'order' as const 
+    // Map individual tickets as 'ticket' type items
+    const ticketItems = ticketsList.map(t => ({
+      ...t,
+      type: 'ticket' as const,
+      displayStatus: t.status === 'CHECKED_IN' ? 'scanned' : 'paid',
+      event: t.order?.event
     }));
-    
-    const allItems = [...orderItems];
+
+    // Map ONLY unpaid/pending orders (so we don't duplicate paid orders with individual tickets)
+    const unpaidOrderItems = ordersList
+      .filter(o => !o.is_paid && o.order_status !== 'paid')
+      .map(o => ({
+        ...o,
+        type: 'order' as const,
+        displayStatus: o.order_status
+      }));
+
+    const allItems = [...ticketItems, ...unpaidOrderItems];
 
     if (ticketFilter === 'all') return allItems;
-    if (ticketFilter === 'paid') return allItems.filter(item => item.is_paid);
-    if (ticketFilter === 'pending') return allItems.filter(item => !item.is_paid && (item.displayStatus === 'approved' || item.displayStatus === 'pending'));
+    if (ticketFilter === 'paid') return allItems.filter(item => item.type === 'ticket');
+    if (ticketFilter === 'pending') return allItems.filter(item => item.type === 'order' && (item.displayStatus === 'approved' || item.displayStatus === 'pending'));
+    if (ticketFilter === 'invited') return allItems.filter(item => item.type === 'order' && item.displayStatus === 'invited');
 
-    return allItems.filter(item => item.displayStatus === ticketFilter);
-  }, [orders, ticketFilter]);
+    return allItems;
+  }, [tickets, orders, ticketFilter]);
 
   const handleResaleRequest = async () => {
     if (!selectedTicket || !payoutAddress) return;
@@ -412,7 +442,7 @@ export const UserDashboard = () => {
               {filteredTickets.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {filteredTickets.map((item: any) => (
-                    <div key={item.id} className="bg-bg-card rounded-card-xl border border-bg-border overflow-hidden flex flex-col hover:bg-bg-elevated transition-colors duration-base group">
+                    <div key={item.type === 'ticket' ? `t-${item.id}` : `o-${item.id}`} className="bg-bg-card rounded-card-xl border border-bg-border overflow-hidden flex flex-col hover:bg-bg-elevated transition-colors duration-base group">
                       <div className="flex h-36">
                         <div className="w-36 shrink-0 overflow-hidden">
                           <img 
@@ -429,14 +459,15 @@ export const UserDashboard = () => {
                           </div>
                           <div className="mt-auto">
                             <span className={`px-2 py-0.5 rounded-tag text-label font-bold uppercase border ${
-                              item.displayStatus === 'paid' ? 'bg-status-success/10 text-status-success border-status-success/20' : 
-                              item.displayStatus === 'approved' ? 'bg-status-info/10 text-status-info border-status-info/20' :
+                              item.type === 'ticket' ? (item.status === 'CHECKED_IN' ? 'bg-status-info/10 text-status-info border-status-info/20' : 'bg-status-success/10 text-status-success border-status-success/20') :
+                              item.displayStatus === 'approved' ? 'bg-status-info/10 text-status-info border-status-info/20' : 
                               item.displayStatus === 'rejected' ? 'bg-status-error/10 text-status-error border-status-error/20' :
                               item.displayStatus === 'pre_registered' ? 'bg-bg-elevated text-text-muted border-bg-border' :
                               item.displayStatus === 'invited' ? 'bg-teal/10 text-teal border-teal-border-faint' :
                               'bg-status-warning/10 text-status-warning border-status-warning/20'
                             }`}>
-                              {item.displayStatus === 'approved' ? 'Awaiting Payment' : 
+                              {item.type === 'ticket' ? (item.status === 'CHECKED_IN' ? 'Checked In' : 'Paid') :
+                               item.displayStatus === 'approved' ? 'Awaiting Payment' : 
                                item.displayStatus === 'pre_registered' ? 'Pre-Registered' :
                                item.displayStatus === 'invited' ? 'Invited' :
                                item.displayStatus}
@@ -446,11 +477,15 @@ export const UserDashboard = () => {
                       </div>
                       <div className="p-5 pt-0 flex justify-between items-center border-t border-bg-border mt-auto h-20">
                         <div className="content-stack gap-0">
-                          <p className="text-label text-text-muted">{item.type === 'order' ? `Order #${item.public_id?.split('-')[0] || item.id}` : 'Pre-Registration'}</p>
-                          <p className="text-body-sm font-bold text-text-primary">{item.total_price ? `${item.total_price.toFixed(2)} EGP` : 'TBA'}</p>
+                          <p className="text-label text-text-muted">{item.type === 'ticket' ? `Ticket #${item.public_id}` : `Order #${item.public_id?.split('-')[0] || item.id}`}</p>
+                          <p className="text-body-sm font-bold text-text-primary">
+                            {item.type === 'ticket' ? `${item.attendee_name || item.owner?.name || 'Attendee'} (${item.ticket_type?.name})` : `${item.total_price ? item.total_price.toFixed(2) : 'TBA'} EGP`}
+                          </p>
                         </div>
                         <div className="flex gap-2">
-                          {item.type === 'order' ? (
+                          {item.type === 'ticket' ? (
+                            <Button variant="outline" size="sm" onClick={() => setViewingTicketInstance(item)}>View</Button>
+                          ) : (
                             <>
                               <Button variant="outline" size="sm" onClick={() => setViewingTicket(item)}>View</Button>
                               {item.order_status === 'approved' && (
@@ -464,24 +499,6 @@ export const UserDashboard = () => {
                                   }}
                                 >
                                   Pay Now
-                                </Button>
-                              )}
-                              {item.order_status === 'paid' && (
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm"
-                                  className="text-status-error hover:bg-status-error/10"
-                                  onClick={() => {
-                                    const ticketToResell = item.items && item.items.length > 0 ? item.items[0] : null;
-                                    if (ticketToResell) {
-                                      setSelectedTicket(ticketToResell);
-                                      setIsResaleModalOpen(true);
-                                    } else {
-                                      alert('No tickets found in this order.');
-                                    }
-                                  }}
-                                >
-                                  Resell
                                 </Button>
                               )}
                               {item.order_status === 'invited' && (
@@ -520,8 +537,6 @@ export const UserDashboard = () => {
                                 </div>
                               )}
                             </>
-                          ) : (
-                            <Button variant="outline" size="sm" onClick={() => navigate('/events')}>View Event</Button>
                           )}
                         </div>
                       </div>
@@ -1072,6 +1087,64 @@ export const UserDashboard = () => {
                         Pay Now
                       </Button>
                     )}
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Viewing Ticket Instance Modal */}
+        <AnimatePresence>
+          {viewingTicketInstance && (
+            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-bg-page/90 backdrop-blur-md">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-bg-card w-full max-w-lg rounded-card-2xl overflow-hidden border border-bg-border shadow-2xl flex flex-col"
+              >
+                {/* Premium Ticket Header */}
+                <div className="relative h-40 w-full overflow-hidden">
+                  <img 
+                    src={viewingTicketInstance.order?.event?.image_url} 
+                    alt="Event" 
+                    className="w-full h-full object-cover brightness-50"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-bg-card to-transparent"></div>
+                  <button 
+                    onClick={() => setViewingTicketInstance(null)} 
+                    className="absolute top-6 right-6 p-2 bg-black/40 hover:bg-black/60 rounded-pill text-text-primary backdrop-blur-md transition-all z-20"
+                  >
+                    <X size={20} />
+                  </button>
+                  <div className="absolute bottom-6 left-8 right-8 z-10 content-stack gap-1">
+                    <span className="px-2.5 py-0.5 bg-teal/20 text-teal rounded-tag text-label font-black uppercase tracking-widest border border-teal/30 w-fit">
+                      {viewingTicketInstance.ticket_type?.name || 'Standard Entry'}
+                    </span>
+                    <h2 className="text-h3 text-text-primary leading-tight line-clamp-1">{viewingTicketInstance.order?.event?.title}</h2>
+                  </div>
+                </div>
+
+                <div className="p-8 content-stack gap-8">
+                  <TicketCard 
+                    ticket={viewingTicketInstance}
+                    qrData={viewingTicketInstanceQrStatus?.qr_data}
+                    qrVisible={viewingTicketInstanceQrStatus?.visible}
+                    qrReason={viewingTicketInstanceQrStatus?.reason}
+                    loadingQr={loadingViewingTicketInstanceQr}
+                  />
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-4">
+                    <Button 
+                      variant="outline" 
+                      className="flex-1 py-6 rounded-card text-label gap-2 font-bold" 
+                      onClick={() => handleExport(viewingTicketInstance)}
+                    >
+                      <Download size={16} /> PDF Ticket
+                    </Button>
                   </div>
                 </div>
               </motion.div>

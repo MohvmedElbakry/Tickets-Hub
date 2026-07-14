@@ -99,5 +99,17 @@ export const orderService = {
 
   async adminRejectOrder(id: OrderPublicId) {
     return await ordersApi.adminRejectOrder(id);
+  },
+
+  async getTickets() {
+    return await ordersApi.getTickets();
+  },
+
+  async getTicket(publicId: string) {
+    return await ordersApi.getTicket(publicId);
+  },
+
+  async getTicketQRStatus(publicId: string) {
+    return await ordersApi.getTicketQRStatus(publicId);
   }
 };

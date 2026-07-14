@@ -39,6 +39,7 @@ model User {
   pre_registrations  PreRegistration[]
   notifications      Notification[]
   organized_events   Event[]
+  ticket_instances   TicketInstance[]
 }
 
 model Event {
@@ -85,6 +86,7 @@ model TicketType {
   order_tickets   OrderTicket[]
   resell_requests ResellRequest[]
   invitations     Invitation[]
+  ticket_instances TicketInstance[]
 
   @@index([event_id])
 }
@@ -129,9 +131,11 @@ model Order {
   voucher                Voucher?        @relation(fields: [voucher_id], references: [id], onDelete: SetNull)
   reserved_at            DateTime        @default(now())
   created_at             DateTime        @default(now())
+  ticket_holders_raw     String?
   order_tickets          OrderTicket[]
   resell_requests        ResellRequest[]
   points_history         PointsHistory[]
+  ticket_instances       TicketInstance[]
 
   @@index([user_id])
   @@index([event_id])
@@ -223,3 +227,40 @@ model Setting {
   processing_fee_percent  Float @default(2.75)
   fixed_fee_egp           Float @default(3)
 }
+
+enum TicketStatus {
+  PENDING
+  VALID
+  CHECKED_IN
+  TRANSFER_PENDING
+  TRANSFERRED
+  RESOLD
+  CANCELLED
+  REFUNDED
+}
+
+model TicketInstance {
+  id              Int          @id @default(autoincrement())
+  public_id       String       @unique
+  qr_token        String       @unique
+  order_id        Int
+  order           Order        @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  ticket_type_id  Int
+  ticket_type     TicketType   @relation(fields: [ticket_type_id], references: [id], onDelete: Cascade)
+  owner_id        Int
+  owner           User         @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  attendee_name   String?
+  attendee_email  String?
+  status          TicketStatus @default(PENDING)
+  checked_in_at   DateTime?
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+
+  @@index([order_id])
+  @@index([ticket_type_id])
+  @@index([owner_id])
+  @@index([status])
+  @@index([qr_token])
+  @@index([public_id])
+}
+
