@@ -170,7 +170,7 @@ export const UserDashboard = () => {
   const [selectedTicket, setSelectedTicket] = useState<OrderTicket | null>(null);
   const [payoutMethod, setPayoutMethod] = useState<'instapay' | 'vodafone'>('instapay');
   const [payoutAddress, setPayoutAddress] = useState('');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tickets' | 'rewards' | 'profile' | 'payments'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'info' | 'tickets' | 'rewards' | 'profile' | 'payments'>('dashboard');
   const [ticketFilter, setTicketFilter] = useState<'all' | 'pending' | 'paid' | 'invited'>('all');
   const [viewingTicket, setViewingTicket] = useState<Order | null>(null);
   const [exportingOrder, setExportingOrder] = useState<Order | null>(null);
@@ -904,7 +904,6 @@ export const UserDashboard = () => {
                   <div className="bg-status-error/5 border border-status-error/10 p-6 rounded-card content-stack gap-4">
                     <p className="text-body-sm text-text-primary font-medium">To proceed with account deletion, we require that you satisfy all pre-deletion check requirements:</p>
                     <ul className="text-body-xs text-text-muted list-disc pl-5 space-y-1">
-                      <li>You must not own or organize any upcoming events.</li>
                       <li>You must not hold active/future tickets or orders for upcoming events.</li>
                       <li>You must not have any active resale listings in progress.</li>
                       <li>You must not have any unfinished or active reservation/payment sessions.</li>
@@ -924,7 +923,7 @@ export const UserDashboard = () => {
                           setIsDeleteModalOpen(true);
                         }}
                       >
-                        <Trash2 size={16} className="mr-2 inline" /> Request Account Deletion
+                        <Trash2 size={16} className="mr-2 inline" /> Delete account
                       </Button>
                     </div>
                   </div>
