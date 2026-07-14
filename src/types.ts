@@ -15,6 +15,7 @@ export interface UserProfile {
   birthdate?: string;
   points?: number;
   instagram_username?: string;
+  emailVerified?: boolean;
 }
 
 export interface TicketType {

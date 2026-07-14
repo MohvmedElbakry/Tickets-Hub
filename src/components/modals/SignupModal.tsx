@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Mail, Lock, User, AlertCircle, Instagram, Phone, Calendar } from 'lucide-react';
+import { X, Mail, Lock, User, AlertCircle, Instagram, Phone, Calendar, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui/Button';
 import { CountryCodeSelector } from '../ui/CountryCodeSelector';
@@ -43,6 +43,7 @@ export const SignupModal = () => {
   const { login: onSignupSuccess } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [signupSuccess, setSignupSuccess] = useState(false);
 
   const handleFormChange = (updates: Partial<typeof signupForm>) => {
     setSignupForm(prev => ({ ...prev, ...updates }));
@@ -61,7 +62,7 @@ export const SignupModal = () => {
           accessToken: data.accessToken, 
           refreshToken: data.refreshToken 
         });
-        onClose();
+        setSignupSuccess(true);
       }
     } catch (err: any) {
       if (err.status === 409) {
@@ -84,6 +85,51 @@ export const SignupModal = () => {
       setLoading(false);
     }
   };
+
+  const handleSuccessClose = () => {
+    setSignupSuccess(false);
+    onClose();
+  };
+
+  if (signupSuccess) {
+    return (
+      <AnimatePresence>
+        {isOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-bg-page/80 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-bg-card w-full max-w-md rounded-card-2xl p-8 border border-bg-border shadow-2xl relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 w-full h-1.5 bg-teal shadow-teal/20 shadow-lg"></div>
+              
+              <div className="flex flex-col items-center text-center py-6">
+                <div className="w-16 h-16 bg-teal/10 rounded-full flex items-center justify-center mb-6 border border-teal/20">
+                  <Mail className="w-8 h-8 text-teal" />
+                </div>
+                
+                <h3 className="text-2xl font-bold text-white mb-2">Check Your Inbox! 📬</h3>
+                <p className="text-teal font-medium text-sm mb-4">Your account has been created successfully.</p>
+                
+                <p className="text-text-muted text-sm leading-relaxed mb-6">
+                  We've sent a verification email to your inbox. Please verify your email before purchasing tickets.
+                </p>
+                
+                <Button 
+                  onClick={handleSuccessClose}
+                  className="w-full bg-teal hover:bg-teal-hover text-black font-semibold py-3 flex items-center justify-center gap-2 transition-all shadow-lg shadow-teal/10"
+                >
+                  <span>Continue to Dashboard</span>
+                  <ArrowRight size={16} />
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    );
+  }
 
   return (
     <AnimatePresence>

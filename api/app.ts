@@ -20,7 +20,7 @@ import React from 'react';
 import ReactDOMServer from 'react-dom/server';
 import { TicketTemplate } from './pdf/TicketTemplate.js';
 import QRCode from 'qrcode';
-import { sendEmail, verifyEmailConfig, getPersonalizedName, sendWelcomeEmail } from './lib/mailer.js';
+import { sendEmail, verifyEmailConfig, getPersonalizedName, sendWelcomeEmail, sendVerificationEmail } from './lib/mailer.js';
 import { validatePassword as sharedValidatePassword } from './lib/passwordValidator.js';
 
 dotenv.config();
@@ -98,7 +98,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_fallback_123';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || (JWT_SECRET + '_refresh');
 
 const generateTokens = (user: any) => {
-  const payload = { id: user.id, name: user.name, email: user.email, role: user.role, gender: user.gender, tokenVersion: user.token_version ?? 0 };
+  const payload = { 
+    id: user.id, 
+    name: user.name, 
+    email: user.email, 
+    role: user.role, 
+    gender: user.gender, 
+    tokenVersion: user.token_version ?? 0,
+    emailVerified: !!user.email_verified 
+  };
   const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' });
   const refreshToken = jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: '7d' });
   return { accessToken, refreshToken, user: payload };
@@ -269,7 +277,7 @@ const authenticateToken = (req: any, res: any, next: any) => {
       if (!user || (user.token_version ?? 0) !== (decoded.tokenVersion ?? 0)) {
         return res.status(401).json({ error: 'Session expired or invalidated. Please login again.' });
       }
-      req.user = decoded;
+      req.user = { ...decoded, emailVerified: !!user.email_verified };
       next();
     } catch (dbErr) {
       return res.status(501).json({ error: 'Internal auth service error.' });
@@ -295,7 +303,7 @@ const optionalAuthenticate = (req: any, res: any, next: any) => {
         req.user = null;
         return next();
       }
-      req.user = decoded;
+      req.user = { ...decoded, emailVerified: !!user.email_verified };
       next();
     } catch {
       req.user = null;
@@ -346,6 +354,11 @@ app.post('/api/auth/signup', async (req, res) => {
       return age;
     };
 
+    const isAdmin = userRole === 'admin';
+    const rawVerificationToken = crypto.randomBytes(32).toString('hex');
+    const hashedVerificationToken = hashToken(rawVerificationToken);
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
     const newUser = await db.addUser({ 
       name, 
       email, 
@@ -354,7 +367,10 @@ app.post('/api/auth/signup', async (req, res) => {
       role: userRole, 
       birthdate: birthdate || '2000-01-01', 
       age: calculateAge(birthdate || '2000-01-01'),
-      gender 
+      gender,
+      email_verified: isAdmin,
+      email_verification_token: isAdmin ? null : hashedVerificationToken,
+      email_verification_expires: isAdmin ? null : verificationExpires
     });
     const { accessToken, refreshToken, user } = generateTokens(newUser);
 
@@ -378,7 +394,19 @@ app.post('/api/auth/signup', async (req, res) => {
       console.error(`🚨 [WELCOME EMAIL DISPATCH EXCEPTION] Async welcome email delivery crashed:`, err);
     });
 
-    res.status(201).json({ user, accessToken, refreshToken });
+    if (!isAdmin) {
+      const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${rawVerificationToken}`;
+      sendVerificationEmail(newUser.email, newUser.name, verificationUrl, newUser.id).catch(err => {
+        console.error(`🚨 [VERIFICATION EMAIL DISPATCH EXCEPTION] Async verification email delivery failed:`, err);
+      });
+    }
+
+    res.status(201).json({ 
+      user, 
+      accessToken, 
+      refreshToken,
+      message: "Your account has been created successfully. We've sent a verification email to your inbox. Please verify your email before purchasing tickets."
+    });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
@@ -792,6 +820,127 @@ The TicketsHub Team
   }
 });
 
+// --- EMAIL VERIFICATION SYSTEM ---
+
+const requireEmailVerification = (req: any, res: any, next: any) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required.' });
+  }
+  // Admins bypass verification check
+  if (req.user.role === 'admin') {
+    return next();
+  }
+  // Check if verified
+  if (!req.user.emailVerified) {
+    return res.status(403).json({
+      error: 'email_not_verified',
+      message: 'Your email has not been verified. Please verify your email to perform this action.'
+    });
+  }
+  next();
+};
+
+app.post('/api/auth/verify-email', async (req, res) => {
+  const { token } = req.body;
+  if (!token) {
+    return res.status(400).json({ error: 'Verification token is required.' });
+  }
+
+  try {
+    const hashedToken = hashToken(token);
+    
+    // Find user with this token
+    const user = await prisma.user.findFirst({
+      where: {
+        email_verification_token: hashedToken
+      }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'invalid_link', message: 'The verification link is invalid.' });
+    }
+
+    if (user.email_verification_expires && user.email_verification_expires < new Date()) {
+      return res.status(400).json({ error: 'expired_link', message: 'The verification link has expired.' });
+    }
+
+    // Update user to verified
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        email_verified: true,
+        email_verification_token: null,
+        email_verification_expires: null
+      }
+    });
+
+    // Generate fresh tokens for the user in case they are logged in
+    const { accessToken, refreshToken, user: userPayload } = generateTokens(updatedUser);
+
+    res.json({ 
+      message: 'Email verified successfully!',
+      accessToken,
+      refreshToken,
+      user: userPayload
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'unexpected_error', message: error.message });
+  }
+});
+
+const resendTracker = new Map<number, number>();
+
+app.post('/api/auth/resend-verification', authenticateToken, async (req: any, res) => {
+  const userId = req.user.id;
+  const now = Date.now();
+  
+  try {
+    const user = await db.getUserById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    if (user.email_verified) {
+      return res.status(400).json({ error: 'already_verified', message: 'Your email is already verified.' });
+    }
+
+    // Cooldown check (60 seconds)
+    const lastSent = resendTracker.get(userId);
+    if (lastSent && now - lastSent < 60000) {
+      const waitSeconds = Math.ceil((60000 - (now - lastSent)) / 1000);
+      return res.status(429).json({ 
+        error: 'cooldown', 
+        message: `Please wait ${waitSeconds} seconds before requesting another verification email.` 
+      });
+    }
+
+    // Generate new secure token
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = hashToken(rawToken);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        email_verification_token: hashedToken,
+        email_verification_expires: expiresAt
+      }
+    });
+
+    resendTracker.set(userId, now);
+
+    const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${rawToken}`;
+    
+    sendVerificationEmail(user.email, user.name, verificationUrl, user.id).catch(err => {
+      console.error(`🚨 [RESEND VERIFICATION EMAIL EXCEPTION] Async delivery failed:`, err);
+    });
+
+    res.json({ message: 'Verification email has been sent successfully. Please check your inbox.' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'failed_resend', message: error.message });
+  }
+});
+
 // --- NOTIFICATION ROUTES ---
 console.log('[App] Registering Notification Routes...');
 app.get('/api/notifications', authenticateToken, async (req: any, res) => {
@@ -845,7 +994,7 @@ app.get('/api/events/:id', optionalAuthenticate, async (req: any, res) => {
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/events', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+app.post('/api/events', authenticateToken, authorizeRole(['admin']), requireEmailVerification, async (req: any, res) => {
   try {
     const { ticket_types, ...data } = req.body;
     const newEvent = await db.addEvent({ ...data, organizer_id: req.user.id });
@@ -854,7 +1003,7 @@ app.post('/api/events', authenticateToken, authorizeRole(['admin']), async (req:
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.put('/api/events/:id', authenticateToken, authorizeRole(['admin']), async (req: any, res: any) => {
+app.put('/api/events/:id', authenticateToken, authorizeRole(['admin']), requireEmailVerification, async (req: any, res: any) => {
   const id = parseInt(req.params.id);
   console.log(`[EVENT UPDATE] Starting update for event #${id}`);
   try {
@@ -897,7 +1046,7 @@ app.delete('/api/events/:id', authenticateToken, authorizeRole(['admin']), async
 
 // --- ORDER ROUTES ---
 console.log('[App] Registering Order Routes...');
-app.post('/api/orders', authenticateToken, async (req: any, res) => {
+app.post('/api/orders', authenticateToken, requireEmailVerification, async (req: any, res) => {
   try {
     // Background cleanup - randomized to prevent every order from triggering it simultaneously
     if (Math.random() < 0.2) {
@@ -1113,7 +1262,7 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), async (req
   catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-  app.post('/api/payments/create-session', authenticateToken, async (req: any, res) => {
+  app.post('/api/payments/create-session', authenticateToken, requireEmailVerification, async (req: any, res) => {
     const { order_id } = req.body;
     
     if (!order_id) {
@@ -2448,7 +2597,7 @@ app.put('/api/orders/:publicId/reject', authenticateToken, authorizeRole(['admin
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.put('/api/orders/:publicId/pay', authenticateToken, async (req: any, res) => {
+app.put('/api/orders/:publicId/pay', authenticateToken, requireEmailVerification, async (req: any, res) => {
   try {
     const order = await db.getOrderByPublicId(req.params.publicId);
     if (!order) return res.status(404).json({ error: 'Not found' });
@@ -2516,7 +2665,7 @@ app.get('/api/admin/invitations', authenticateToken, authorizeRole(['admin']), a
   catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/admin/invitations', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+app.post('/api/admin/invitations', authenticateToken, authorizeRole(['admin']), requireEmailVerification, async (req: any, res) => {
   try {
     const { email, event_id, ticket_type_id } = req.body;
     const result = await prisma.$transaction(async (tx) => {
@@ -2565,12 +2714,12 @@ app.post('/api/admin/invitations', authenticateToken, authorizeRole(['admin']), 
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.put('/api/admin/invitations/:id', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+app.put('/api/admin/invitations/:id', authenticateToken, authorizeRole(['admin']), requireEmailVerification, async (req: any, res) => {
   try { res.json(await db.updateInvitation(parseInt(req.params.id), req.body)); }
   catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.delete('/api/admin/invitations/:id', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+app.delete('/api/admin/invitations/:id', authenticateToken, authorizeRole(['admin']), requireEmailVerification, async (req: any, res) => {
   try { await db.deleteInvitation(parseInt(req.params.id)); res.json({ message: 'Deleted' }); }
   catch (error: any) { res.status(500).json({ error: error.message }); }
 });

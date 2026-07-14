@@ -66,6 +66,14 @@ export const authService = {
     return await authApi.changePassword(data);
   },
 
+  async verifyEmail(token: string) {
+    return await authApi.verifyEmail(token);
+  },
+
+  async resendVerification() {
+    return await authApi.resendVerification();
+  },
+
   async updateProfile(id: number, data: any) {
     return await authApi.updateProfile(id, data);
   }

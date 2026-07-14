@@ -474,3 +474,65 @@ The TicketsHub Team
   }
 }
 
+export async function sendVerificationEmail(
+  recipient: string,
+  userName: string,
+  verificationUrl: string,
+  userId: number | string
+): Promise<{ success: boolean; messageId?: string }> {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] 📨 Verification email queued | User ID: ${userId} | Email: ${recipient}`);
+
+  const recipientName = getPersonalizedName(userName, recipient);
+
+  const htmlText = generateEmailHtml({
+    recipientName,
+    title: 'Verify Your Email Address ✉️',
+    bodyHtml: `
+      <p>Thank you for signing up with TicketsHub! To finalize your registration and secure your account, please verify your email address by clicking the button below.</p>
+      <p>This verification link is valid for <strong>24 hours</strong>. If you do not verify your email address, you will not be able to purchase tickets or perform other sensitive operations on our platform.</p>
+      <p>If the button doesn't work, copy and paste the link below into your browser:</p>
+      <p style="word-break: break-all; font-size: 13px; color: #64748b;">${verificationUrl}</p>
+      <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+      <p style="font-size: 13px; color: #64748b;">If you did not register for a TicketsHub account, you can safely ignore this email.</p>
+    `,
+    ctaText: 'Verify Email',
+    ctaUrl: verificationUrl
+  });
+
+  const plainText = `
+Hi ${recipientName},
+
+Verify Your Email Address ✉️
+
+Thank you for signing up with TicketsHub! To finalize your registration and secure your account, please verify your email address by clicking the link below:
+
+${verificationUrl}
+
+This verification link is valid for 24 hours.
+
+If you did not register for a TicketsHub account, you can safely ignore this email.
+
+Best regards,
+The TicketsHub Team
+  `.trim();
+
+  try {
+    const res = await sendEmail({
+      to: recipient,
+      subject: 'Verify your email for TicketsHub 🎟️',
+      html: htmlText,
+      text: plainText
+    });
+    
+    const successTimestamp = new Date().toISOString();
+    console.log(`[${successTimestamp}] ✅ Verification email sent | User ID: ${userId} | Email: ${recipient} | Message ID: ${res.messageId || 'n/a'}`);
+    return res;
+  } catch (err: any) {
+    const failTimestamp = new Date().toISOString();
+    console.error(`[${failTimestamp}] ⚠️ Verification email failed | User ID: ${userId} | Email: ${recipient} | Error: ${err.message}`);
+    return { success: false };
+  }
+}
+
+

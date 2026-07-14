@@ -96,6 +96,19 @@ export const changePassword = async (data: any): Promise<any> => {
   });
 };
 
+export const verifyEmail = async (token: string): Promise<any> => {
+  return await fetchWithAuth('/api/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ token })
+  });
+};
+
+export const resendVerification = async (): Promise<any> => {
+  return await fetchWithAuth('/api/auth/resend-verification', {
+    method: 'POST'
+  });
+};
+
 export const updateProfile = async (id: number, data: any): Promise<any> => {
   return await fetchWithAuth(`/api/admin/users/${id}`, {
     method: 'PUT',

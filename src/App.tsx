@@ -38,6 +38,8 @@ import { NotFoundPage } from './components/NotFoundPage';
 import PageContainer from './components/layout/PageContainer';
 import TicketPrintPage from './pages/TicketPrintPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
+import { VerifyEmailPage } from './components/VerifyEmailPage';
+import { EmailVerificationBanner } from './components/EmailVerificationBanner';
 
 export default function App() {
   const [appKey, setAppKey] = useState(0);
@@ -140,6 +142,7 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {!isPrintPage && <EmailVerificationBanner />}
       {!isPrintPage && <Navbar />}
       <LoginModal />
       <SignupModal />
@@ -169,6 +172,7 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
                 <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
                 <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="/verify-email" element={<VerifyEmailPage />} />
                 <Route path="/ticket/print/:publicId" element={<TicketPrintPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>

@@ -25,6 +25,9 @@ model User {
   password_reset_expires DateTime?
   password_changed_at    DateTime?
   token_version          Int               @default(0)
+  email_verified            Boolean           @default(false)
+  email_verification_token  String?
+  email_verification_expires DateTime?
   orders             Order[]
   resell_requests    ResellRequest[]
   points_history     PointsHistory[]
