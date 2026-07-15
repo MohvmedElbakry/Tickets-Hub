@@ -109,7 +109,7 @@ export const EventsListingPage = () => {
           {loadingEvents ? (
             <div className="flex flex-col items-center justify-center py-32 bg-bg-card rounded-card border border-bg-border animate-pulse">
               <div className="w-12 h-12 border-4 border-teal border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-text-muted font-black tracking-widest uppercase text-[10px]">Synchronizing Events Hub...</p>
+              <p className="text-text-muted font-black tracking-widest uppercase text-[10px]">Loading Events...</p>
             </div>
           ) : filteredEvents.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">

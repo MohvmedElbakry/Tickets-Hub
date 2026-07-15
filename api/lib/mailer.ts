@@ -258,7 +258,7 @@ async function sendViaResend(from: string, options: SendEmailOptions): Promise<s
     }));
   }
 
-  console.log(`[9] Payload validated. Payload size: ${JSON.stringify(payload).length} bytes. Sender: ${from}. Recipient: ${JSON.stringify(payload.to)}`);
+  console.log(`[RESEND REQUEST START] Initiating dispatch to Resend API. Size: ${JSON.stringify(payload).length} bytes. Sender: ${from}. Recipient: ${JSON.stringify(payload.to)}`);
 
   console.log(`[10] About to call fetch()`);
   const fetchStart = Date.now();
@@ -273,7 +273,7 @@ async function sendViaResend(from: string, options: SendEmailOptions): Promise<s
     });
     const fetchEnd = Date.now();
     console.log(`[11] fetch() returned. Duration: ${fetchEnd - fetchStart}ms`);
-    console.log(`[12] HTTP status = ${response.status}`);
+    console.log(`[RESEND RESPONSE HTTP_STATUS: ${response.status}]`);
 
     const responseText = await response.text();
     console.log(`[13] Response text = ${responseText}`);
@@ -289,11 +289,10 @@ async function sendViaResend(from: string, options: SendEmailOptions): Promise<s
     }
 
     const messageId = resData.id;
-    console.log(`[15] Message ID = ${messageId}`);
-    console.log(`[16] Email completed`);
+    console.log(`[MESSAGE ID: ${messageId}] Email dispatch completed successfully via Resend API.`);
     return messageId;
   } catch (fetchErr: any) {
-    console.error(`🚨 [fetch exception in sendViaResend]:`, fetchErr.stack || fetchErr.message || fetchErr);
+    console.error(`[FULL ERROR] Resend dispatch failed. Exception: ${fetchErr.stack || fetchErr.message || fetchErr}`);
     throw fetchErr;
   }
 }

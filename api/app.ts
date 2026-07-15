@@ -1796,10 +1796,11 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEma
       const result = await db.markOrderAsPaid(order.id, transactionId);
       
       if (result.success) {
-        console.log(`[API SUCCESS] Order #${order.id} confirmed via return.`);
+        console.log(`[PAYMENT VERIFIED] Order #${order.id} confirmed via return.`);
+        console.log(`[ORDER UPDATED] Order #${order.id} status updated to paid in DB.`);
         // Dispatch email notification asynchronously without blocking response
         sendTicketEmail(order.public_id).catch(err => {
-          console.error(`[ASYNC EMAIL DISPATCH ERROR]:`, err);
+          console.error(`🚨 [ASYNC EMAIL DISPATCH ERROR]:`, err);
         });
         return res.json({ success: true, is_paid: true, order: result.order });
       } else {
@@ -1850,11 +1851,12 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEma
       }
 
       if (order) {
-        console.log(`[Webhook] Triggering markOrderAsPaid for order #${order.id} (Public: ${order.public_id})`);
+        console.log(`[PAYMENT VERIFIED] Order #${order.id} (Public: ${order.public_id}) confirmed via webhook.`);
         await db.markOrderAsPaid(order.id, transactionId);
+        console.log(`[ORDER UPDATED] Order #${order.id} status updated to paid in DB via webhook.`);
         // Dispatch email notification asynchronously without blocking response
         sendTicketEmail(order.public_id).catch(err => {
-          console.error(`[ASYNC EMAIL DISPATCH ERROR]:`, err);
+          console.error(`🚨 [ASYNC EMAIL DISPATCH ERROR]:`, err);
         });
       }
 
@@ -2353,17 +2355,23 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
       throw new Error(`No ticket instances found/created for paid order ID: ${order.id}`);
     }
 
+    console.log(`[TICKET INSTANCES CREATED] Generated/Confirmed ${ticketInstances.length} ticket instances for Order #${order.id}.`);
+
     // Generate PDF for EACH ticket instance
     const attachments = [];
     for (const ticket of ticketInstances) {
-      console.log(`Generating individual PDF for ticket instance: ${ticket.public_id}`);
+      console.log(`[GENERATING PDF FOR ${ticket.public_id}] Starting generation...`);
       const { pdfBuffer } = await generateTicketPdfBuffer(ticket.public_id);
+      console.log(`[GENERATING PDF FOR ${ticket.public_id}] Done. pdf buffer size: ${pdfBuffer ? pdfBuffer.length : 0} bytes.`);
       attachments.push({
         filename: `Ticket-${ticket.public_id}.pdf`,
         content: pdfBuffer,
         contentType: 'application/pdf'
       });
     }
+
+    console.log(`[SENDING EMAIL] Starting email composition and dispatch...`);
+    console.log(`[ATTACHMENTS: ${attachments.length}] Composed ${attachments.length} ticket PDF attachments.`);
 
     // 3. Compose high-polish HTML template
     const htmlText = `
@@ -3013,12 +3021,28 @@ app.put('/api/orders/:publicId/pay', authenticateToken, requireEmailVerification
     // Security: Only user or admin can pay
     if (order.user_id !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ error: 'Unauthorized' });
 
+    console.log(`[PAYMENT VERIFIED] Order #${order.id} manually paid / simulated.`);
+
     // INTERNAL DB CALL: uses numeric order.id
     const result = await db.updateOrder(order.id, { 
       order_status: 'paid', 
       is_paid: true, 
       paid_at: new Date() 
     });
+
+    console.log(`[ORDER UPDATED] Order #${order.id} status updated to paid in DB.`);
+
+    if (result) {
+      // Generate individual TicketInstance records immediately
+      await db.ensureTicketInstancesForOrder(order.id);
+      console.log(`[TICKET INSTANCES CREATED] Generated/confirmed ticket instances for Order #${order.id}.`);
+
+      // Dispatch email notification asynchronously
+      sendTicketEmail(order.public_id).catch(err => {
+        console.error(`🚨 [ASYNC EMAIL DISPATCH ERROR in simulated pay]:`, err);
+      });
+    }
+
     res.json(result);
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
