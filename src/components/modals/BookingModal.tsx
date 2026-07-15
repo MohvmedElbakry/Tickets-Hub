@@ -30,12 +30,13 @@ export const BookingModal = () => {
   useEffect(() => {
     if (isOpen && bookingData) {
       // Initialize form with user data if available
+      const totalQty = bookingData.tickets.reduce((sum, t) => sum + (t.quantity || 1), 0);
       setBookingForm(prev => ({
         ...prev,
         instagram: user?.instagram_username || prev.instagram,
         phone: user?.phone || prev.phone,
         birthdate: user?.birthdate || prev.birthdate,
-        ticketHolders: bookingData.tickets.map(() => ({
+        ticketHolders: Array.from({ length: totalQty }).map(() => ({
           first_name: '',
           last_name: '',
           birthdate: ''

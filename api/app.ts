@@ -2320,6 +2320,7 @@ TOTAL:              ${totalTime}ms
  * Automates emailing ticket PDFs to buyers upon successful order payment.
  */
 export async function sendTicketEmail(publicId: string): Promise<{ success: boolean; messageId?: string }> {
+  console.log(`[EMAIL STEP 1] Entering sendTicketEmail()`);
   console.log(`📡 [EMAIL DISPATCH] Dispatching ticket email for order #${publicId}...`);
   try {
     // 1. Fetch the Order from DB
@@ -2327,6 +2328,7 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
     if (!order) {
       throw new Error(`Order not found for public ID: ${publicId}`);
     }
+    console.log(`[EMAIL STEP 2] Loaded Order ${order.public_id}`);
 
     // 2. Fetch User associated with the order from DB
     const user = await prisma.user.findUnique({ where: { id: order.user_id } });
@@ -2351,6 +2353,8 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
       include: { ticket_type: true }
     });
 
+    console.log(`[EMAIL STEP 3] Found ${ticketInstances.length} TicketInstances`);
+
     if (ticketInstances.length === 0) {
       throw new Error(`No ticket instances found/created for paid order ID: ${order.id}`);
     }
@@ -2360,9 +2364,9 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
     // Generate PDF for EACH ticket instance
     const attachments = [];
     for (const ticket of ticketInstances) {
-      console.log(`[GENERATING PDF FOR ${ticket.public_id}] Starting generation...`);
+      console.log(`[EMAIL STEP 4] Generating PDF for Ticket ${ticket.public_id}`);
       const { pdfBuffer } = await generateTicketPdfBuffer(ticket.public_id);
-      console.log(`[GENERATING PDF FOR ${ticket.public_id}] Done. pdf buffer size: ${pdfBuffer ? pdfBuffer.length : 0} bytes.`);
+      console.log(`[EMAIL STEP 5] PDF generated successfully for ${ticket.public_id}. Done. pdf buffer size: ${pdfBuffer ? pdfBuffer.length : 0} bytes.`);
       attachments.push({
         filename: `Ticket-${ticket.public_id}.pdf`,
         content: pdfBuffer,
@@ -2437,7 +2441,7 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
                     </tr>
                   </table>
                 </div>
-
+                
                 <p><strong>Instructions:</strong> Please print or save the attached PDF ticket(s). The QR code on each ticket will be scanned at the entrance. Note that QR codes are activated as per the event rules (usually 1 hour before the gate opens).</p>
                 
                 <p>If you have any questions or require support, reply directly to this email or visit our website.</p>
@@ -2479,6 +2483,7 @@ The TicketsHub Team
     `;
 
     // 4. Send email
+    console.log(`[EMAIL STEP 6] Calling sendEmail()`);
     const mailResult = await sendEmail({
       to: user.email,
       subject: `🎟️ Your Event Tickets: ${eventTitle} (#${orderNum})`,
@@ -2492,6 +2497,7 @@ The TicketsHub Team
 
   } catch (error: any) {
     console.error(`🚨 [EMAIL DISPATCH ERROR] Failed to email ticket for order public ID: ${publicId}. Error: ${error.stack || error.message}`);
+    console.error(`[EMAIL FATAL] Execution stopped because: ${error.message}`);
     return { success: false };
   }
 }

@@ -164,6 +164,8 @@ export async function sendEmail(options: SendEmailOptions, retries = 2): Promise
     throw new Error(`Email dispatch failed due to configuration errors: ${validation.errors.join(', ')}`);
   }
 
+  console.log(`[EMAIL STEP 7] Using ${validation.mode} mode`);
+
   const sender = process.env.SMTP_FROM || process.env.MAIL_FROM!;
   console.log(`[6] Selected sender = ${sender}`);
 
@@ -190,6 +192,7 @@ export async function sendEmail(options: SendEmailOptions, retries = 2): Promise
     }
   }
 
+  console.error('🚨 [MAIL FATAL] sendEmail completed retry loop without throwing but returned success: false');
   return { success: false };
 }
 
@@ -258,6 +261,7 @@ async function sendViaResend(from: string, options: SendEmailOptions): Promise<s
     }));
   }
 
+  console.log(`[EMAIL STEP 8] Sending POST https://api.resend.com/emails`);
   console.log(`[RESEND REQUEST START] Initiating dispatch to Resend API. Size: ${JSON.stringify(payload).length} bytes. Sender: ${from}. Recipient: ${JSON.stringify(payload.to)}`);
 
   console.log(`[10] About to call fetch()`);
@@ -273,6 +277,7 @@ async function sendViaResend(from: string, options: SendEmailOptions): Promise<s
     });
     const fetchEnd = Date.now();
     console.log(`[11] fetch() returned. Duration: ${fetchEnd - fetchStart}ms`);
+    console.log(`[EMAIL STEP 9] HTTP Status ${response.status}`);
     console.log(`[RESEND RESPONSE HTTP_STATUS: ${response.status}]`);
 
     const responseText = await response.text();
@@ -289,6 +294,7 @@ async function sendViaResend(from: string, options: SendEmailOptions): Promise<s
     }
 
     const messageId = resData.id;
+    console.log(`[EMAIL STEP 10] Message ID ${messageId}`);
     console.log(`[MESSAGE ID: ${messageId}] Email dispatch completed successfully via Resend API.`);
     return messageId;
   } catch (fetchErr: any) {
