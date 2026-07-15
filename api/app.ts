@@ -1560,10 +1560,25 @@ app.get('/api/orders/:publicId', async (req: any, res) => {
   try {
     const order = await db.getOrderByPublicId(req.params.publicId);
     if (!order) return res.status(404).json({ error: 'Not found' });
+    
+    // Auto-generate ticket instances for paid orders
+    if (order.is_paid || order.order_status === 'paid') {
+      await db.ensureTicketInstancesForOrder(order.id);
+    }
+    
     const items = await db.getOrderTicketsByOrderId(order.id);
     const event = await db.getEventById(order.event_id);
-    res.json({ ...order, items, event });
-  } catch (error: any) { res.status(500).json({ error: error.message }); }
+    
+    const ticketInstances = await prisma.ticketInstance.findMany({
+      where: { order_id: order.id },
+      include: { ticket_type: true, owner: true, order: { include: { event: true } } }
+    });
+    
+    res.json({ ...order, items, event, ticket_instances: ticketInstances });
+  } catch (error: any) { 
+    console.error('[API ERROR] /api/orders/:publicId:', error);
+    res.status(500).json({ error: error.message }); 
+  }
 });
 
 // --- SETTINGS ROUTES ---
@@ -2112,7 +2127,11 @@ export async function generateTicketPdfBuffer(publicId: string): Promise<{ pdfBu
         const o = await db.getOrderByPublicId(publicId);
         if (o) {
           if (o.is_paid || o.order_status === 'paid') {
-            await db.ensureTicketInstancesForOrder(o.id);
+            const instances = await db.ensureTicketInstancesForOrder(o.id);
+            if (instances && instances.length > 0) {
+              // Fallback to first ticket instance to strictly respect the single-ticket rule
+              return { ticket: instances[0], order: null, time: Date.now() - parallelStart };
+            }
           }
         }
         return { ticket: null, order: o, time: Date.now() - parallelStart };
@@ -2127,7 +2146,7 @@ export async function generateTicketPdfBuffer(publicId: string): Promise<{ pdfBu
     const { info: browserInfo, time: acquireTime } = browserResult;
     const { browser, reused } = browserInfo;
 
-    const order = ticket ? ticket.order : fetchedOrder;
+    const order = ticket ? (ticket as any).order : fetchedOrder;
     if (!order) {
       throw new Error(`Order not found for public ID: ${publicId}`);
     }
@@ -2140,7 +2159,8 @@ export async function generateTicketPdfBuffer(publicId: string): Promise<{ pdfBu
     let statusText = isPaid ? 'CONFIRMED' : (order.order_status || 'PENDING').toUpperCase();
 
     if (ticket) {
-      if (isPaid && ticket.status !== 'PENDING' && ticket.qr_token) {
+      const ticketAny = ticket as any;
+      if (isPaid && ticketAny.status !== 'PENDING' && ticketAny.qr_token) {
         const eventTimeStr = event.event_time || '00:00';
         const eventDateStr = event.event_date ? (typeof event.event_date === 'string' ? event.event_date.split('T')[0] : event.event_date.toISOString().split('T')[0]) : new Date().toISOString().split('T')[0];
         const eventDateTime = new Date(`${eventDateStr}T${eventTimeStr.includes(':') ? eventTimeStr : eventTimeStr + ':00'}`);
@@ -2153,7 +2173,7 @@ export async function generateTicketPdfBuffer(publicId: string): Promise<{ pdfBu
         }
 
         if (visible) {
-          const qrData = `TicketsHub-Ticket-${ticket.qr_token}`;
+          const qrData = `TicketsHub-Ticket-${ticketAny.qr_token}`;
           qrDataUrl = await QRCode.toDataURL(qrData, { 
             margin: 1, 
             width: 256,
@@ -2300,9 +2320,12 @@ TOTAL:              ${totalTime}ms
 export async function sendTicketEmail(publicId: string): Promise<{ success: boolean; messageId?: string }> {
   console.log(`📡 [EMAIL DISPATCH] Dispatching ticket email for order #${publicId}...`);
   try {
-    // 1. Generate PDF (which also fetches the order)
-    const { pdfBuffer, order } = await generateTicketPdfBuffer(publicId);
-    
+    // 1. Fetch the Order from DB
+    const order = await db.getOrderByPublicId(publicId);
+    if (!order) {
+      throw new Error(`Order not found for public ID: ${publicId}`);
+    }
+
     // 2. Fetch User associated with the order from DB
     const user = await prisma.user.findUnique({ where: { id: order.user_id } });
     if (!user || !user.email) {
@@ -2316,6 +2339,31 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
     const eventTime = order.event?.event_time || 'N/A';
     const eventVenue = order.event?.venue || 'N/A';
     const orderNum = order.id;
+
+    // Ensure individual ticket instances exist
+    await db.ensureTicketInstancesForOrder(order.id);
+
+    // Fetch all ticket instances for this order
+    const ticketInstances = await prisma.ticketInstance.findMany({
+      where: { order_id: order.id },
+      include: { ticket_type: true }
+    });
+
+    if (ticketInstances.length === 0) {
+      throw new Error(`No ticket instances found/created for paid order ID: ${order.id}`);
+    }
+
+    // Generate PDF for EACH ticket instance
+    const attachments = [];
+    for (const ticket of ticketInstances) {
+      console.log(`Generating individual PDF for ticket instance: ${ticket.public_id}`);
+      const { pdfBuffer } = await generateTicketPdfBuffer(ticket.public_id);
+      attachments.push({
+        filename: `Ticket-${ticket.public_id}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      });
+    }
 
     // 3. Compose high-polish HTML template
     const htmlText = `
@@ -2350,7 +2398,7 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
                 <p>Hi ${recipientName},</p>
                 <p>Thank you for your purchase. Your payment was successful, and your ticket for <strong>${eventTitle}</strong> is secured!</p>
                 
-                <p>We've attached your printable PDF ticket to this email. You can also view/present it directly from your dashboard.</p>
+                <p>We've attached your printable PDF ticket(s) to this email. You can also view/present them directly from your dashboard.</p>
                 
                 <div class="order-details">
                   <h3 style="margin-top: 0; color: #0f172a; font-size: 16px;">Order Receipt Summary</h3>
@@ -2375,10 +2423,14 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
                       <td class="label">Venue:</td>
                       <td class="value">${eventVenue}</td>
                     </tr>
+                    <tr>
+                      <td class="label">Ticket Qty:</td>
+                      <td class="value">${ticketInstances.length}</td>
+                    </tr>
                   </table>
                 </div>
 
-                <p><strong>Instructions:</strong> Please print or save the attached PDF ticket. The QR code on the ticket will be scanned at the entrance. Note that QR codes are activated as per the event rules (usually 1 hour before the gate opens).</p>
+                <p><strong>Instructions:</strong> Please print or save the attached PDF ticket(s). The QR code on each ticket will be scanned at the entrance. Note that QR codes are activated as per the event rules (usually 1 hour before the gate opens).</p>
                 
                 <p>If you have any questions or require support, reply directly to this email or visit our website.</p>
                 
@@ -2386,7 +2438,7 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
               </div>
               <div class="footer">
                 <p>&copy; 2026 TicketsHub Inc. All rights reserved.</p>
-                <p>This is an automated operational email. If you did not make this purchase, please contact security immediately.</p>
+                <p>This is an automated operational operational email. If you did not make this purchase, please contact security immediately.</p>
               </div>
             </div>
           </div>
@@ -2397,9 +2449,9 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
     const plainText = `
 Hi ${recipientName},
 
-Thank you for your purchase. Your payment was successful, and your ticket for "${eventTitle}" is secured!
+Thank you for your purchase. Your payment was successful, and your tickets for "${eventTitle}" are secured!
 
-We have attached your printable PDF ticket to this email.
+We have attached your printable PDF ticket(s) to this email.
 
 Order Details:
 - Order ID: #${orderNum}
@@ -2407,9 +2459,10 @@ Order Details:
 - Date: ${eventDate}
 - Time: ${eventTime}
 - Venue: ${eventVenue}
+- Quantity: ${ticketInstances.length}
 
 Instructions:
-Please present the attached PDF ticket at the entrance. The QR code located on the ticket will be scanned at the gates.
+Please present the attached PDF ticket(s) at the entrance. The QR code located on each ticket will be scanned at the gates.
 
 If you have any questions, reply to this email or contact support.
 
@@ -2420,16 +2473,10 @@ The TicketsHub Team
     // 4. Send email
     const mailResult = await sendEmail({
       to: user.email,
-      subject: `🎟️ Your Event Ticket: ${eventTitle} (#${orderNum})`,
+      subject: `🎟️ Your Event Tickets: ${eventTitle} (#${orderNum})`,
       html: htmlText,
       text: plainText,
-      attachments: [
-        {
-          filename: `Ticket-${publicId}.pdf`,
-          content: pdfBuffer,
-          contentType: 'application/pdf'
-        }
-      ]
+      attachments
     });
 
     console.log(`✨ [EMAIL DISPATCH SUCCESS] Ticket emailed successfully for order #${orderNum} (Public: ${publicId})`);

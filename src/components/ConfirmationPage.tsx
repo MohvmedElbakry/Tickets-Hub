@@ -17,10 +17,36 @@ import { orderService } from '../services/orderService';
 import { useUI } from '../context/UIContext';
 import { handleDownloadPDF } from '../lib/ticketUtils';
 import { TicketCard } from './tickets';
-import { useQRStatus } from '../hooks/useQRStatus';
+import { useQRStatus, useTicketQRStatus } from '../hooks/useQRStatus';
 import { useOrder } from '../hooks/useOrder';
 import { updateOrderCache, getOrderCached } from '../lib/orderCache';
 import { formatEventTime } from '../lib/utils';
+
+// Helper component to render each individual ticket instance independently
+const IndividualTicketItem = ({ ticket }: { ticket: any }) => {
+  const { qrStatus, loading: loadingQr } = useTicketQRStatus(ticket.public_id, true);
+  return (
+    <div className="layout-stack gap-4 bg-bg-card/30 p-6 sm:p-8 rounded-card border border-bg-border/60 shadow-lg relative overflow-hidden group">
+      <div className="absolute top-0 left-0 w-2.5 h-full bg-teal"></div>
+      <TicketCard 
+        ticket={ticket}
+        qrData={qrStatus?.qr_data}
+        qrVisible={qrStatus?.visible}
+        qrReason={qrStatus?.reason}
+        loadingQr={loadingQr}
+      />
+      <div className="flex flex-wrap justify-center gap-3 mt-4">
+        <Button 
+          variant="accent" 
+          className="px-8 py-4 text-button font-black uppercase tracking-widest flex items-center gap-3 shadow-card-glow"
+          onClick={() => handleDownloadPDF(ticket)}
+        >
+          <Download size={18} /> Download PDF Ticket
+        </Button>
+      </div>
+    </div>
+  );
+};
 
 export const ConfirmationPage = () => {
   const { publicId } = useParams<{ publicId: string }>();
@@ -139,30 +165,40 @@ export const ConfirmationPage = () => {
         )}
       </div>
 
-      <div className="layout-stack gap-4">
-        <TicketCard 
-          order={order}
-          qrData={qrStatus?.qr_data}
-          qrVisible={qrStatus?.visible}
-          qrReason={qrStatus?.reason}
-          loadingQr={loadingQr}
-        />
-        
-        {isPaid && (
-          <div className="flex flex-wrap justify-center gap-3">
-            <Button 
-              variant="accent" 
-              className="px-8 py-4 text-button font-black uppercase tracking-widest flex items-center gap-3 shadow-card-glow"
-              onClick={() => handleDownloadPDF(order)}
-            >
-              <Download size={18} /> Download PDF Ticket
-            </Button>
-            <div className="relative group/tooltip">
-              <Button variant="outline" className="px-8 py-4 text-button font-black uppercase tracking-widest opacity-50 cursor-not-allowed">Add to Wallet</Button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-4 py-2 bg-bg-elevated text-text-primary text-body-xs rounded-tag opacity-0 group-hover/tooltip:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-bg-border z-10 font-bold tracking-widest shadow-2xl">
-                NATIVE WALLET COMING SOON
+      <div className="layout-stack gap-8">
+        {isPaid && order?.ticket_instances && order.ticket_instances.length > 0 ? (
+          <div className="layout-stack gap-8">
+            {order.ticket_instances.map((t: any) => (
+              <IndividualTicketItem key={t.id} ticket={t} />
+            ))}
+          </div>
+        ) : (
+          <div className="layout-stack gap-4">
+            <TicketCard 
+              order={order}
+              qrData={qrStatus?.qr_data}
+              qrVisible={qrStatus?.visible}
+              qrReason={qrStatus?.reason}
+              loadingQr={loadingQr}
+            />
+            
+            {isPaid && (
+              <div className="flex flex-wrap justify-center gap-3">
+                <Button 
+                  variant="accent" 
+                  className="px-8 py-4 text-button font-black uppercase tracking-widest flex items-center gap-3 shadow-card-glow"
+                  onClick={() => handleDownloadPDF(order)}
+                >
+                  <Download size={18} /> Download PDF Ticket
+                </Button>
+                <div className="relative group/tooltip">
+                  <Button variant="outline" className="px-8 py-4 text-button font-black uppercase tracking-widest opacity-50 cursor-not-allowed">Add to Wallet</Button>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-4 py-2 bg-bg-elevated text-text-primary text-body-xs rounded-tag opacity-0 group-hover/tooltip:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-bg-border z-10 font-bold tracking-widest shadow-2xl">
+                    NATIVE WALLET COMING SOON
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>
