@@ -86,6 +86,12 @@ export const TicketTemplate: React.FC<TicketTemplateProps> = ({
                <p style={{ margin: 0, opacity: 0.6, fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#A7B5B2' }}>Order Reference</p>
                <p style={{ margin: 0, fontWeight: 'bold', fontSize: '12px', color: '#00C9B1', fontFamily: 'monospace' }}>#{displayOrderId}</p>
              </div>
+             {ticket && ticket.public_id && (
+               <div style={{ textAlign: 'center', marginTop: '8px', borderTop: '1px solid #24302D', paddingTop: '8px' }}>
+                 <p style={{ margin: 0, opacity: 0.6, fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#A7B5B2' }}>Ticket ID</p>
+                 <p style={{ margin: 0, fontWeight: 'bold', fontSize: '13px', color: '#00C9B1', fontFamily: 'monospace', letterSpacing: '0.05em' }}>{ticket.public_id}</p>
+               </div>
+             )}
           </div>
 
           {/* Vertical Divider */}

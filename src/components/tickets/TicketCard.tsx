@@ -71,6 +71,12 @@ export const TicketCard: React.FC<TicketCardProps> = ({
             <p className="opacity-60 text-[10px] font-black uppercase tracking-widest text-text-muted">Order Reference</p>
             <p className="font-mono font-bold text-body-xs text-teal">#{activeOrder.id}</p>
           </div>
+          {ticket && ticket.public_id && (
+            <div className="text-center mt-2 pt-2 border-t border-bg-border/30 w-full">
+              <p className="opacity-60 text-[10px] font-black uppercase tracking-widest text-text-muted">Ticket ID</p>
+              <p className="font-mono font-bold text-body-xs text-teal">{ticket.public_id}</p>
+            </div>
+          )}
         </div>
 
         {/* Divider */}

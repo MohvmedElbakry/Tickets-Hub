@@ -1798,10 +1798,12 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEma
       if (result.success) {
         console.log(`[PAYMENT VERIFIED] Order #${order.id} confirmed via return.`);
         console.log(`[ORDER UPDATED] Order #${order.id} status updated to paid in DB.`);
-        // Dispatch email notification asynchronously without blocking response
-        sendTicketEmail(order.public_id).catch(err => {
-          console.error(`🚨 [ASYNC EMAIL DISPATCH ERROR]:`, err);
-        });
+        // Dispatch email notification and await to ensure it completes before container freezes
+        try {
+          await sendTicketEmail(order.public_id);
+        } catch (err) {
+          console.error(`🚨 [EMAIL DISPATCH ERROR in confirm-from-return]:`, err);
+        }
         return res.json({ success: true, is_paid: true, order: result.order });
       } else {
         console.warn(`[API FAILED] Order #${order.id} confirmation failed: ${result.reason}`);
@@ -1854,10 +1856,12 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEma
         console.log(`[PAYMENT VERIFIED] Order #${order.id} (Public: ${order.public_id}) confirmed via webhook.`);
         await db.markOrderAsPaid(order.id, transactionId);
         console.log(`[ORDER UPDATED] Order #${order.id} status updated to paid in DB via webhook.`);
-        // Dispatch email notification asynchronously without blocking response
-        sendTicketEmail(order.public_id).catch(err => {
-          console.error(`🚨 [ASYNC EMAIL DISPATCH ERROR]:`, err);
-        });
+        // Dispatch email notification and await to ensure it completes before container freezes
+        try {
+          await sendTicketEmail(order.public_id);
+        } catch (err) {
+          console.error(`🚨 [EMAIL DISPATCH ERROR in webhook]:`, err);
+        }
       }
 
       return res.status(200).send();
@@ -2361,21 +2365,59 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
 
     console.log(`[TICKET INSTANCES CREATED] Generated/Confirmed ${ticketInstances.length} ticket instances for Order #${order.id}.`);
 
-    // Generate PDF for EACH ticket instance
-    const attachments = [];
-    for (const ticket of ticketInstances) {
-      console.log(`[EMAIL STEP 4] Generating PDF for Ticket ${ticket.public_id}`);
-      const { pdfBuffer } = await generateTicketPdfBuffer(ticket.public_id);
-      console.log(`[EMAIL STEP 5] PDF generated successfully for ${ticket.public_id}. Done. pdf buffer size: ${pdfBuffer ? pdfBuffer.length : 0} bytes.`);
-      attachments.push({
-        filename: `Ticket-${ticket.public_id}.pdf`,
-        content: pdfBuffer,
-        contentType: 'application/pdf'
-      });
+    // Generate PDF for EACH ticket instance in parallel to minimize checkout delay
+    const attachments: any[] = [];
+    const pdfPromises = ticketInstances.map(async (ticket) => {
+      const ticketId = ticket.public_id;
+      console.log(`[TICKET PDF START] Starting PDF generation for Ticket ${ticketId}`);
+      const startPdf = Date.now();
+      try {
+        const { pdfBuffer } = await generateTicketPdfBuffer(ticketId);
+        const duration = Date.now() - startPdf;
+        const sizeBytes = pdfBuffer ? pdfBuffer.length : 0;
+        console.log(`[TICKET PDF COMPLETE] PDF generation complete for Ticket ${ticketId} in ${duration}ms`);
+        console.log(`[TICKET PDF SIZE] Ticket ${ticketId} PDF size: ${sizeBytes} bytes`);
+        return {
+          success: true,
+          ticketId,
+          pdfBuffer,
+          sizeBytes,
+          filename: `Ticket-${ticketId}.pdf`,
+          contentType: 'application/pdf'
+        };
+      } catch (err: any) {
+        console.error(`🚨 [TICKET PDF FAILURE] Failed to generate PDF for Ticket ${ticketId}:`, err.stack || err.message || err);
+        return {
+          success: false,
+          ticketId,
+          error: err
+        };
+      }
+    });
+
+    const pdfResults = await Promise.all(pdfPromises);
+    let totalSizeBytes = 0;
+
+    for (const result of pdfResults) {
+      if (result.success && result.pdfBuffer) {
+        attachments.push({
+          filename: result.filename,
+          content: result.pdfBuffer,
+          contentType: result.contentType
+        });
+        totalSizeBytes += result.sizeBytes;
+        console.log(`[ATTACHMENT ADDED] Attached Ticket-${result.ticketId}.pdf (${result.sizeBytes} bytes)`);
+      } else {
+        console.error(`🚨 [ATTACHMENT FAILURE] Skipping attachment for Ticket ${result.ticketId} due to PDF generation failure`);
+      }
     }
 
-    console.log(`[SENDING EMAIL] Starting email composition and dispatch...`);
-    console.log(`[ATTACHMENTS: ${attachments.length}] Composed ${attachments.length} ticket PDF attachments.`);
+    console.log(`[ATTACHMENT COUNT] Total attachments: ${attachments.length}`);
+    console.log(`[TOTAL ATTACHMENT SIZE] Total attachments size: ${totalSizeBytes} bytes`);
+
+    if (totalSizeBytes > 10 * 1024 * 1024) {
+      console.warn(`⚠️ [TOTAL ATTACHMENT SIZE WARNING] Total attachments size (${totalSizeBytes} bytes) exceeds Resend limit of 10MB. Email might be rejected.`);
+    }
 
     // 3. Compose high-polish HTML template
     const htmlText = `
@@ -2441,6 +2483,21 @@ export async function sendTicketEmail(publicId: string): Promise<{ success: bool
                     </tr>
                   </table>
                 </div>
+
+                <div class="order-details" style="margin-top: 20px;">
+                  <h3 style="margin-top: 0; color: #0f172a; font-size: 16px;">Attendee Tickets</h3>
+                  <table class="details-table">
+                    ${ticketInstances.map((ticket, idx) => `
+                      <tr style="border-bottom: 1px solid #e2e8f0;">
+                        <td class="label" style="padding: 8px 0; font-weight: bold;">Ticket #${idx + 1}:</td>
+                        <td class="value" style="padding: 8px 0;">
+                          <strong>${ticket.attendee_name || 'Attendee'}</strong> (${ticket.ticket_type?.name || 'General Admission'})<br/>
+                          <span style="font-family: monospace; font-size: 13px; color: #10B981; font-weight: bold; letter-spacing: 0.05em;">Ticket ID: ${ticket.public_id}</span>
+                        </td>
+                      </tr>
+                    `).join('')}
+                  </table>
+                </div>
                 
                 <p><strong>Instructions:</strong> Please print or save the attached PDF ticket(s). The QR code on each ticket will be scanned at the entrance. Note that QR codes are activated as per the event rules (usually 1 hour before the gate opens).</p>
                 
@@ -2473,6 +2530,9 @@ Order Details:
 - Venue: ${eventVenue}
 - Quantity: ${ticketInstances.length}
 
+Tickets Issued:
+${ticketInstances.map((t, idx) => `Ticket #${idx + 1}: ${t.attendee_name} (${t.ticket_type?.name || 'Ticket'}) | Ticket ID: ${t.public_id}`).join('\n')}
+
 Instructions:
 Please present the attached PDF ticket(s) at the entrance. The QR code located on each ticket will be scanned at the gates.
 
@@ -2484,17 +2544,27 @@ The TicketsHub Team
 
     // 4. Send email
     console.log(`[EMAIL STEP 6] Calling sendEmail()`);
-    const mailResult = await sendEmail({
-      to: user.email,
-      subject: `🎟️ Your Event Tickets: ${eventTitle} (#${orderNum})`,
-      html: htmlText,
-      text: plainText,
-      attachments
-    });
+    console.log(`[SENDING EMAIL] Dispatching ticket email to ${user.email} with ${attachments.length} attachments.`);
+    try {
+      const mailResult = await sendEmail({
+        to: user.email,
+        subject: `🎟️ Your Event Tickets: ${eventTitle} (#${orderNum})`,
+        html: htmlText,
+        text: plainText,
+        attachments
+      });
 
-    console.log(`✨ [EMAIL DISPATCH SUCCESS] Ticket emailed successfully for order #${orderNum} (Public: ${publicId})`);
-    return mailResult;
-
+      if (mailResult && mailResult.success) {
+        console.log(`[EMAIL SUCCESS] Email sent successfully for Order #${orderNum} (Message ID: ${mailResult.messageId || 'N/A'})`);
+      } else {
+        console.error(`[EMAIL FAILURE] Email dispatch returned success=false for Order #${orderNum}`);
+      }
+      return mailResult;
+    } catch (mailErr: any) {
+      console.error(`[EMAIL FAILURE] Email dispatch threw exception for Order #${orderNum}: ${mailErr.message}`);
+      console.error(`[FULL STACK TRACE] ${mailErr.stack}`);
+      throw mailErr;
+    }
   } catch (error: any) {
     console.error(`🚨 [EMAIL DISPATCH ERROR] Failed to email ticket for order public ID: ${publicId}. Error: ${error.stack || error.message}`);
     console.error(`[EMAIL FATAL] Execution stopped because: ${error.message}`);
@@ -3043,10 +3113,12 @@ app.put('/api/orders/:publicId/pay', authenticateToken, requireEmailVerification
       await db.ensureTicketInstancesForOrder(order.id);
       console.log(`[TICKET INSTANCES CREATED] Generated/confirmed ticket instances for Order #${order.id}.`);
 
-      // Dispatch email notification asynchronously
-      sendTicketEmail(order.public_id).catch(err => {
-        console.error(`🚨 [ASYNC EMAIL DISPATCH ERROR in simulated pay]:`, err);
-      });
+      // Dispatch email notification and await to ensure it completes before container freezes
+      try {
+        await sendTicketEmail(order.public_id);
+      } catch (err) {
+        console.error(`🚨 [EMAIL DISPATCH ERROR in simulated pay]:`, err);
+      }
     }
 
     res.json(result);

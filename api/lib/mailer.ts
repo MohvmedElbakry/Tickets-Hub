@@ -262,6 +262,7 @@ async function sendViaResend(from: string, options: SendEmailOptions): Promise<s
   }
 
   console.log(`[EMAIL STEP 8] Sending POST https://api.resend.com/emails`);
+  console.log(`[RESEND REQUEST] Payload size: ${JSON.stringify(payload).length} bytes. Sender: ${from}. Recipient: ${JSON.stringify(payload.to)}`);
   console.log(`[RESEND REQUEST START] Initiating dispatch to Resend API. Size: ${JSON.stringify(payload).length} bytes. Sender: ${from}. Recipient: ${JSON.stringify(payload.to)}`);
 
   console.log(`[10] About to call fetch()`);
@@ -278,6 +279,7 @@ async function sendViaResend(from: string, options: SendEmailOptions): Promise<s
     const fetchEnd = Date.now();
     console.log(`[11] fetch() returned. Duration: ${fetchEnd - fetchStart}ms`);
     console.log(`[EMAIL STEP 9] HTTP Status ${response.status}`);
+    console.log(`[RESEND RESPONSE] Status: ${response.status}`);
     console.log(`[RESEND RESPONSE HTTP_STATUS: ${response.status}]`);
 
     const responseText = await response.text();
