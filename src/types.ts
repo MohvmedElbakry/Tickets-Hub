@@ -66,6 +66,7 @@ export interface OrderTicket {
   is_used?: boolean;
   scanned_count?: number;
   status?: 'active' | 'reselling' | 'resold';
+  ticket_type?: TicketType;
 }
 
 export interface Event {

@@ -812,7 +812,10 @@ class PrismaDB {
 
   async getOrderTicketsByOrderId(orderId: number) {
     try {
-      const result = await prisma.orderTicket.findMany({ where: { order_id: orderId } });
+      const result = await prisma.orderTicket.findMany({ 
+        where: { order_id: orderId },
+        include: { ticket_type: true }
+      });
       return result;
     } catch (err) {
       console.error(`[DB ERROR] getOrderTicketsByOrderId(${orderId}):`, err);

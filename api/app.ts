@@ -1481,9 +1481,13 @@ app.get('/api/orders', authenticateToken, async (req: any, res) => {
     
     // Map to result format
     const result = orders.map((o: any) => {
+      const items = (o.order_tickets || []).map((it: any) => ({
+        ...it,
+        name: it.ticket_type?.name || it.name
+      }));
       return { 
         ...o, 
-        items: o.order_tickets || [], 
+        items, 
         event: o.event 
       };
     });
@@ -1521,9 +1525,13 @@ app.get('/api/admin/orders', authenticateToken, authorizeRole(['admin']), async 
     const now = new Date();
     
     const result = orders.map((o: any) => {
+      const items = (o.order_tickets || []).map((it: any) => ({
+        ...it,
+        name: it.ticket_type?.name || it.name
+      }));
       return { 
         ...o, 
-        items: o.order_tickets || [], 
+        items, 
         event: o.event,
         user: o.user ? { name: o.user.name, email: o.user.email, phone: o.user.phone } : null
       };
@@ -1566,7 +1574,11 @@ app.get('/api/orders/:publicId', async (req: any, res) => {
       await db.ensureTicketInstancesForOrder(order.id);
     }
     
-    const items = await db.getOrderTicketsByOrderId(order.id);
+    const itemsRaw = await db.getOrderTicketsByOrderId(order.id);
+    const items = itemsRaw.map((it: any) => ({
+      ...it,
+      name: it.ticket_type?.name || it.name
+    }));
     const event = await db.getEventById(order.event_id);
     
     const ticketInstances = await prisma.ticketInstance.findMany({

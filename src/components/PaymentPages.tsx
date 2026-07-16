@@ -140,8 +140,8 @@ export const CheckoutPage = () => {
               {order.items?.map((item, idx) => (
                 <div key={idx} className="flex justify-between items-center p-5 bg-bg-elevated rounded-card border border-bg-border/50 group hover:border-teal/30 transition-colors">
                   <div className="content-stack gap-1">
-                    <p className="text-body-base font-black text-text-primary uppercase tracking-tight">{item.name}</p>
-                    <p className="text-label text-text-muted font-bold tracking-widest">{item.quantity}× UNIT PASS</p>
+                    <p className="text-body-base font-black text-text-primary uppercase tracking-tight">{item.ticket_type?.name || item.name}</p>
+                    <p className="text-label text-text-muted font-bold tracking-widest">{item.quantity}× {item.ticket_type?.name || item.name || 'UNIT PASS'}</p>
                   </div>
                   <p className="text-h4 text-text-primary">{(item.price_each * item.quantity).toFixed(2)} <span className="text-body-xs font-normal opacity-40">EGP</span></p>
                 </div>
