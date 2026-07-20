@@ -1243,7 +1243,7 @@ export const UserDashboard = () => {
                     
                     {(freshOrder || viewingTicket).is_paid && (() => {
                       const orderData = freshOrder || viewingTicket;
-                      const ticketInstance = orderData.ticket_instances?.[0];
+                      const ticketInstance = orderData.ticket_instances?.[0] || tickets.find((t: any) => t.order_id === orderData.id);
                       if (!ticketInstance) return null;
 
                       const statusUpper = ticketInstance.status?.toUpperCase();

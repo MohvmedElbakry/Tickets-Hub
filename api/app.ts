@@ -1580,22 +1580,27 @@ app.get('/api/orders/:publicId', async (req: any, res) => {
     const order = await db.getOrderByPublicId(req.params.publicId);
     if (!order) return res.status(404).json({ error: 'Not found' });
     
-    // Auto-generate ticket instances for paid orders
-    if (order.is_paid || order.order_status === 'paid') {
-      await db.ensureTicketInstancesForOrder(order.id);
-    }
-    
-    const itemsRaw = await db.getOrderTicketsByOrderId(order.id);
-    const items = itemsRaw.map((it: any) => ({
-      ...it,
-      name: it.ticket_type?.name || it.name
-    }));
-    const event = await db.getEventById(order.event_id);
-    
-    const ticketInstances = await prisma.ticketInstance.findMany({
+    // Check if ticket instances are already generated
+    let ticketInstances = await prisma.ticketInstance.findMany({
       where: { order_id: order.id },
       include: { ticket_type: true, owner: true, order: { include: { event: true } } }
     });
+
+    // Auto-generate ticket instances ONLY if none exist and the order is paid
+    if (ticketInstances.length === 0 && (order.is_paid || order.order_status === 'paid')) {
+      await db.ensureTicketInstancesForOrder(order.id);
+      ticketInstances = await prisma.ticketInstance.findMany({
+        where: { order_id: order.id },
+        include: { ticket_type: true, owner: true, order: { include: { event: true } } }
+      });
+    }
+    
+    // Construct items and event directly from the loaded order object to avoid duplicate roundtrips
+    const items = ((order as any).order_tickets || []).map((it: any) => ({
+      ...it,
+      name: it.ticket_type?.name || it.name
+    }));
+    const event = (order as any).event;
     
     res.json({ ...order, items, event, ticket_instances: ticketInstances });
   } catch (error: any) { 
@@ -3340,7 +3345,7 @@ app.get('/api/orders/:publicId/qr-status', async (req: any, res) => {
     const order = await db.getOrderByPublicId(publicId);
 
     if (!order) return res.status(404).json({ error: 'Not found' });
-    const event = await db.getEventById(order.event_id);
+    const event = (order as any).event;
     if (!event) return res.status(404).json({ error: 'Event not found' });
     if (!order.is_paid || !order.qr_code_token) return res.json({ visible: false, reason: 'Payment pending' });
     
@@ -3496,7 +3501,47 @@ app.post('/api/tickets/:publicId/transfer', authenticateToken, requireEmailVerif
     }
 
     // 4. Check if event has ended
-    if (ticket.order?.event?.date && new Date(ticket.order.event.date) < new Date()) {
+    const now = new Date();
+    const event = ticket.order?.event;
+    let eventStart = event?.date ? new Date(event.date) : new Date();
+    
+    // Parse start time precisely if event_date and event_time exist
+    if (event?.event_date) {
+      const dateStr = event.event_date.split('T')[0];
+      if (event.event_time) {
+        let timeStr = event.event_time.trim();
+        const pm = timeStr.toLowerCase().includes('pm');
+        const am = timeStr.toLowerCase().includes('am');
+        timeStr = timeStr.replace(/(am|pm)/i, '').trim();
+        const parts = timeStr.split(':');
+        let hours = parseInt(parts[0], 10) || 0;
+        const minutes = parseInt(parts[1], 10) || 0;
+        if (pm && hours < 12) hours += 12;
+        if (am && hours === 12) hours = 0;
+        
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const parsedCombined = new Date(`${dateStr}T${pad(hours)}:${pad(minutes)}:00`);
+        if (!isNaN(parsedCombined.getTime())) {
+          eventStart = parsedCombined;
+        }
+      } else {
+        const parsedCombined = new Date(`${dateStr}T00:00:00`);
+        if (!isNaN(parsedCombined.getTime())) {
+          eventStart = parsedCombined;
+        }
+      }
+    }
+
+    // Compute event end datetime: assume 6 hours duration after start time
+    const eventEnd = new Date(eventStart.getTime() + 6 * 60 * 60 * 1000);
+    const eventEnded = now > eventEnd;
+
+    console.log('[DEBUG TRANSFER] Current Server Time:', now.toISOString());
+    console.log('[DEBUG TRANSFER] Event Start Datetime:', eventStart.toISOString());
+    console.log('[DEBUG TRANSFER] Event End Datetime:', eventEnd.toISOString());
+    console.log('[DEBUG TRANSFER] Computed eventEnded:', eventEnded);
+
+    if (eventEnded) {
       return res.status(400).json({ error: 'The event for this ticket has already ended.' });
     }
 
