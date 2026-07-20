@@ -40,6 +40,8 @@ model User {
   notifications      Notification[]
   organized_events   Event[]
   ticket_instances   TicketInstance[]
+  sent_transfers     TicketTransfer[]  @relation("SentTransfers")
+  received_transfers TicketTransfer[]  @relation("ReceivedTransfers")
 }
 
 model Event {
@@ -255,6 +257,7 @@ model TicketInstance {
   checked_in_at   DateTime?
   created_at      DateTime     @default(now())
   updated_at      DateTime     @updatedAt
+  transfers       TicketTransfer[]
 
   @@index([order_id])
   @@index([ticket_type_id])
@@ -263,4 +266,30 @@ model TicketInstance {
   @@index([qr_token])
   @@index([public_id])
 }
+
+model TicketTransfer {
+  id                 Int            @id @default(autoincrement())
+  ticket_id          Int
+  ticket             TicketInstance @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+  sender_id          Int
+  sender             User           @relation("SentTransfers", fields: [sender_id], references: [id], onDelete: Cascade)
+  recipient_email    String
+  recipient_user_id  Int?
+  recipient_user     User?          @relation("ReceivedTransfers", fields: [recipient_user_id], references: [id], onDelete: Cascade)
+  status             String         @default("PENDING") // PENDING, ACCEPTED, DECLINED, EXPIRED, CANCELLED
+  token_hash         String         @unique
+  expires_at         DateTime
+  accepted_at        DateTime?
+  declined_at        DateTime?
+  cancelled_at       DateTime?
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+
+  @@index([status])
+  @@index([token_hash])
+  @@index([sender_id])
+  @@index([recipient_user_id])
+  @@index([recipient_email])
+}
+
 

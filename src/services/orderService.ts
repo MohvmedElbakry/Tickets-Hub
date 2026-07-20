@@ -111,5 +111,34 @@ export const orderService = {
 
   async getTicketQRStatus(publicId: string) {
     return await ordersApi.getTicketQRStatus(publicId);
+  },
+
+  async transferTicket(publicId: string, email: string) {
+    return await ordersApi.transferTicket(publicId, email);
+  },
+
+  async acceptTransfer(params: { token?: string; transferId?: number }) {
+    return await ordersApi.acceptTransfer(params);
+  },
+
+  async declineTransfer(params: { token?: string; transferId?: number }) {
+    return await ordersApi.declineTransfer(params);
+  },
+
+  async cancelTransfer(transferId: number) {
+    return await ordersApi.cancelTransfer(transferId);
+  },
+
+  async getPendingTransfers() {
+    return await ordersApi.getPendingTransfers();
+  },
+
+  async getTransferHistory() {
+    return await ordersApi.getTransferHistory();
+  },
+
+  async adminCancelTransfer(transferId: number) {
+    return await ordersApi.adminCancelTransfer(transferId);
   }
 };
+

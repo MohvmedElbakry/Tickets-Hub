@@ -126,3 +126,47 @@ export const getTicket = async (publicId: string): Promise<any> => {
 export const getTicketQRStatus = async (publicId: string): Promise<any> => {
   return await fetchWithAuth(`/api/tickets/${publicId}/qr-status`);
 };
+
+export const transferTicket = async (publicId: string, email: string): Promise<any> => {
+  return await fetchWithAuth(`/api/tickets/${publicId}/transfer`, {
+    method: 'POST',
+    body: JSON.stringify({ email })
+  });
+};
+
+export const acceptTransfer = async (params: { token?: string; transferId?: number }): Promise<any> => {
+  return await fetchWithAuth('/api/transfers/accept', {
+    method: 'POST',
+    body: JSON.stringify(params)
+  });
+};
+
+export const declineTransfer = async (params: { token?: string; transferId?: number }): Promise<any> => {
+  return await fetchWithAuth('/api/transfers/decline', {
+    method: 'POST',
+    body: JSON.stringify(params)
+  });
+};
+
+export const cancelTransfer = async (transferId: number): Promise<any> => {
+  return await fetchWithAuth('/api/transfers/cancel', {
+    method: 'POST',
+    body: JSON.stringify({ transferId })
+  });
+};
+
+export const getPendingTransfers = async (): Promise<any> => {
+  return await fetchWithAuth('/api/transfers/pending');
+};
+
+export const getTransferHistory = async (): Promise<any> => {
+  return await fetchWithAuth('/api/transfers/history');
+};
+
+export const adminCancelTransfer = async (transferId: number): Promise<any> => {
+  return await fetchWithAuth('/api/admin/transfers/cancel', {
+    method: 'POST',
+    body: JSON.stringify({ transferId })
+  });
+};
+

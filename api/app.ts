@@ -372,6 +372,17 @@ app.post('/api/auth/signup', async (req, res) => {
       email_verification_token: isAdmin ? null : hashedVerificationToken,
       email_verification_expires: isAdmin ? null : verificationExpires
     });
+
+    // Auto-associate any pending transfers to this email
+    try {
+      await prisma.ticketTransfer.updateMany({
+        where: { recipient_email: email.toLowerCase().trim() },
+        data: { recipient_user_id: newUser.id }
+      });
+    } catch (transferErr) {
+      console.error('Error auto-associating pending transfers on signup:', transferErr);
+    }
+
     const { accessToken, refreshToken, user } = generateTokens(newUser);
 
     // Asynchronously dispatch the welcome email matching TicketsHub branding
@@ -3415,6 +3426,779 @@ app.delete('/api/admin/invitations/:id', authenticateToken, authorizeRole(['admi
   try { await db.deleteInvitation(parseInt(req.params.id)); res.json({ message: 'Deleted' }); }
   catch (error: any) { res.status(500).json({ error: error.message }); }
 });
+
+// --- TICKET TRANSFER SYSTEM (PHASE 2) ---
+
+app.post('/api/tickets/:publicId/transfer', authenticateToken, requireEmailVerification, async (req: any, res) => {
+  try {
+    const { publicId } = req.params;
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Recipient email address is required.' });
+    }
+    const normalizedRecipientEmail = email.toLowerCase().trim();
+    if (normalizedRecipientEmail === req.user.email.toLowerCase()) {
+      return res.status(400).json({ error: 'You cannot transfer a ticket to yourself.' });
+    }
+
+    // 1. Find ticket instance with its order and event
+    const ticket = await prisma.ticketInstance.findUnique({
+      where: { public_id: publicId },
+      include: {
+        order: {
+          include: {
+            event: true
+          }
+        },
+        owner: true
+      }
+    });
+
+    if (!ticket) {
+      return res.status(404).json({ error: 'Ticket not found.' });
+    }
+
+    // 2. Validate sender is the current owner
+    if (ticket.owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'You do not own this ticket.' });
+    }
+
+    // 3. Prevent transfer if ticket is in invalid state
+    if (ticket.status === 'CHECKED_IN') {
+      return res.status(400).json({ error: 'This ticket has already been checked in and cannot be transferred.' });
+    }
+    if (ticket.status === 'REFUNDED') {
+      return res.status(400).json({ error: 'This ticket has been refunded and cannot be transferred.' });
+    }
+    if (ticket.status === 'CANCELLED') {
+      return res.status(400).json({ error: 'This ticket has been cancelled and cannot be transferred.' });
+    }
+    if (ticket.status === 'RESOLD') {
+      return res.status(400).json({ error: 'This ticket has been resold and cannot be transferred.' });
+    }
+    if (ticket.status === 'TRANSFERRED') {
+      return res.status(400).json({ error: 'This ticket has already been transferred.' });
+    }
+    if (ticket.status === 'TRANSFER_PENDING') {
+      return res.status(400).json({ error: 'This ticket already has a pending transfer request.' });
+    }
+
+    // Double check if there's any active transfer with PENDING status for this ticket
+    const existingActiveTransfer = await prisma.ticketTransfer.findFirst({
+      where: {
+        ticket_id: ticket.id,
+        status: 'PENDING',
+        expires_at: { gt: new Date() }
+      }
+    });
+    if (existingActiveTransfer) {
+      return res.status(400).json({ error: 'This ticket already has a pending transfer.' });
+    }
+
+    // 4. Check if event has ended
+    if (ticket.order?.event?.date && new Date(ticket.order.event.date) < new Date()) {
+      return res.status(400).json({ error: 'The event for this ticket has already ended.' });
+    }
+
+    // 5. Look up recipient user
+    const recipientUser = await prisma.user.findUnique({
+      where: { email: normalizedRecipientEmail }
+    });
+
+    if (recipientUser) {
+      if (recipientUser.is_deleted) {
+        return res.status(400).json({ error: 'The recipient account has been deleted.' });
+      }
+      if (recipientUser.id === req.user.id) {
+        return res.status(400).json({ error: 'You cannot transfer a ticket to yourself.' });
+      }
+    }
+
+    // 6. Generate 32-byte cryptographically random token
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = hashToken(rawToken);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hour expiration
+
+    // 7. Perform transaction to change TicketInstance status and create TicketTransfer
+    const transfer = await prisma.$transaction(async (tx) => {
+      // Lock TicketInstance
+      const lockTicket = await tx.ticketInstance.findUnique({
+        where: { id: ticket.id }
+      });
+      if (!lockTicket || (lockTicket.status !== 'VALID' && lockTicket.status !== 'PENDING')) {
+        throw new Error('Ticket status changed. Cannot initiate transfer.');
+      }
+
+      // Update TicketInstance status
+      await tx.ticketInstance.update({
+        where: { id: ticket.id },
+        data: { status: 'TRANSFER_PENDING' }
+      });
+
+      // Create TicketTransfer request
+      return await tx.ticketTransfer.create({
+        data: {
+          ticket_id: ticket.id,
+          sender_id: req.user.id,
+          recipient_email: normalizedRecipientEmail,
+          recipient_user_id: recipientUser ? recipientUser.id : null,
+          status: 'PENDING',
+          token_hash: hashedToken,
+          expires_at: expiresAt
+        },
+        include: {
+          ticket: {
+            include: {
+              ticket_type: true,
+              order: {
+                include: {
+                  event: true
+                }
+              }
+            }
+          },
+          sender: true
+        }
+      });
+    });
+
+    // 8. Send notification emails asynchronously
+    const acceptUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?tab=tickets&transferToken=${rawToken}`;
+    const eventTitle = transfer.ticket.order.event.title;
+    const ticketTypeName = transfer.ticket.ticket_type.name;
+
+    // Sender notification: Transfer Started
+    const senderEmailHtml = generateEmailHtml({
+      recipientName: getPersonalizedName(transfer.sender.name, transfer.sender.email),
+      title: 'Ticket Transfer Started',
+      preheader: `Your transfer of 1 ${ticketTypeName} for ${eventTitle} is initiated.`,
+      bodyHtml: `
+        <p>You have successfully initiated a transfer for your ticket (ID: <strong>${transfer.ticket.public_id}</strong>) to <strong>${normalizedRecipientEmail}</strong>.</p>
+        <p>The recipient has 24 hours to accept the transfer. During this time, the ticket is locked and cannot be checked in or resold.</p>
+        <p>If the recipient does not have an account yet, they will need to sign up using their email address to accept the ticket.</p>
+        <p>You can cancel this transfer request at any time before it is accepted from your dashboard.</p>
+      `
+    });
+
+    // Recipient notification: Received Ticket Invitation
+    const recipientEmailHtml = generateEmailHtml({
+      recipientName: recipientUser ? getPersonalizedName(recipientUser.name, recipientUser.email) : normalizedRecipientEmail,
+      title: 'You\'ve received a ticket transfer!',
+      preheader: `${transfer.sender.name} sent you a ticket for ${eventTitle}!`,
+      bodyHtml: `
+        <p>Great news! <strong>${transfer.sender.name}</strong> (${transfer.sender.email}) has sent you a ticket to <strong>${eventTitle}</strong> (${ticketTypeName}).</p>
+        <p>To accept this ticket and add it to your account, please click the button below. You have 24 hours to accept this transfer.</p>
+        ${!recipientUser ? '<p style="color: #ea580c; font-weight: bold;">Note: You do not have a TicketsHub account registered with this email yet. Please sign up first using this email, then accept the ticket.</p>' : ''}
+      `,
+      ctaText: recipientUser ? 'Accept Ticket Transfer' : 'Sign Up & Accept Ticket',
+      ctaUrl: acceptUrl
+    });
+
+    await Promise.all([
+      sendEmail({
+        to: transfer.sender.email,
+        subject: `[TicketsHub] Ticket Transfer Initiated - ${eventTitle}`,
+        html: senderEmailHtml
+      }).catch(err => console.error('[EMAIL ERROR] Failed to send transfer started email to sender:', err)),
+      sendEmail({
+        to: normalizedRecipientEmail,
+        subject: `[TicketsHub] You received a ticket! - ${eventTitle}`,
+        html: recipientEmailHtml
+      }).catch(err => console.error('[EMAIL ERROR] Failed to send transfer email to recipient:', err))
+    ]);
+
+    // Create notifications in-app
+    await prisma.notification.create({
+      data: {
+        user_id: req.user.id,
+        title: 'Transfer Request Created',
+        message: `Your transfer request for ${eventTitle} to ${normalizedRecipientEmail} was successfully created.`,
+        type: 'info'
+      }
+    });
+
+    if (recipientUser) {
+      await prisma.notification.create({
+        data: {
+          user_id: recipientUser.id,
+          title: 'Ticket Transfer Received',
+          message: `${transfer.sender.name} transferred a ticket for ${eventTitle} to you.`,
+          type: 'info'
+        }
+      });
+    }
+
+    res.status(201).json({ message: 'Transfer initiated successfully.', transferId: transfer.id });
+  } catch (error: any) {
+    console.error('[API ERROR] /api/tickets/:publicId/transfer:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/transfers/accept', authenticateToken, requireEmailVerification, async (req: any, res) => {
+  try {
+    const { token, transferId } = req.body;
+    if (!token && !transferId) {
+      return res.status(400).json({ error: 'Transfer token or ID is required.' });
+    }
+
+    let transfer;
+    if (token) {
+      const hashedToken = hashToken(token);
+      transfer = await prisma.ticketTransfer.findUnique({
+        where: { token_hash: hashedToken },
+        include: {
+          ticket: {
+            include: {
+              ticket_type: true,
+              order: {
+                include: {
+                  event: true
+                }
+              },
+              owner: true
+            }
+          },
+          sender: true
+        }
+      });
+    } else {
+      transfer = await prisma.ticketTransfer.findUnique({
+        where: { id: parseInt(transferId) },
+        include: {
+          ticket: {
+            include: {
+              ticket_type: true,
+              order: {
+                include: {
+                  event: true
+                }
+              },
+              owner: true
+            }
+          },
+          sender: true
+        }
+      });
+    }
+
+    if (!transfer) {
+      return res.status(404).json({ error: 'Transfer request not found.' });
+    }
+
+    if (transfer.status !== 'PENDING') {
+      return res.status(400).json({ error: `This transfer is already ${transfer.status.toLowerCase()}.` });
+    }
+
+    if (new Date(transfer.expires_at) < new Date()) {
+      // Mark as expired in DB
+      await prisma.ticketTransfer.update({
+        where: { id: transfer.id },
+        data: { status: 'EXPIRED' }
+      });
+      // Restore ticket status to VALID
+      await prisma.ticketInstance.update({
+        where: { id: transfer.ticket_id },
+        data: { status: 'VALID' }
+      });
+      return res.status(400).json({ error: 'This transfer request has expired.' });
+    }
+
+    if (transfer.recipient_email.toLowerCase() !== req.user.email.toLowerCase()) {
+      return res.status(403).json({ error: 'You are not the authorized recipient of this transfer.' });
+    }
+
+    if (transfer.ticket.status !== 'TRANSFER_PENDING') {
+      return res.status(400).json({ error: 'This ticket is not in a pending transfer state.' });
+    }
+
+    // Process acceptance in a transaction
+    await prisma.$transaction(async (tx) => {
+      // Lock and re-verify transfer
+      const txTransfer = await tx.ticketTransfer.findUnique({
+        where: { id: transfer.id }
+      });
+      if (!txTransfer || txTransfer.status !== 'PENDING') {
+        throw new Error('Transfer was already processed in a race condition.');
+      }
+
+      // 1. Update transfer record
+      await tx.ticketTransfer.update({
+        where: { id: transfer.id },
+        data: {
+          status: 'ACCEPTED',
+          accepted_at: new Date(),
+          recipient_user_id: req.user.id
+        }
+      });
+
+      // 2. Reassign TicketInstance ownership
+      await tx.ticketInstance.update({
+        where: { id: transfer.ticket_id },
+        data: {
+          owner_id: req.user.id,
+          attendee_name: req.user.name,
+          attendee_email: req.user.email,
+          status: 'VALID' // Reset status to VALID
+        }
+      });
+
+      // 3. Mark any other pending transfers for this SAME ticket as CANCELLED to prevent concurrent issues
+      await tx.ticketTransfer.updateMany({
+        where: {
+          ticket_id: transfer.ticket_id,
+          status: 'PENDING',
+          id: { not: transfer.id }
+        },
+        data: {
+          status: 'CANCELLED',
+          cancelled_at: new Date()
+        }
+      });
+    });
+
+    // Send Emails
+    const eventTitle = transfer.ticket.order.event.title;
+    const ticketTypeName = transfer.ticket.ticket_type.name;
+
+    const senderEmailHtml = generateEmailHtml({
+      recipientName: getPersonalizedName(transfer.sender.name, transfer.sender.email),
+      title: 'Transfer Accepted!',
+      preheader: `Your transfer of 1 ${ticketTypeName} for ${eventTitle} is complete.`,
+      bodyHtml: `
+        <p>Great news! <strong>${req.user.name}</strong> (${req.user.email}) has accepted the ticket transfer.</p>
+        <p>Your ticket (ID: <strong>${transfer.ticket.public_id}</strong>) has been moved to their account. It has been removed from your wallet and dashboard, and you will no longer be able to download, view the QR code, or check in with it.</p>
+        <p>Thank you for using TicketsHub safely!</p>
+      `
+    });
+
+    const recipientEmailHtml = generateEmailHtml({
+      recipientName: getPersonalizedName(req.user.name, req.user.email),
+      title: 'Ticket Added to Wallet!',
+      preheader: `Your ticket for ${eventTitle} is ready!`,
+      bodyHtml: `
+        <p>Success! You have accepted the ticket transfer from <strong>${transfer.sender.name}</strong>.</p>
+        <p>Your new ticket for <strong>${eventTitle}</strong> (${ticketTypeName}) is now available in your personal dashboard.</p>
+        <p>You can view, export to PDF, and present the QR code at the event entrance directly from your account.</p>
+      `,
+      ctaText: 'Go to Dashboard',
+      ctaUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard`
+    });
+
+    await Promise.all([
+      sendEmail({
+        to: transfer.sender.email,
+        subject: `[TicketsHub] Ticket Transfer Accepted - ${eventTitle}`,
+        html: senderEmailHtml
+      }).catch(err => console.error('[EMAIL ERROR] Failed to send acceptance email to sender:', err)),
+      sendEmail({
+        to: req.user.email,
+        subject: `[TicketsHub] Transfer Complete - Your Ticket is Ready!`,
+        html: recipientEmailHtml
+      }).catch(err => console.error('[EMAIL ERROR] Failed to send complete email to recipient:', err))
+    ]);
+
+    // Create notifications
+    await prisma.notification.create({
+      data: {
+        user_id: transfer.sender_id,
+        title: 'Transfer Completed',
+        message: `${req.user.name} accepted your ticket transfer for ${eventTitle}.`,
+        type: 'info'
+      }
+    });
+
+    await prisma.notification.create({
+      data: {
+        user_id: req.user.id,
+        title: 'Ticket Transfer Complete',
+        message: `You successfully accepted the ticket transfer for ${eventTitle}.`,
+        type: 'info'
+      }
+    });
+
+    res.json({ message: 'Transfer accepted successfully.' });
+  } catch (error: any) {
+    console.error('[API ERROR] /api/transfers/accept:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/transfers/decline', authenticateToken, requireEmailVerification, async (req: any, res) => {
+  try {
+    const { token, transferId } = req.body;
+    if (!token && !transferId) {
+      return res.status(400).json({ error: 'Transfer token or ID is required.' });
+    }
+
+    let transfer;
+    if (token) {
+      const hashedToken = hashToken(token);
+      transfer = await prisma.ticketTransfer.findUnique({
+        where: { token_hash: hashedToken },
+        include: {
+          ticket: {
+            include: {
+              ticket_type: true,
+              order: {
+                include: {
+                  event: true
+                }
+              },
+              owner: true
+            }
+          },
+          sender: true
+        }
+      });
+    } else {
+      transfer = await prisma.ticketTransfer.findUnique({
+        where: { id: parseInt(transferId) },
+        include: {
+          ticket: {
+            include: {
+              ticket_type: true,
+              order: {
+                include: {
+                  event: true
+                }
+              },
+              owner: true
+            }
+          },
+          sender: true
+        }
+      });
+    }
+
+    if (!transfer) {
+      return res.status(404).json({ error: 'Transfer request not found.' });
+    }
+
+    if (transfer.status !== 'PENDING') {
+      return res.status(400).json({ error: `This transfer is already ${transfer.status.toLowerCase()}.` });
+    }
+
+    if (transfer.recipient_email.toLowerCase() !== req.user.email.toLowerCase()) {
+      return res.status(403).json({ error: 'You are not the authorized recipient of this transfer.' });
+    }
+
+    // Process decline in a transaction
+    await prisma.$transaction(async (tx) => {
+      // Lock and update transfer
+      await tx.ticketTransfer.update({
+        where: { id: transfer.id },
+        data: {
+          status: 'DECLINED',
+          declined_at: new Date()
+        }
+      });
+
+      // Restore TicketInstance status to VALID
+      await tx.ticketInstance.update({
+        where: { id: transfer.ticket_id },
+        data: { status: 'VALID' }
+      });
+    });
+
+    // Send Email to Sender
+    const eventTitle = transfer.ticket.order.event.title;
+    const ticketTypeName = transfer.ticket.ticket_type.name;
+
+    const senderEmailHtml = generateEmailHtml({
+      recipientName: getPersonalizedName(transfer.sender.name, transfer.sender.email),
+      title: 'Ticket Transfer Declined',
+      preheader: `The transfer of your ticket for ${eventTitle} was declined.`,
+      bodyHtml: `
+        <p>We wanted to let you know that <strong>${req.user.name}</strong> (${req.user.email}) declined your ticket transfer for <strong>${eventTitle}</strong> (${ticketTypeName}).</p>
+        <p>The ticket has been safely unlocked and is once again fully active in your account dashboard. You can download the PDF, view the QR, or check in with it normally.</p>
+      `
+    });
+
+    await sendEmail({
+      to: transfer.sender.email,
+      subject: `[TicketsHub] Ticket Transfer Declined - ${eventTitle}`,
+      html: senderEmailHtml
+    }).catch(err => console.error('[EMAIL ERROR] Failed to send decline email to sender:', err));
+
+    // Create notifications
+    await prisma.notification.create({
+      data: {
+        user_id: transfer.sender_id,
+        title: 'Transfer Request Declined',
+        message: `${req.user.name} declined your ticket transfer for ${eventTitle}.`,
+        type: 'info'
+      }
+    });
+
+    res.json({ message: 'Transfer declined successfully.' });
+  } catch (error: any) {
+    console.error('[API ERROR] /api/transfers/decline:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/transfers/cancel', authenticateToken, requireEmailVerification, async (req: any, res) => {
+  try {
+    const { transferId } = req.body;
+    if (!transferId) {
+      return res.status(400).json({ error: 'Transfer ID is required.' });
+    }
+
+    const transfer = await prisma.ticketTransfer.findUnique({
+      where: { id: parseInt(transferId) },
+      include: {
+        ticket: {
+          include: {
+            ticket_type: true,
+            order: {
+              include: {
+                event: true
+              }
+            }
+          }
+        },
+        sender: true
+      }
+    });
+
+    if (!transfer) {
+      return res.status(404).json({ error: 'Transfer request not found.' });
+    }
+
+    if (transfer.status !== 'PENDING') {
+      return res.status(400).json({ error: `This transfer is already ${transfer.status.toLowerCase()}.` });
+    }
+
+    if (transfer.sender_id !== req.user.id) {
+      return res.status(403).json({ error: 'You are not authorized to cancel this transfer.' });
+    }
+
+    // Process cancel in transaction
+    await prisma.$transaction(async (tx) => {
+      await tx.ticketTransfer.update({
+        where: { id: transfer.id },
+        data: {
+          status: 'CANCELLED',
+          cancelled_at: new Date()
+        }
+      });
+
+      await tx.ticketInstance.update({
+        where: { id: transfer.ticket_id },
+        data: { status: 'VALID' }
+      });
+    });
+
+    // Send Email to Recipient
+    const eventTitle = transfer.ticket.order.event.title;
+    const ticketTypeName = transfer.ticket.ticket_type.name;
+
+    const recipientEmailHtml = generateEmailHtml({
+      recipientName: transfer.recipient_email,
+      title: 'Ticket Transfer Cancelled',
+      preheader: `The transfer of a ticket for ${eventTitle} was cancelled.`,
+      bodyHtml: `
+        <p>We wanted to let you know that <strong>${transfer.sender.name}</strong> has cancelled their ticket transfer to you for <strong>${eventTitle}</strong> (${ticketTypeName}).</p>
+        <p>This transfer code is no longer valid and the ticket cannot be claimed.</p>
+      `
+    });
+
+    await sendEmail({
+      to: transfer.recipient_email,
+      subject: `[TicketsHub] Ticket Transfer Cancelled - ${eventTitle}`,
+      html: recipientEmailHtml
+    }).catch(err => console.error('[EMAIL ERROR] Failed to send cancel email to recipient:', err));
+
+    res.json({ message: 'Transfer request cancelled successfully.' });
+  } catch (error: any) {
+    console.error('[API ERROR] /api/transfers/cancel:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/transfers/pending', authenticateToken, async (req: any, res) => {
+  try {
+    const transfers = await prisma.ticketTransfer.findMany({
+      where: {
+        status: 'PENDING',
+        OR: [
+          { sender_id: req.user.id },
+          { recipient_email: req.user.email.toLowerCase().trim() }
+        ]
+      },
+      include: {
+        ticket: {
+          include: {
+            ticket_type: true,
+            order: {
+              include: {
+                event: true
+              }
+            }
+          }
+        },
+        sender: {
+          select: { name: true, email: true, phone: true }
+        }
+      },
+      orderBy: { created_at: 'desc' }
+    });
+
+    // Auto-expire transfers if they are stale and still marked as PENDING in DB
+    const now = new Date();
+    const activeTransfers: any[] = [];
+
+    for (const t of transfers) {
+      if (new Date(t.expires_at) < now) {
+        // Run async transaction to clean up this expired transfer
+        prisma.$transaction(async (tx) => {
+          await tx.ticketTransfer.update({
+            where: { id: t.id },
+            data: { status: 'EXPIRED' }
+          });
+          // Restore ticket status
+          await tx.ticketInstance.update({
+            where: { id: t.ticket_id },
+            data: { status: 'VALID' }
+          });
+        }).catch(err => console.error(`[EXPIRE ERROR] Failed to expire transfer ${t.id}:`, err));
+      } else {
+        activeTransfers.push(t);
+      }
+    }
+
+    res.json(activeTransfers);
+  } catch (error: any) {
+    console.error('[API ERROR] /api/transfers/pending:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/transfers/history', authenticateToken, async (req: any, res) => {
+  try {
+    const history = await prisma.ticketTransfer.findMany({
+      where: {
+        status: { in: ['ACCEPTED', 'CANCELLED', 'DECLINED', 'EXPIRED'] },
+        OR: [
+          { sender_id: req.user.id },
+          { recipient_email: req.user.email.toLowerCase().trim() }
+        ]
+      },
+      include: {
+        ticket: {
+          include: {
+            ticket_type: true,
+            order: {
+              include: {
+                event: true
+              }
+            }
+          }
+        },
+        sender: {
+          select: { name: true, email: true }
+        },
+        recipient_user: {
+          select: { name: true, email: true }
+        }
+      },
+      orderBy: { updated_at: 'desc' }
+    });
+
+    res.json(history);
+  } catch (error: any) {
+    console.error('[API ERROR] /api/transfers/history:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/transfers', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const transfers = await prisma.ticketTransfer.findMany({
+      include: {
+        ticket: {
+          include: {
+            ticket_type: true,
+            order: {
+              include: {
+                event: true
+              }
+            },
+            owner: true
+          }
+        },
+        sender: {
+          select: { name: true, email: true }
+        },
+        recipient_user: {
+          select: { name: true, email: true }
+        }
+      },
+      orderBy: { created_at: 'desc' }
+    });
+    res.json(transfers);
+  } catch (error: any) {
+    console.error('[API ERROR] /api/admin/transfers:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/transfers/cancel', authenticateToken, authorizeRole(['admin']), requireEmailVerification, async (req: any, res) => {
+  try {
+    const { transferId } = req.body;
+    if (!transferId) {
+      return res.status(400).json({ error: 'Transfer ID is required.' });
+    }
+
+    const transfer = await prisma.ticketTransfer.findUnique({
+      where: { id: parseInt(transferId) },
+      include: {
+        ticket: {
+          include: {
+            ticket_type: true,
+            order: {
+              include: {
+                event: true
+              }
+            }
+          }
+        },
+        sender: true
+      }
+    });
+
+    if (!transfer) {
+      return res.status(404).json({ error: 'Transfer request not found.' });
+    }
+
+    if (transfer.status !== 'PENDING') {
+      return res.status(400).json({ error: `This transfer is already ${transfer.status.toLowerCase()}.` });
+    }
+
+    // Process cancel in transaction
+    await prisma.$transaction(async (tx) => {
+      await tx.ticketTransfer.update({
+        where: { id: transfer.id },
+        data: {
+          status: 'CANCELLED',
+          cancelled_at: new Date()
+        }
+      });
+
+      await tx.ticketInstance.update({
+        where: { id: transfer.ticket_id },
+        data: { status: 'VALID' }
+      });
+    });
+
+    res.json({ message: 'Transfer cancelled successfully by administrator.' });
+  } catch (error: any) {
+    console.error('[API ERROR] /api/admin/transfers/cancel:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // --- FINALIZATION ---
 console.log('[App] All routes registered synchronously.');

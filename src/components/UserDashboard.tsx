@@ -176,6 +176,22 @@ export const UserDashboard = () => {
   const [viewingTicket, setViewingTicket] = useState<Order | null>(null);
   const [viewingTicketInstance, setViewingTicketInstance] = useState<any | null>(null);
   const [exportingOrder, setExportingOrder] = useState<Order | null>(null);
+
+  // --- TICKET TRANSFER SYSTEM STATES (PHASE 2) ---
+  const [pendingTransfers, setPendingTransfers] = useState<any[]>([]);
+  const [transferHistory, setTransferHistory] = useState<any[]>([]);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [ticketToTransfer, setTicketToTransfer] = useState<any | null>(null);
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [transferError, setTransferError] = useState('');
+  const [transferSuccess, setTransferSuccess] = useState('');
+  
+  // URL token claim flow
+  const [claimingToken, setClaimingToken] = useState<string | null>(null);
+  const [claimingStatus, setClaimingStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [claimingMessage, setClaimingMessage] = useState('');
+
   
       // Phase 3.2.4: Use single source of truth for the viewing ticket
   const { order: freshOrder, loading: loadingFullOrder } = useOrder(viewingTicket?.public_id || undefined);
@@ -204,40 +220,141 @@ export const UserDashboard = () => {
     viewingTicketInstance ? (viewingTicketInstance.status !== 'PENDING') : false
   );
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const [ordersData, ticketsData, pointsData] = await Promise.all([
-          orderService.getOrders(),
-          orderService.getTickets().catch(err => {
-            console.error('Failed to fetch ticket instances:', err);
-            return [];
-          }),
-          authService.getUserPoints()
-        ]);
-        if (ordersData && Array.isArray(ordersData)) {
-          // Normalize status representation for UI
-          const normalizedOrders = ordersData.map((o: any) => ({
-            ...o,
-            displayStatus: o.is_paid ? 'paid' : o.order_status
-          }));
-          setOrders(normalizedOrders);
-        }
-        if (ticketsData && Array.isArray(ticketsData)) {
-          setTickets(ticketsData);
-        }
-        if (pointsData) setPoints(pointsData);
-      } catch (err: any) {
-        if (err.status !== 401) {
-          console.error('Failed to fetch dashboard data', err);
-        }
-      } finally {
-        setLoading(false);
+  const fetchTransfers = async () => {
+    try {
+      const [pending, history] = await Promise.all([
+        orderService.getPendingTransfers().catch(() => []),
+        orderService.getTransferHistory().catch(() => [])
+      ]);
+      setPendingTransfers(pending || []);
+      setTransferHistory(history || []);
+    } catch (err) {
+      console.error('Failed to fetch transfers:', err);
+    }
+  };
+
+  const refreshDashboardData = async () => {
+    setLoading(true);
+    try {
+      const [ordersData, ticketsData, pointsData] = await Promise.all([
+        orderService.getOrders(),
+        orderService.getTickets().catch(err => {
+          console.error('Failed to fetch ticket instances:', err);
+          return [];
+        }),
+        authService.getUserPoints()
+      ]);
+      if (ordersData && Array.isArray(ordersData)) {
+        const normalizedOrders = ordersData.map((o: any) => ({
+          ...o,
+          displayStatus: o.is_paid ? 'paid' : o.order_status
+        }));
+        setOrders(normalizedOrders);
       }
-    };
-    fetchData();
+      if (ticketsData && Array.isArray(ticketsData)) {
+        setTickets(ticketsData);
+      }
+      if (pointsData) setPoints(pointsData);
+      await fetchTransfers();
+    } catch (err: any) {
+      if (err.status !== 401) {
+        console.error('Failed to fetch dashboard data', err);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshDashboardData();
+
+    // Check for transferToken in URL query params (email redirection claim flow)
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('transferToken');
+    if (token) {
+      setClaimingToken(token);
+      setClaimingStatus('idle');
+      setClaimingMessage('A ticket transfer invite has been detected. Would you like to claim this ticket and add it to your account?');
+      // Clean up URL query parameter cleanly
+      const newUrl = window.location.pathname + (window.location.hash || '');
+      window.history.replaceState({}, '', newUrl);
+    }
   }, []);
+
+  // --- TICKET TRANSFER SYSTEM HANDLERS ---
+  const handleInitiateTransfer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ticketToTransfer || !recipientEmail) return;
+    setTransferLoading(true);
+    setTransferError('');
+    setTransferSuccess('');
+    try {
+      await orderService.transferTicket(ticketToTransfer.public_id, recipientEmail);
+      setTransferSuccess('Transfer request created! The recipient has been emailed. They have 24 hours to accept.');
+      setRecipientEmail('');
+      setTimeout(() => {
+        setIsTransferModalOpen(false);
+        setTicketToTransfer(null);
+        setTransferSuccess('');
+      }, 3000);
+      refreshDashboardData();
+    } catch (err: any) {
+      setTransferError(err.message || 'Failed to initiate ticket transfer.');
+    } finally {
+      setTransferLoading(false);
+    }
+  };
+
+  const handleClaimTokenAccept = async () => {
+    if (!claimingToken) return;
+    setClaimingStatus('loading');
+    setClaimingMessage('Claiming ticket transfer...');
+    try {
+      await orderService.acceptTransfer({ token: claimingToken });
+      setClaimingStatus('success');
+      setClaimingMessage('Success! The ticket has been added to your dashboard.');
+      setTimeout(() => {
+        setClaimingToken(null);
+        setClaimingStatus('idle');
+      }, 3000);
+      refreshDashboardData();
+    } catch (err: any) {
+      setClaimingStatus('error');
+      setClaimingMessage(err.message || 'Failed to claim ticket transfer.');
+    }
+  };
+
+  const handleAcceptTransferId = async (transferId: number) => {
+    try {
+      await orderService.acceptTransfer({ transferId });
+      alert('Transfer accepted successfully!');
+      refreshDashboardData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to accept transfer.');
+    }
+  };
+
+  const handleDeclineTransferId = async (transferId: number) => {
+    if (!confirm('Are you sure you want to decline this ticket transfer?')) return;
+    try {
+      await orderService.declineTransfer({ transferId });
+      alert('Transfer declined successfully!');
+      refreshDashboardData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to decline transfer.');
+    }
+  };
+
+  const handleCancelTransferId = async (transferId: number) => {
+    if (!confirm('Are you sure you want to cancel this transfer request?')) return;
+    try {
+      await orderService.cancelTransfer(transferId);
+      alert('Transfer request cancelled successfully.');
+      refreshDashboardData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to cancel transfer.');
+    }
+  };
 
   const filteredTickets = useMemo(() => {
     const ticketsList = Array.isArray(tickets) ? tickets : [];
@@ -439,6 +556,65 @@ export const UserDashboard = () => {
                 </div>
               </div>
 
+              {/* Active Pending Transfers Container */}
+              {pendingTransfers.length > 0 && (
+                <div className="bg-bg-card border border-bg-border rounded-card-xl p-6 content-stack gap-4 shadow-card mb-4 animate-fade-in">
+                  <div className="flex items-center gap-2 text-teal">
+                    <Users size={18} />
+                    <h4 className="text-body-sm font-bold uppercase tracking-wider">Pending Ticket Transfers</h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {pendingTransfers.map((t: any) => {
+                      const isIncoming = t.recipient_email?.toLowerCase() === user?.email?.toLowerCase();
+                      return (
+                        <div key={t.id} className="p-5 bg-bg-page border border-bg-border rounded-card flex flex-col justify-between gap-4 hover:border-bg-border-hover transition-colors">
+                          <div className="content-stack gap-1">
+                            <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded w-fit border ${isIncoming ? 'bg-teal/10 text-teal border-teal/20' : 'bg-status-info/10 text-status-info border-status-info/20'}`}>
+                              {isIncoming ? 'Incoming Transfer' : 'Outgoing Transfer'}
+                            </span>
+                            <p className="text-body-sm font-bold text-text-primary mt-1">
+                              {t.ticket?.ticket_type?.name || 'Entry Pass'}
+                            </p>
+                            <p className="text-body-xs text-text-muted">
+                              for <strong className="text-text-primary font-medium">{t.ticket?.order?.event?.title || 'Event'}</strong>
+                            </p>
+                            <p className="text-body-xs text-text-muted mt-1">
+                              {isIncoming ? `From: ${t.sender?.name || 'Sender'} (${t.sender?.email})` : `To: ${t.recipient_email}`}
+                            </p>
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            {isIncoming ? (
+                              <>
+                                <button
+                                  onClick={() => handleAcceptTransferId(t.id)}
+                                  className="flex-1 py-2 bg-teal hover:bg-teal/80 text-onteal text-body-xs font-bold rounded-pill transition-all active:scale-95 cursor-pointer"
+                                >
+                                  Accept
+                                </button>
+                                <button
+                                  onClick={() => handleDeclineTransferId(t.id)}
+                                  className="flex-1 py-2 bg-transparent hover:bg-status-error/10 text-status-error border border-status-error/20 text-body-xs font-bold rounded-pill transition-all active:scale-95 cursor-pointer"
+                                >
+                                  Decline
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => handleCancelTransferId(t.id)}
+                                className="flex-1 py-2 bg-transparent hover:bg-status-error/10 text-status-error border border-status-error/20 text-body-xs font-bold rounded-pill transition-all active:scale-95 cursor-pointer"
+                              >
+                                Cancel Request
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {filteredTickets.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {filteredTickets.map((item: any) => (
@@ -459,14 +635,22 @@ export const UserDashboard = () => {
                           </div>
                           <div className="mt-auto">
                             <span className={`px-2 py-0.5 rounded-tag text-label font-bold uppercase border ${
-                              item.type === 'ticket' ? (item.status === 'CHECKED_IN' ? 'bg-status-info/10 text-status-info border-status-info/20' : 'bg-status-success/10 text-status-success border-status-success/20') :
+                              item.type === 'ticket' ? (
+                                item.status === 'CHECKED_IN' ? 'bg-status-info/10 text-status-info border-status-info/20' :
+                                item.status === 'TRANSFER_PENDING' ? 'bg-status-warning/10 text-status-warning border-status-warning/20 font-bold' :
+                                'bg-status-success/10 text-status-success border-status-success/20'
+                              ) :
                               item.displayStatus === 'approved' ? 'bg-status-info/10 text-status-info border-status-info/20' : 
                               item.displayStatus === 'rejected' ? 'bg-status-error/10 text-status-error border-status-error/20' :
                               item.displayStatus === 'pre_registered' ? 'bg-bg-elevated text-text-muted border-bg-border' :
                               item.displayStatus === 'invited' ? 'bg-teal/10 text-teal border-teal-border-faint' :
                               'bg-status-warning/10 text-status-warning border-status-warning/20'
                             }`}>
-                              {item.type === 'ticket' ? (item.status === 'CHECKED_IN' ? 'Checked In' : 'Paid') :
+                              {item.type === 'ticket' ? (
+                                 item.status === 'CHECKED_IN' ? 'Checked In' :
+                                 item.status === 'TRANSFER_PENDING' ? 'Transfer Pending' :
+                                 'Paid'
+                               ) :
                                item.displayStatus === 'approved' ? 'Awaiting Payment' : 
                                item.displayStatus === 'pre_registered' ? 'Pre-Registered' :
                                item.displayStatus === 'invited' ? 'Invited' :
@@ -1145,6 +1329,38 @@ export const UserDashboard = () => {
                     >
                       <Download size={16} /> PDF Ticket
                     </Button>
+
+                    {viewingTicketInstance.status === 'TRANSFER_PENDING' ? (
+                      (() => {
+                        const associatedTransfer = pendingTransfers.find(
+                          (t: any) => t.ticket_id === viewingTicketInstance.id && t.status === 'PENDING'
+                        );
+                        return associatedTransfer ? (
+                          <Button
+                            variant="ghost"
+                            className="flex-1 py-6 rounded-card text-label font-bold text-status-error hover:bg-status-error/10"
+                            onClick={() => {
+                              handleCancelTransferId(associatedTransfer.id);
+                              setViewingTicketInstance(null);
+                            }}
+                          >
+                            Cancel Transfer
+                          </Button>
+                        ) : null;
+                      })()
+                    ) : (viewingTicketInstance.status === 'VALID' || viewingTicketInstance.status === 'PENDING') ? (
+                      <Button
+                        variant="accent"
+                        className="flex-1 py-6 rounded-card text-label font-bold text-onteal bg-teal hover:bg-teal/80"
+                        onClick={() => {
+                          setTicketToTransfer(viewingTicketInstance);
+                          setIsTransferModalOpen(true);
+                          setViewingTicketInstance(null);
+                        }}
+                      >
+                        Transfer Ticket
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               </motion.div>
@@ -1328,6 +1544,182 @@ export const UserDashboard = () => {
                     </div>
                   </form>
                 )}
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Ticket Transfer Initiation Modal */}
+        <AnimatePresence>
+          {isTransferModalOpen && ticketToTransfer && (
+            <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-bg-page/80 backdrop-blur-md">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-bg-card w-full max-w-md rounded-card-2xl p-10 border border-bg-border shadow-2xl content-stack gap-8"
+              >
+                <div className="flex justify-between items-center">
+                  <h2 className="text-h2">Transfer Ticket</h2>
+                  <button 
+                    onClick={() => {
+                      setIsTransferModalOpen(false);
+                      setTicketToTransfer(null);
+                      setTransferError('');
+                      setTransferSuccess('');
+                    }} 
+                    className="p-2 hover:bg-bg-elevated rounded-pill transition-colors text-text-primary"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                <div className="content-stack gap-4">
+                  <div className="p-4 bg-teal/5 rounded-card border border-teal-border-faint content-stack gap-1">
+                    <p className="text-body-xs text-text-muted uppercase tracking-wider font-bold">Ticket Details</p>
+                    <p className="text-body-sm font-bold text-text-primary">{ticketToTransfer.order?.event?.title || 'Event'}</p>
+                    <p className="text-body-xs text-teal font-mono">{ticketToTransfer.ticket_type?.name || 'Ticket'}</p>
+                    <p className="text-body-xs text-text-muted">Public ID: {ticketToTransfer.public_id}</p>
+                  </div>
+
+                  <form onSubmit={handleInitiateTransfer} className="content-stack gap-6 mt-2">
+                    {transferError && (
+                      <div className="bg-status-error/10 border border-status-error/20 text-status-error p-4 rounded-card flex items-start gap-3 text-body-xs font-medium leading-normal">
+                        <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                        <span>{transferError}</span>
+                      </div>
+                    )}
+
+                    {transferSuccess && (
+                      <div className="bg-status-success/10 border border-status-success/20 text-status-success p-4 rounded-card flex items-start gap-3 text-body-xs font-medium leading-normal">
+                        <CheckCircle size={16} className="shrink-0 mt-0.5" />
+                        <span>{transferSuccess}</span>
+                      </div>
+                    )}
+
+                    <div className="content-stack gap-2">
+                      <label className="text-label text-text-muted uppercase tracking-widest font-black ml-1">Recipient Email Address</label>
+                      <input 
+                        type="email" 
+                        required
+                        value={recipientEmail}
+                        onChange={(e) => setRecipientEmail(e.target.value)}
+                        placeholder="recipient@example.com"
+                        className="w-full bg-bg-page border border-bg-border rounded-card px-5 py-4 focus:ring-2 focus:ring-teal/10 focus:border-teal outline-none transition-all text-body-base text-text-primary"
+                        disabled={transferLoading || transferSuccess !== ''}
+                      />
+                      <p className="text-body-xs text-text-muted mt-1 leading-relaxed">
+                        The recipient will receive an email invitation to claim this ticket. They will have 24 hours to accept before the transfer expires.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mt-2">
+                      <Button 
+                        type="submit" 
+                        variant="accent" 
+                        className="py-5 rounded-card font-black uppercase tracking-widest text-button shadow-card-glow"
+                        disabled={transferLoading || !recipientEmail || transferSuccess !== ''}
+                      >
+                        {transferLoading ? 'Sending...' : 'Send Transfer'}
+                      </Button>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        className="py-5 rounded-card font-black uppercase tracking-widest text-button border-bg-border text-text-primary"
+                        onClick={() => {
+                          setIsTransferModalOpen(false);
+                          setTicketToTransfer(null);
+                          setTransferError('');
+                          setTransferSuccess('');
+                        }}
+                        disabled={transferLoading}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Ticket Claim/Redeem from Email Link Modal */}
+        <AnimatePresence>
+          {claimingToken && (
+            <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-bg-page/90 backdrop-blur-md">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-bg-card w-full max-w-md rounded-card-2xl p-10 border border-bg-border shadow-2xl content-stack gap-8 text-center"
+              >
+                <div className="flex justify-between items-center border-b border-bg-border pb-4">
+                  <h2 className="text-h2 flex items-center gap-2 text-teal">
+                    <Ticket size={24} /> Claim Ticket Transfer
+                  </h2>
+                  {claimingStatus !== 'loading' && (
+                    <button 
+                      onClick={() => setClaimingToken(null)} 
+                      className="p-2 hover:bg-bg-elevated rounded-pill transition-colors text-text-primary"
+                    >
+                      <X size={24} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="content-stack gap-6 py-4">
+                  {claimingStatus === 'loading' && (
+                    <div className="flex flex-col items-center gap-4">
+                      <RefreshCw size={48} className="animate-spin text-teal" />
+                      <p className="text-body-sm font-bold text-text-primary">{claimingMessage}</p>
+                    </div>
+                  )}
+
+                  {claimingStatus === 'success' && (
+                    <div className="flex flex-col items-center gap-4">
+                      <CheckCircle size={48} className="text-status-success" />
+                      <p className="text-body-sm font-bold text-status-success">{claimingMessage}</p>
+                      <p className="text-body-xs text-text-muted">The page will refresh and the ticket will appear in your "My Tickets" section.</p>
+                    </div>
+                  )}
+
+                  {claimingStatus === 'error' && (
+                    <div className="flex flex-col items-center gap-4">
+                      <AlertCircle size={48} className="text-status-error" />
+                      <p className="text-body-sm font-bold text-status-error">{claimingMessage}</p>
+                      <Button 
+                        variant="outline" 
+                        className="mt-2 border-bg-border"
+                        onClick={() => setClaimingToken(null)}
+                      >
+                        Close
+                      </Button>
+                    </div>
+                  )}
+
+                  {claimingStatus === 'idle' && (
+                    <div className="content-stack gap-6">
+                      <p className="text-body-sm text-text-primary leading-relaxed">{claimingMessage}</p>
+                      <div className="flex gap-4">
+                        <Button 
+                          variant="accent" 
+                          className="flex-1 py-5 font-bold shadow-card-glow"
+                          onClick={handleClaimTokenAccept}
+                        >
+                          Confirm & Accept Ticket
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          className="flex-1 py-5 border-bg-border"
+                          onClick={() => setClaimingToken(null)}
+                        >
+                          Decline / Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </motion.div>
             </div>
           )}
