@@ -54,6 +54,7 @@ export interface Order {
   kashier_url?: string;
   is_paid?: boolean;
   displayStatus?: string;
+  ticket_instances?: any[];
 }
 
 export interface OrderTicket {

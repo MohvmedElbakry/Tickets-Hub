@@ -1241,6 +1241,50 @@ export const UserDashboard = () => {
                       <Download size={16} /> PDF Ticket
                     </Button>
                     
+                    {(freshOrder || viewingTicket).is_paid && (() => {
+                      const orderData = freshOrder || viewingTicket;
+                      const ticketInstance = orderData.ticket_instances?.[0];
+                      if (!ticketInstance) return null;
+
+                      const statusUpper = ticketInstance.status?.toUpperCase();
+
+                      if (statusUpper === 'TRANSFER_PENDING') {
+                        const associatedTransfer = pendingTransfers.find(
+                          (t: any) => t.ticket_id === ticketInstance.id && t.status === 'PENDING'
+                        );
+                        return associatedTransfer ? (
+                          <Button
+                            variant="ghost"
+                            className="flex-1 py-6 rounded-card text-label font-bold text-status-error hover:bg-status-error/10"
+                            onClick={() => {
+                              handleCancelTransferId(associatedTransfer.id);
+                              setViewingTicket(null);
+                            }}
+                          >
+                            Cancel Transfer
+                          </Button>
+                        ) : null;
+                      }
+
+                      if (statusUpper === 'VALID' || statusUpper === 'PENDING') {
+                        return (
+                          <Button
+                            variant="accent"
+                            className="flex-1 py-6 rounded-card text-label font-bold text-onteal bg-teal hover:bg-teal/80"
+                            onClick={() => {
+                              setTicketToTransfer(ticketInstance);
+                              setIsTransferModalOpen(true);
+                              setViewingTicket(null);
+                            }}
+                          >
+                            Transfer Ticket
+                          </Button>
+                        );
+                      }
+
+                      return null;
+                    })()}
+
                     {(freshOrder || viewingTicket).is_paid && (
                       <Button 
                         variant="ghost" 
