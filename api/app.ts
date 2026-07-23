@@ -1765,6 +1765,349 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEma
     }
   });
 
+  // --- MARKETPLACE / RESALE ROUTES ---
+  app.get('/api/marketplace/listings', async (req: any, res) => {
+    try {
+      const {
+        status,
+        event_id,
+        category,
+        venue,
+        city,
+        priceMin,
+        priceMax,
+        ticket_type_id,
+        search,
+        sortBy,
+        page,
+        limit
+      } = req.query;
+
+      const filters: any = {};
+      if (status) filters.status = status;
+      if (event_id) filters.event_id = parseInt(event_id);
+      if (category) filters.category = category;
+      if (venue) filters.venue = venue;
+      if (city) filters.city = city;
+      if (priceMin) filters.priceMin = parseFloat(priceMin);
+      if (priceMax) filters.priceMax = parseFloat(priceMax);
+      if (ticket_type_id) filters.ticket_type_id = parseInt(ticket_type_id);
+      if (search) filters.search = search;
+      if (sortBy) filters.sortBy = sortBy;
+      if (page) filters.page = parseInt(page);
+      if (limit) filters.limit = parseInt(limit);
+
+      const result = await db.getResaleListings(filters);
+      res.json(result);
+    } catch (error: any) {
+      console.error('[API ERROR] GET /api/marketplace/listings:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/marketplace/listings/my', authenticateToken, async (req: any, res) => {
+    try {
+      const listings = await db.getResaleListingsBySellerId(req.user.id);
+      res.json(listings);
+    } catch (error: any) {
+      console.error('[API ERROR] GET /api/marketplace/listings/my:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/marketplace/listings/:publicId', async (req: any, res) => {
+    try {
+      const listing = await db.getResaleListingByPublicId(req.params.publicId);
+      if (!listing) return res.status(404).json({ error: 'Listing not found' });
+      res.json(listing);
+    } catch (error: any) {
+      console.error('[API ERROR] GET /api/marketplace/listings/:publicId:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/marketplace/listings', authenticateToken, requireEmailVerification, async (req: any, res) => {
+    try {
+      const { ticket_instance_id, price } = req.body;
+      if (!ticket_instance_id || price === undefined) {
+        return res.status(400).json({ error: 'ticket_instance_id and price are required' });
+      }
+
+      const listingPrice = parseFloat(price);
+      if (isNaN(listingPrice) || listingPrice <= 0) {
+        return res.status(400).json({ error: 'Price must be a positive number' });
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const ticket = await tx.ticketInstance.findUnique({
+          where: { id: parseInt(ticket_instance_id) },
+          include: { ticket_type: true }
+        });
+
+        if (!ticket) throw new Error('Ticket not found');
+        if (ticket.owner_id !== req.user.id) throw new Error('You do not own this ticket');
+        if (ticket.status !== 'VALID') throw new Error('Only VALID tickets can be listed for resale');
+
+        const activeListing = await tx.ticketResaleListing.findFirst({
+          where: {
+            ticket_instance_id: ticket.id,
+            status: { in: ['LISTED', 'RESERVED', 'PAYMENT_PENDING'] }
+          }
+        });
+
+        if (activeListing) throw new Error('This ticket is already listed for resale');
+
+        const originalPrice = ticket.ticket_type.price;
+        if (listingPrice > originalPrice * 1.5) {
+          throw new Error(`Resale price cannot exceed 150% of the original ticket price (${originalPrice} EGP)`);
+        }
+
+        const settings = await tx.setting.findFirst() || { service_fee_percent: 10 };
+        const feePercent = settings.service_fee_percent ?? 10;
+        const marketplace_fee = Number((listingPrice * (feePercent / 100)).toFixed(2));
+        const seller_payout = Number((listingPrice - marketplace_fee).toFixed(2));
+
+        return await tx.ticketResaleListing.create({
+          data: {
+            ticket_instance_id: ticket.id,
+            seller_id: req.user.id,
+            original_price: originalPrice,
+            price: listingPrice,
+            marketplace_fee,
+            seller_payout,
+            status: 'LISTED'
+          },
+          include: {
+            ticket_instance: {
+              include: {
+                ticket_type: true,
+                order: {
+                  include: {
+                    event: true
+                  }
+                }
+              }
+            }
+          }
+        });
+      });
+
+      res.status(201).json(result);
+    } catch (error: any) {
+      console.error('[API ERROR] POST /api/marketplace/listings:', error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.put('/api/marketplace/listings/:publicId', authenticateToken, requireEmailVerification, async (req: any, res) => {
+    try {
+      const { price } = req.body;
+      if (price === undefined) return res.status(400).json({ error: 'Price is required' });
+
+      const listingPrice = parseFloat(price);
+      if (isNaN(listingPrice) || listingPrice <= 0) {
+        return res.status(400).json({ error: 'Price must be a positive number' });
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const listing = await tx.ticketResaleListing.findUnique({
+          where: { public_id: req.params.publicId },
+          include: { ticket_instance: { include: { ticket_type: true } } }
+        });
+
+        if (!listing) throw new Error('Listing not found');
+        if (listing.seller_id !== req.user.id) throw new Error('Unauthorized');
+        if (listing.status !== 'LISTED') throw new Error('Only active listings can be modified');
+
+        const originalPrice = listing.original_price;
+        if (listingPrice > originalPrice * 1.5) {
+          throw new Error(`Resale price cannot exceed 150% of the original ticket price (${originalPrice} EGP)`);
+        }
+
+        const settings = await tx.setting.findFirst() || { service_fee_percent: 10 };
+        const feePercent = settings.service_fee_percent ?? 10;
+        const marketplace_fee = Number((listingPrice * (feePercent / 100)).toFixed(2));
+        const seller_payout = Number((listingPrice - marketplace_fee).toFixed(2));
+
+        return await tx.ticketResaleListing.update({
+          where: { id: listing.id },
+          data: {
+            price: listingPrice,
+            marketplace_fee,
+            seller_payout
+          },
+          include: {
+            ticket_instance: {
+              include: {
+                ticket_type: true,
+                order: {
+                  include: {
+                    event: true
+                  }
+                }
+              }
+            }
+          }
+        });
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('[API ERROR] PUT /api/marketplace/listings/:publicId:', error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/marketplace/listings/:publicId/cancel', authenticateToken, requireEmailVerification, async (req: any, res) => {
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const listing = await tx.ticketResaleListing.findUnique({
+          where: { public_id: req.params.publicId }
+        });
+
+        if (!listing) throw new Error('Listing not found');
+        if (listing.seller_id !== req.user.id && req.user.role !== 'admin') throw new Error('Unauthorized');
+        if (listing.status !== 'LISTED') throw new Error('Only active listings can be cancelled');
+
+        return await tx.ticketResaleListing.update({
+          where: { id: listing.id },
+          data: {
+            status: 'CANCELLED',
+            cancelled_at: new Date()
+          }
+        });
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('[API ERROR] POST /api/marketplace/listings/:publicId/cancel:', error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/marketplace/listings/:publicId/checkout', authenticateToken, requireEmailVerification, async (req: any, res) => {
+    try {
+      const listing = await prisma.ticketResaleListing.findUnique({
+        where: { public_id: req.params.publicId },
+        include: {
+          ticket_instance: {
+            include: {
+              ticket_type: true,
+              order: {
+                include: {
+                  event: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!listing) return res.status(404).json({ error: 'Listing not found' });
+      if (listing.status !== 'LISTED') return res.status(400).json({ error: 'Listing is not active' });
+      if (listing.seller_id === req.user.id) return res.status(400).json({ error: 'You cannot buy your own listed ticket' });
+
+      const orderResult = await prisma.$transaction(async (tx) => {
+        const currentListing = await tx.$queryRaw<any[]>`SELECT * FROM "TicketResaleListing" WHERE id = ${listing.id} FOR UPDATE`;
+        if (!currentListing[0] || currentListing[0].status !== 'LISTED') {
+          throw new Error('Listing is no longer available');
+        }
+
+        const eventId = listing.ticket_instance.order.event_id;
+
+        const newOrder = await tx.order.create({
+          data: {
+            user_id: req.user.id,
+            event_id: eventId,
+            total_price: listing.price,
+            order_status: 'pending',
+            reserved_at: new Date(),
+            is_paid: false,
+            processing_payment: false,
+            points_awarded: false
+          }
+        });
+
+        await tx.orderTicket.create({
+          data: {
+            order_id: newOrder.id,
+            ticket_type_id: listing.ticket_instance.ticket_type_id,
+            quantity: 1,
+            price_each: listing.price,
+            qty_original: 0,
+            qty_resale: 1,
+            holder_name: req.user.name || 'Guest'
+          }
+        });
+
+        const updatedListing = await tx.ticketResaleListing.update({
+          where: { id: listing.id },
+          data: {
+            status: 'RESERVED',
+            order_id: newOrder.id,
+            expires_at: new Date(Date.now() + 15 * 60 * 1000)
+          }
+        });
+
+        return { order: newOrder, listing: updatedListing };
+      });
+
+      res.status(201).json(orderResult);
+    } catch (error: any) {
+      console.error('[API ERROR] POST /api/marketplace/listings/:publicId/checkout:', error);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // --- ADMIN MARKETPLACE ROUTES ---
+  app.get('/api/admin/marketplace/listings', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+    try {
+      const listings = await prisma.ticketResaleListing.findMany({
+        include: {
+          seller: { select: { id: true, name: true, email: true } },
+          buyer: { select: { id: true, name: true, email: true } },
+          ticket_instance: {
+            include: {
+              ticket_type: true,
+              order: {
+                include: {
+                  event: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: { created_at: 'desc' }
+      });
+      res.json(listings);
+    } catch (error: any) {
+      console.error('[API ERROR] GET /api/admin/marketplace/listings:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/admin/marketplace/listings/:publicId/toggle-visibility', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+    try {
+      const listing = await prisma.ticketResaleListing.findUnique({
+        where: { public_id: req.params.publicId }
+      });
+
+      if (!listing) return res.status(404).json({ error: 'Listing not found' });
+
+      const updated = await prisma.ticketResaleListing.update({
+        where: { id: listing.id },
+        data: {
+          visibility: !listing.visibility
+        }
+      });
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error('[API ERROR] POST /api/admin/marketplace/listings/:publicId/toggle-visibility:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get('/api/payments/verify/:publicId', async (req: any, res) => {
     const publicId = req.params.publicId;
     console.log(`[API] Checking payment verify state for order identifier: ${publicId}`);
@@ -2194,7 +2537,7 @@ export async function generateTicketPdfBuffer(publicId: string): Promise<{ pdfBu
 
     if (ticket) {
       const ticketAny = ticket as any;
-      if (isPaid && ticketAny.status !== 'PENDING' && ticketAny.qr_token) {
+      if (isPaid && ticketAny.status !== 'PENDING' && ticketAny.status !== 'TRANSFER_PENDING' && ticketAny.qr_token) {
         const eventTimeStr = event.event_time || '00:00';
         const eventDateStr = event.event_date ? (typeof event.event_date === 'string' ? event.event_date.split('T')[0] : event.event_date.toISOString().split('T')[0]) : new Date().toISOString().split('T')[0];
         const eventDateTime = new Date(`${eventDateStr}T${eventTimeStr.includes(':') ? eventTimeStr : eventTimeStr + ':00'}`);
@@ -2713,6 +3056,23 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
   console.log(`[PDF DOWNLOAD] Starting export for order public ID ${publicId}`);
   
   try {
+    // Audit check: block PDF if ticket is pending transfer
+    const ticket = await prisma.ticketInstance.findUnique({
+      where: { public_id: publicId }
+    });
+    if (ticket && ticket.status === 'TRANSFER_PENDING') {
+      return res.status(400).json({ error: 'This ticket has a pending transfer and cannot be downloaded as PDF.' });
+    }
+
+    // Check if it's an order public ID
+    const order = await prisma.order.findUnique({
+      where: { public_id: publicId },
+      include: { ticket_instances: true }
+    });
+    if (order && order.ticket_instances.some((t: any) => t.status === 'TRANSFER_PENDING')) {
+      return res.status(400).json({ error: 'One or more tickets in this order have a pending transfer and cannot be downloaded as PDF.' });
+    }
+
     const { pdfBuffer } = await generateTicketPdfBuffer(publicId);
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -3176,6 +3536,9 @@ app.post('/api/admin/scan', authenticateToken, authorizeRole(['admin']), async (
       }
       if (ticketInstance.status === 'CHECKED_IN') {
         return res.status(400).json({ error: 'Already scanned', scanned_count: 1 });
+      }
+      if (ticketInstance.status === 'TRANSFER_PENDING') {
+        return res.status(400).json({ error: 'This ticket is currently pending transfer and cannot be checked in.' });
       }
       if (ticketInstance.status !== 'VALID') {
         return res.status(400).json({ error: `Invalid ticket status: ${ticketInstance.status}` });

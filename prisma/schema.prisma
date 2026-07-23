@@ -42,6 +42,8 @@ model User {
   ticket_instances   TicketInstance[]
   sent_transfers     TicketTransfer[]  @relation("SentTransfers")
   received_transfers TicketTransfer[]  @relation("ReceivedTransfers")
+  resale_listings    TicketResaleListing[] @relation("SellerListings")
+  purchased_resales  TicketResaleListing[] @relation("BuyerPurchases")
 }
 
 model Event {
@@ -138,6 +140,7 @@ model Order {
   resell_requests        ResellRequest[]
   points_history         PointsHistory[]
   ticket_instances       TicketInstance[]
+  resale_listings        TicketResaleListing[]
 
   @@index([user_id])
   @@index([event_id])
@@ -258,6 +261,7 @@ model TicketInstance {
   created_at      DateTime     @default(now())
   updated_at      DateTime     @updatedAt
   transfers       TicketTransfer[]
+  resale_listing  TicketResaleListing?
 
   @@index([order_id])
   @@index([ticket_type_id])
@@ -290,6 +294,37 @@ model TicketTransfer {
   @@index([sender_id])
   @@index([recipient_user_id])
   @@index([recipient_email])
+}
+
+model TicketResaleListing {
+  id                 Int            @id @default(autoincrement())
+  public_id          String         @unique @default(uuid())
+  ticket_instance_id Int            @unique
+  ticket_instance    TicketInstance @relation(fields: [ticket_instance_id], references: [id], onDelete: Cascade)
+  seller_id          Int
+  seller             User           @relation("SellerListings", fields: [seller_id], references: [id], onDelete: Cascade)
+  buyer_id           Int?
+  buyer              User?          @relation("BuyerPurchases", fields: [buyer_id], references: [id], onDelete: SetNull)
+  status             String         @default("LISTED") // DRAFT, LISTED, RESERVED, PAYMENT_PENDING, SOLD, CANCELLED, EXPIRED, HIDDEN, REJECTED
+  original_price     Float
+  price              Float
+  marketplace_fee    Float          @default(0)
+  seller_payout      Float
+  currency           String         @default("EGP")
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+  expires_at         DateTime?
+  sold_at            DateTime?
+  cancelled_at       DateTime?
+  reason             String?
+  payment_reference  String?
+  visibility         Boolean        @default(true)
+  order_id           Int?
+  order              Order?         @relation(fields: [order_id], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([seller_id])
+  @@index([buyer_id])
 }
 
 

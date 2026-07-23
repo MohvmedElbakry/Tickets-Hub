@@ -69,6 +69,10 @@ export const Navbar = () => {
               Events
               <span className={`absolute bottom-0 left-0 h-0.5 bg-teal transition-all duration-base ${isActive('/events') ? 'w-full' : 'w-0 group-hover:w-1/2'}`}></span>
             </Link>
+            <Link to="/marketplace" className={`text-label font-black uppercase tracking-widest transition-all duration-base relative group py-2 ${isActive('/marketplace') ? 'text-teal' : 'text-text-muted hover:text-text-primary'}`}>
+              Marketplace
+              <span className={`absolute bottom-0 left-0 h-0.5 bg-teal transition-all duration-base ${isActive('/marketplace') ? 'w-full' : 'w-0 group-hover:w-1/2'}`}></span>
+            </Link>
             <button className="text-label font-black uppercase tracking-widest text-text-muted hover:text-text-primary transition-all duration-base relative group py-2">
               About
               <span className="absolute bottom-0 left-0 h-0.5 bg-teal transition-all duration-base w-0 group-hover:w-1/2"></span>
@@ -212,6 +216,7 @@ export const Navbar = () => {
               <div className="content-stack gap-2">
                 <button onClick={() => { navigate('/'); setIsMenuOpen(false); }} className="w-full text-left px-5 py-4 rounded-card hover:bg-bg-elevated text-body-base font-bold text-text-primary transition-colors">Home</button>
                 <button onClick={() => { navigate('/events'); setIsMenuOpen(false); }} className="w-full text-left px-5 py-4 rounded-card hover:bg-bg-elevated text-body-base font-bold text-text-primary transition-colors">Events</button>
+                <button onClick={() => { navigate('/marketplace'); setIsMenuOpen(false); }} className="w-full text-left px-5 py-4 rounded-card hover:bg-bg-elevated text-body-base font-bold text-text-primary transition-colors">Marketplace</button>
                 <button className="w-full text-left px-5 py-4 rounded-card hover:bg-bg-elevated text-body-base font-bold text-text-primary transition-colors">About</button>
               </div>
               

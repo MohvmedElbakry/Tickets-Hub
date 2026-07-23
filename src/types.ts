@@ -161,3 +161,42 @@ export interface ResellRequest {
   userName?: string;
   paid_at?: string;
 }
+
+export interface TicketResaleListing {
+  id: number;
+  public_id: string;
+  ticket_instance_id: number;
+  seller_id: number;
+  buyer_id?: number | null;
+  status: 'DRAFT' | 'LISTED' | 'RESERVED' | 'PAYMENT_PENDING' | 'SOLD' | 'CANCELLED' | 'EXPIRED' | 'HIDDEN' | 'REJECTED';
+  original_price: number;
+  price: number;
+  marketplace_fee: number;
+  seller_payout: number;
+  currency: string;
+  created_at: string;
+  updated_at: string;
+  expires_at?: string | null;
+  sold_at?: string | null;
+  cancelled_at?: string | null;
+  reason?: string | null;
+  payment_reference?: string | null;
+  visibility: boolean;
+  order_id?: number | null;
+  seller?: { id: number; name: string; email: string };
+  buyer?: { id: number; name: string; email: string } | null;
+  ticket_instance?: {
+    id: number;
+    public_id: string;
+    qr_token: string;
+    attendee_name?: string | null;
+    attendee_email?: string | null;
+    status: string;
+    ticket_type?: TicketType;
+    order?: {
+      id: number;
+      event_id: number;
+      event?: Event;
+    }
+  };
+}

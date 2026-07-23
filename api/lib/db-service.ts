@@ -613,7 +613,12 @@ class PrismaDB {
     try {
       const result = await prisma.order.findMany({ 
         where: { user_id: userId },
-        include: { user: true, event: true, order_tickets: { include: { ticket_type: true } } }
+        include: { 
+          user: true, 
+          event: true, 
+          order_tickets: { include: { ticket_type: true } },
+          ticket_instances: { include: { ticket_type: true, owner: true } }
+        }
       });
       console.log(`[DB SUCCESS] Fetched ${result.length} orders for user ${userId}`);
       return result;
@@ -627,7 +632,12 @@ class PrismaDB {
     try {
       const order = await prisma.order.findUnique({ 
         where: { id },
-        include: { user: true, event: true, order_tickets: { include: { ticket_type: true } } }
+        include: { 
+          user: true, 
+          event: true, 
+          order_tickets: { include: { ticket_type: true } },
+          ticket_instances: { include: { ticket_type: true, owner: true } }
+        }
       });
       if (order && (order as any).order_tickets) (order as any).items = (order as any).order_tickets;
       console.log(`[DB SUCCESS] Order fetched by ID ${id}:`, !!order);
@@ -642,7 +652,11 @@ class PrismaDB {
     try {
       const order = await prisma.order.findUnique({ 
         where: { public_id: publicId },
-        include: { event: true, order_tickets: { include: { ticket_type: true } } }
+        include: { 
+          event: true, 
+          order_tickets: { include: { ticket_type: true } },
+          ticket_instances: { include: { ticket_type: true, owner: true } }
+        }
       });
       if (order && (order as any).order_tickets) (order as any).items = (order as any).order_tickets;
       console.log(`[DB SUCCESS] Order fetched by public ID ${publicId}:`, !!order);
@@ -740,47 +754,95 @@ class PrismaDB {
         if (kashierOrderId) updateData.kashier_order_id = kashierOrderId;
         const updatedOrder = await tx.order.update({ where: { id: orderId }, data: updateData });
 
-        // Atomically create TicketInstance records for each individual ticket
+        // Atomically create TicketInstance records for each individual ticket or handle resale transition
         try {
-          const orderTickets = await tx.orderTicket.findMany({ where: { order_id: orderId } });
-          const ticketHolders = order.ticket_holders_raw ? JSON.parse(order.ticket_holders_raw) : [];
-          let holderIdx = 0;
+          const resaleListing = await tx.ticketResaleListing.findFirst({
+            where: { order_id: orderId }
+          });
 
-          const userRecord = await tx.user.findUnique({ where: { id: updatedOrder.user_id } });
+          if (resaleListing) {
+            const ticketInstance = await tx.ticketInstance.findUnique({
+              where: { id: resaleListing.ticket_instance_id }
+            });
 
-          for (const ot of orderTickets) {
-            const qty = ot.quantity || 1;
-            for (let i = 0; i < qty; i++) {
-              const holder = ticketHolders[holderIdx] || null;
-              holderIdx++;
+            if (!ticketInstance) throw new Error('Resale ticket instance not found.');
 
-              let attendeeName = '';
-              if (holder) {
-                attendeeName = [holder.first_name, holder.last_name].filter(Boolean).join(' ');
+            const userRecord = await tx.user.findUnique({ where: { id: updatedOrder.user_id } });
+
+            const newPublicId = 'TKT_' + crypto.randomBytes(4).toString('hex').toUpperCase();
+            const newQrToken = crypto.randomBytes(16).toString('hex');
+
+            await tx.ticketInstance.update({
+              where: { id: ticketInstance.id },
+              data: {
+                owner_id: updatedOrder.user_id,
+                attendee_name: userRecord?.name || 'Guest',
+                attendee_email: userRecord?.email || null,
+                public_id: newPublicId,
+                qr_token: newQrToken,
+                status: 'VALID'
               }
-              if (!attendeeName && ot.holder_name) {
-                const names = ot.holder_name.split(',').map((n: string) => n.trim());
-                attendeeName = names[i] || names[0] || '';
-              }
-              if (!attendeeName) {
-                attendeeName = userRecord?.name || 'Guest';
-              }
+            });
 
-              const publicId = 'TKT_' + crypto.randomBytes(4).toString('hex').toUpperCase();
-              const qrToken = crypto.randomBytes(16).toString('hex');
+            await tx.ticketResaleListing.update({
+              where: { id: resaleListing.id },
+              data: {
+                status: 'SOLD',
+                buyer_id: updatedOrder.user_id,
+                sold_at: new Date(),
+                payment_reference: transactionId
+              }
+            });
 
-              await tx.ticketInstance.create({
-                data: {
-                  public_id: publicId,
-                  qr_token: qrToken,
-                  order_id: orderId,
-                  ticket_type_id: ot.ticket_type_id,
-                  owner_id: updatedOrder.user_id,
-                  attendee_name: attendeeName,
-                  attendee_email: userRecord?.email || null,
-                  status: 'VALID'
+            await tx.notification.create({
+              data: {
+                user_id: resaleListing.seller_id,
+                title: 'Ticket Sold!',
+                message: `Your listing for ticket has been sold for ${resaleListing.price} EGP!`,
+                type: 'resale_sold'
+              }
+            });
+          } else {
+            const orderTickets = await tx.orderTicket.findMany({ where: { order_id: orderId } });
+            const ticketHolders = order.ticket_holders_raw ? JSON.parse(order.ticket_holders_raw) : [];
+            let holderIdx = 0;
+
+            const userRecord = await tx.user.findUnique({ where: { id: updatedOrder.user_id } });
+
+            for (const ot of orderTickets) {
+              const qty = ot.quantity || 1;
+              for (let i = 0; i < qty; i++) {
+                const holder = ticketHolders[holderIdx] || null;
+                holderIdx++;
+
+                let attendeeName = '';
+                if (holder) {
+                  attendeeName = [holder.first_name, holder.last_name].filter(Boolean).join(' ');
                 }
-              });
+                if (!attendeeName && ot.holder_name) {
+                  const names = ot.holder_name.split(',').map((n: string) => n.trim());
+                  attendeeName = names[i] || names[0] || '';
+                }
+                if (!attendeeName) {
+                  attendeeName = userRecord?.name || 'Guest';
+                }
+
+                const publicId = 'TKT_' + crypto.randomBytes(4).toString('hex').toUpperCase();
+                const qrToken = crypto.randomBytes(16).toString('hex');
+
+                await tx.ticketInstance.create({
+                  data: {
+                    public_id: publicId,
+                    qr_token: qrToken,
+                    order_id: orderId,
+                    ticket_type_id: ot.ticket_type_id,
+                    owner_id: updatedOrder.user_id,
+                    attendee_name: attendeeName,
+                    attendee_email: userRecord?.email || null,
+                    status: 'VALID'
+                  }
+                });
+              }
             }
           }
         } catch (tInstanceError) {
@@ -1026,6 +1088,194 @@ class PrismaDB {
     } catch (err) {
       console.error(`[DB ERROR] ensureTicketInstancesForOrder(${orderId}):`, err);
       return [];
+    }
+  }
+
+  async getResaleListings(filters: {
+    status?: string;
+    event_id?: number;
+    category?: string;
+    venue?: string;
+    city?: string;
+    priceMin?: number;
+    priceMax?: number;
+    ticket_type_id?: number;
+    search?: string;
+    sortBy?: 'price_asc' | 'price_desc' | 'newest' | 'oldest' | 'soonest_event';
+    page?: number;
+    limit?: number;
+  } = {}) {
+    try {
+      const {
+        status,
+        event_id,
+        category,
+        venue,
+        city,
+        priceMin,
+        priceMax,
+        ticket_type_id,
+        search,
+        sortBy = 'newest',
+        page = 1,
+        limit = 20
+      } = filters;
+
+      const where: any = {};
+
+      if (status) {
+        where.status = status;
+      } else {
+        where.status = 'LISTED';
+      }
+
+      where.visibility = true;
+
+      const ticketInstanceWhere: any = {};
+
+      if (ticket_type_id) {
+        ticketInstanceWhere.ticket_type_id = ticket_type_id;
+      }
+
+      const eventWhere: any = {};
+      if (event_id) {
+        eventWhere.id = event_id;
+      }
+      if (category) {
+        eventWhere.category = { contains: category };
+      }
+      if (venue) {
+        eventWhere.venue = { contains: venue };
+      }
+      if (city) {
+        eventWhere.location = { contains: city };
+      }
+      if (search) {
+        eventWhere.OR = [
+          { title: { contains: search } },
+          { venue: { contains: search } },
+          { company_name: { contains: search } }
+        ];
+      }
+
+      if (Object.keys(eventWhere).length > 0) {
+        ticketInstanceWhere.order = {
+          event: eventWhere
+        };
+      }
+
+      if (Object.keys(ticketInstanceWhere).length > 0) {
+        where.ticket_instance = ticketInstanceWhere;
+      }
+
+      if (priceMin !== undefined) {
+        where.price = { ...where.price, gte: priceMin };
+      }
+      if (priceMax !== undefined) {
+        where.price = { ...where.price, lte: priceMax };
+      }
+
+      let orderBy: any = { created_at: 'desc' };
+      if (sortBy === 'price_asc') {
+        orderBy = { price: 'asc' };
+      } else if (sortBy === 'price_desc') {
+        orderBy = { price: 'desc' };
+      } else if (sortBy === 'newest') {
+        orderBy = { created_at: 'desc' };
+      } else if (sortBy === 'oldest') {
+        orderBy = { created_at: 'asc' };
+      } else if (sortBy === 'soonest_event') {
+        orderBy = {
+          ticket_instance: {
+            order: {
+              event: {
+                date: 'asc'
+              }
+            }
+          }
+        };
+      }
+
+      const skip = (page - 1) * limit;
+
+      const [listings, totalCount] = await Promise.all([
+        prisma.ticketResaleListing.findMany({
+          where,
+          include: {
+            seller: { select: { id: true, name: true, email: true } },
+            buyer: { select: { id: true, name: true, email: true } },
+            ticket_instance: {
+              include: {
+                ticket_type: true,
+                order: {
+                  include: {
+                    event: true
+                  }
+                }
+              }
+            }
+          },
+          orderBy,
+          skip,
+          take: limit
+        }),
+        prisma.ticketResaleListing.count({ where })
+      ]);
+
+      return { listings, totalCount, page, totalPages: Math.ceil(totalCount / limit) };
+    } catch (err) {
+      console.error('[DB ERROR] getResaleListings:', err);
+      throw err;
+    }
+  }
+
+  async getResaleListingByPublicId(publicId: string) {
+    try {
+      return await prisma.ticketResaleListing.findUnique({
+        where: { public_id: publicId },
+        include: {
+          seller: { select: { id: true, name: true, email: true } },
+          buyer: { select: { id: true, name: true, email: true } },
+          ticket_instance: {
+            include: {
+              ticket_type: true,
+              order: {
+                include: {
+                  event: true
+                }
+              }
+            }
+          }
+        }
+      });
+    } catch (err) {
+      console.error(`[DB ERROR] getResaleListingByPublicId(${publicId}):`, err);
+      throw err;
+    }
+  }
+
+  async getResaleListingsBySellerId(sellerId: number) {
+    try {
+      return await prisma.ticketResaleListing.findMany({
+        where: { seller_id: sellerId },
+        include: {
+          ticket_instance: {
+            include: {
+              ticket_type: true,
+              order: {
+                include: {
+                  event: true
+                }
+              }
+            }
+          },
+          buyer: { select: { id: true, name: true, email: true } }
+        },
+        orderBy: { created_at: 'desc' }
+      });
+    } catch (err) {
+      console.error(`[DB ERROR] getResaleListingsBySellerId(${sellerId}):`, err);
+      throw err;
     }
   }
 

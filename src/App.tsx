@@ -18,6 +18,7 @@ import { Footer } from './components/Footer';
 import { HomePage } from './components/HomePage';
 import { EventsListingPage } from './components/EventsListingPage';
 import { EventDetailsPage } from './components/EventDetailsPage';
+import { MarketplacePage } from './components/MarketplacePage';
 import { ConfirmationPage } from './components/ConfirmationPage';
 import { UserDashboard } from './components/UserDashboard';
 import { LoginModal } from './components/modals/LoginModal';
@@ -164,6 +165,7 @@ function AppContent({ location }: { location: any; key?: React.Key }) {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/events" element={<EventsListingPage />} />
                 <Route path="/events/:id" element={<EventDetailsPage />} />
+                <Route path="/marketplace" element={<MarketplacePage />} />
                 <Route path="/checkout/:publicId" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
                 <Route path="/confirmation/:publicId" element={<ProtectedRoute><ConfirmationPage /></ProtectedRoute>} />
                 <Route path="/payment-failure/:publicId" element={<ProtectedRoute><PaymentFailurePage /></ProtectedRoute>} />

@@ -171,6 +171,16 @@ export const UserDashboard = () => {
   const [selectedTicket, setSelectedTicket] = useState<OrderTicket | null>(null);
   const [payoutMethod, setPayoutMethod] = useState<'instapay' | 'vodafone'>('instapay');
   const [payoutAddress, setPayoutAddress] = useState('');
+
+  // --- PRODUCTION RESALE MARKETPLACE SYSTEM STATES ---
+  const [sellerListings, setSellerListings] = useState<any[]>([]);
+  const [isMarketplaceResaleModalOpen, setIsMarketplaceResaleModalOpen] = useState(false);
+  const [marketplaceResaleTicket, setMarketplaceResaleTicket] = useState<any | null>(null);
+  const [resalePrice, setResalePrice] = useState<string>('');
+  const [resaleLoading, setResaleLoading] = useState(false);
+  const [resaleError, setResaleError] = useState('');
+  const [resaleSuccess, setResaleSuccess] = useState('');
+
   const [activeTab, setActiveTab] = useState<'info' | 'tickets' | 'rewards' | 'profile' | 'payments' | 'dashboard'>('dashboard');
   const [ticketFilter, setTicketFilter] = useState<'all' | 'pending' | 'paid' | 'invited'>('all');
   const [viewingTicket, setViewingTicket] = useState<Order | null>(null);
@@ -256,6 +266,19 @@ export const UserDashboard = () => {
       }
       if (pointsData) setPoints(pointsData);
       await fetchTransfers();
+
+      // Fetch seller's resale listings
+      try {
+        const resListings = await fetch('/api/marketplace/seller/listings', {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        if (resListings.ok) {
+          const dataListings = await resListings.json();
+          setSellerListings(dataListings.listings || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch seller resale listings:', err);
+      }
     } catch (err: any) {
       if (err.status !== 401) {
         console.error('Failed to fetch dashboard data', err);
@@ -353,6 +376,28 @@ export const UserDashboard = () => {
       refreshDashboardData();
     } catch (err: any) {
       alert(err.message || 'Failed to cancel transfer.');
+    }
+  };
+
+  const handleCancelResaleListing = async (listingPublicId: string) => {
+    if (!confirm('Are you sure you want to cancel this resale listing? This will make your ticket active and valid again.')) return;
+    try {
+      const res = await fetch(`/api/marketplace/listings/${listingPublicId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to cancel listing');
+      
+      alert('Resale listing cancelled successfully!');
+      setViewingTicketInstance(null);
+      refreshDashboardData();
+    } catch (err: any) {
+      console.error('[Dashboard] Cancel resale listing error:', err);
+      alert(err.message || 'Failed to cancel resale listing. Please try again.');
     }
   };
 
@@ -636,8 +681,8 @@ export const UserDashboard = () => {
                           <div className="mt-auto">
                             <span className={`px-2 py-0.5 rounded-tag text-label font-bold uppercase border ${
                               item.type === 'ticket' ? (
-                                item.status === 'CHECKED_IN' ? 'bg-status-info/10 text-status-info border-status-info/20' :
-                                item.status === 'TRANSFER_PENDING' ? 'bg-status-warning/10 text-status-warning border-status-warning/20 font-bold' :
+                                item.status?.toUpperCase() === 'CHECKED_IN' ? 'bg-status-info/10 text-status-info border-status-info/20' :
+                                item.status?.toUpperCase() === 'TRANSFER_PENDING' ? 'bg-status-warning/10 text-status-warning border-status-warning/20 font-bold' :
                                 'bg-status-success/10 text-status-success border-status-success/20'
                               ) :
                               item.displayStatus === 'approved' ? 'bg-status-info/10 text-status-info border-status-info/20' : 
@@ -647,8 +692,8 @@ export const UserDashboard = () => {
                               'bg-status-warning/10 text-status-warning border-status-warning/20'
                             }`}>
                               {item.type === 'ticket' ? (
-                                 item.status === 'CHECKED_IN' ? 'Checked In' :
-                                 item.status === 'TRANSFER_PENDING' ? 'Transfer Pending' :
+                                 item.status?.toUpperCase() === 'CHECKED_IN' ? 'Checked In' :
+                                 item.status?.toUpperCase() === 'TRANSFER_PENDING' ? 'Transfer Pending' :
                                  'Paid'
                                ) :
                                item.displayStatus === 'approved' ? 'Awaiting Payment' : 
@@ -1244,7 +1289,17 @@ export const UserDashboard = () => {
                     {(freshOrder || viewingTicket).is_paid && (() => {
                       const orderData = freshOrder || viewingTicket;
                       const ticketInstance = orderData.ticket_instances?.[0] || tickets.find((t: any) => t.order_id === orderData.id);
-                      if (!ticketInstance) return null;
+                      if (!ticketInstance) {
+                        return (
+                          <Button
+                            variant="accent"
+                            className="flex-1 py-6 rounded-card text-label font-bold text-onteal bg-teal opacity-70 cursor-not-allowed"
+                            disabled={true}
+                          >
+                            Loading Ticket...
+                          </Button>
+                        );
+                      }
 
                       const statusUpper = ticketInstance.status?.toUpperCase();
 
@@ -1365,48 +1420,244 @@ export const UserDashboard = () => {
                   />
 
                   {/* Action Buttons */}
-                  <div className="flex gap-4">
-                    <Button 
-                      variant="outline" 
-                      className="flex-1 py-6 rounded-card text-label gap-2 font-bold" 
-                      onClick={() => handleExport(viewingTicketInstance)}
-                    >
-                      <Download size={16} /> PDF Ticket
-                    </Button>
+                  {(() => {
+                    const activeResaleListing = sellerListings.find(
+                      (l: any) => l.ticket_instance_id === viewingTicketInstance.id && l.status === 'LISTED'
+                    );
+                    const isTransferPending = viewingTicketInstance.status === 'TRANSFER_PENDING';
+                    const isValid = viewingTicketInstance.status === 'VALID' || viewingTicketInstance.status === 'PENDING';
 
-                    {viewingTicketInstance.status === 'TRANSFER_PENDING' ? (
-                      (() => {
-                        const associatedTransfer = pendingTransfers.find(
-                          (t: any) => t.ticket_id === viewingTicketInstance.id && t.status === 'PENDING'
-                        );
-                        return associatedTransfer ? (
+                    return (
+                      <div className="flex flex-col gap-4 w-full">
+                        <div className="flex gap-4 w-full">
+                          <Button 
+                            variant="outline" 
+                            className="flex-1 py-6 rounded-card text-label gap-2 font-bold" 
+                            onClick={() => handleExport(viewingTicketInstance)}
+                          >
+                            <Download size={16} /> PDF Ticket
+                          </Button>
+
+                          {activeResaleListing ? (
+                            <Button
+                              variant="ghost"
+                              className="flex-1 py-6 rounded-card text-label font-bold text-status-error border border-status-error/20 hover:bg-status-error/5"
+                              onClick={() => {
+                                handleCancelResaleListing(activeResaleListing.public_id);
+                              }}
+                            >
+                              Cancel Resale
+                            </Button>
+                          ) : isTransferPending ? (
+                            (() => {
+                              const associatedTransfer = pendingTransfers.find(
+                                (t: any) => t.ticket_id === viewingTicketInstance.id && t.status === 'PENDING'
+                              );
+                              return associatedTransfer ? (
+                                <Button
+                                  variant="ghost"
+                                  className="flex-1 py-6 rounded-card text-label font-bold text-status-error hover:bg-status-error/10"
+                                  onClick={() => {
+                                    handleCancelTransferId(associatedTransfer.id);
+                                    setViewingTicketInstance(null);
+                                  }}
+                                >
+                                  Cancel Transfer
+                                </Button>
+                              ) : null;
+                            })()
+                          ) : isValid ? (
+                            <Button
+                              variant="accent"
+                              className="flex-1 py-6 rounded-card text-label font-bold text-onteal bg-teal hover:bg-teal/80"
+                              onClick={() => {
+                                setTicketToTransfer(viewingTicketInstance);
+                                setIsTransferModalOpen(true);
+                                setViewingTicketInstance(null);
+                              }}
+                            >
+                              Transfer Ticket
+                            </Button>
+                          ) : null}
+                        </div>
+
+                        {!activeResaleListing && isValid && (
                           <Button
-                            variant="ghost"
-                            className="flex-1 py-6 rounded-card text-label font-bold text-status-error hover:bg-status-error/10"
+                            variant="outline"
+                            className="w-full py-6 rounded-card text-label font-bold text-teal border-teal/20 hover:bg-teal/5 flex items-center justify-center gap-2"
                             onClick={() => {
-                              handleCancelTransferId(associatedTransfer.id);
+                              setMarketplaceResaleTicket(viewingTicketInstance);
+                              setResalePrice(viewingTicketInstance.ticket_type?.price || '');
+                              setResaleError('');
+                              setResaleSuccess('');
+                              setIsMarketplaceResaleModalOpen(true);
                               setViewingTicketInstance(null);
                             }}
                           >
-                            Cancel Transfer
+                            Sell Ticket in Marketplace
                           </Button>
-                        ) : null;
-                      })()
-                    ) : (viewingTicketInstance.status === 'VALID' || viewingTicketInstance.status === 'PENDING') ? (
-                      <Button
-                        variant="accent"
-                        className="flex-1 py-6 rounded-card text-label font-bold text-onteal bg-teal hover:bg-teal/80"
-                        onClick={() => {
-                          setTicketToTransfer(viewingTicketInstance);
-                          setIsTransferModalOpen(true);
-                          setViewingTicketInstance(null);
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Production Marketplace Resale Modal */}
+        <AnimatePresence>
+          {isMarketplaceResaleModalOpen && marketplaceResaleTicket && (
+            <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-bg-page/80 backdrop-blur-md">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-bg-card w-full max-w-md rounded-card-2xl p-10 border border-bg-border shadow-2xl content-stack gap-8"
+              >
+                <div className="flex justify-between items-center">
+                  <div className="content-stack gap-1">
+                    <h2 className="text-h2">List on Marketplace</h2>
+                    <p className="text-body-xs text-text-muted">Set resale price for your ticket</p>
+                  </div>
+                  <button 
+                    onClick={() => setIsMarketplaceResaleModalOpen(false)} 
+                    className="p-2 hover:bg-bg-elevated rounded-pill transition-colors text-text-primary"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                {resaleError && (
+                  <div className="p-4 bg-status-error/10 border border-status-error/20 text-status-error text-body-xs font-bold rounded-card flex items-center gap-2">
+                    <AlertCircle size={16} /> {resaleError}
+                  </div>
+                )}
+
+                {resaleSuccess ? (
+                  <div className="p-6 bg-status-success/10 border border-status-success/20 text-status-success rounded-card-xl content-stack gap-4 text-center">
+                    <div className="w-12 h-12 bg-status-success/20 rounded-full flex items-center justify-center mx-auto">
+                      <CheckCircle size={24} />
+                    </div>
+                    <div className="content-stack gap-1">
+                      <h4 className="text-body-sm font-black uppercase tracking-wider">Ticket Listed successfully!</h4>
+                      <p className="text-body-xs text-text-muted leading-relaxed">
+                        Your ticket has been listed on the public TicketsHub Resale Marketplace. Once another user buys it, your ticket will be cancelled and reissued, and the funds will be sent to you.
+                      </p>
+                    </div>
+                    <Button 
+                      variant="accent" 
+                      className="mt-2 w-full" 
+                      onClick={() => {
+                        setIsMarketplaceResaleModalOpen(false);
+                        refreshDashboardData();
+                      }}
+                    >
+                      Done
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="content-stack gap-6">
+                    {/* Ticket Summary card */}
+                    <div className="p-5 bg-bg-elevated/50 border border-bg-border rounded-card flex justify-between items-center">
+                      <div className="content-stack gap-0.5">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-teal">
+                          {marketplaceResaleTicket.order?.event?.title || 'Event'}
+                        </p>
+                        <p className="text-body-xs font-bold text-text-primary">
+                          {marketplaceResaleTicket.ticket_type?.name || 'General Admission'}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[9px] font-black uppercase tracking-wider text-text-muted">Face Value</p>
+                        <p className="text-body-xs font-black font-mono text-text-primary">
+                          {marketplaceResaleTicket.ticket_type?.price || 0} EGP
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Price Input */}
+                    <div className="content-stack gap-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-text-muted">Resale Selling Price (EGP)</label>
+                      <div className="relative">
+                        <input 
+                          type="number"
+                          value={resalePrice}
+                          onChange={(e) => setResalePrice(e.target.value)}
+                          placeholder="e.g. 500"
+                          className="w-full bg-bg-elevated border border-bg-border rounded-card pl-6 pr-16 py-4 focus:ring-2 focus:ring-teal/20 focus:border-teal outline-none transition-all text-body-md font-black text-text-primary text-center"
+                        />
+                        <span className="absolute right-6 top-1/2 -translate-y-1/2 text-body-xs font-bold text-text-muted font-mono">EGP</span>
+                      </div>
+                    </div>
+
+                    {/* Calculations Display */}
+                    <div className="p-5 bg-teal/5 rounded-card border border-teal-border-faint content-stack gap-3 text-body-xs">
+                      <div className="flex justify-between text-text-muted font-bold">
+                        <span>Resale List Price</span>
+                        <span className="font-mono">{Number(resalePrice) || 0} EGP</span>
+                      </div>
+                      <div className="flex justify-between text-text-muted font-bold">
+                        <span>Marketplace Platform Fee (5%)</span>
+                        <span className="font-mono">-{(Math.round((Number(resalePrice) || 0) * 0.05 * 100) / 100).toFixed(2)} EGP</span>
+                      </div>
+                      <div className="flex justify-between text-teal font-black border-t border-teal/10 pt-2 text-body-sm">
+                        <span>Your Estimated Payout</span>
+                        <span className="font-mono">{(Math.round((Number(resalePrice) || 0) * 0.95 * 100) / 100).toFixed(2)} EGP</span>
+                      </div>
+                    </div>
+
+                    {/* Form submit buttons */}
+                    <div className="flex gap-4">
+                      <Button 
+                        variant="outline" 
+                        className="flex-1 py-4 font-bold" 
+                        onClick={() => setIsMarketplaceResaleModalOpen(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button 
+                        variant="accent" 
+                        className="flex-1 py-4 font-bold" 
+                        disabled={resaleLoading || !resalePrice || Number(resalePrice) <= 0}
+                        onClick={async () => {
+                          setResaleLoading(true);
+                          setResaleError('');
+                          try {
+                            const response = await fetch('/api/marketplace/listings', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${accessToken}`
+                              },
+                              body: JSON.stringify({
+                                ticketInstanceId: marketplaceResaleTicket.id,
+                                price: Number(resalePrice)
+                              })
+                            });
+                            const data = await response.json();
+                            if (!response.ok) {
+                              throw new Error(data.error || 'Failed to list ticket');
+                            }
+                            setResaleSuccess('Success');
+                          } catch (err: any) {
+                            console.error('[Dashboard] List ticket error:', err);
+                            setResaleError(err.message || 'Failed to list ticket for resale. Please try again.');
+                          } finally {
+                            setResaleLoading(false);
+                          }
                         }}
                       >
-                        Transfer Ticket
+                        {resaleLoading ? (
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
+                        ) : (
+                          'Confirm & List'
+                        )}
                       </Button>
-                    ) : null}
+                    </div>
                   </div>
-                </div>
+                )}
               </motion.div>
             </div>
           )}

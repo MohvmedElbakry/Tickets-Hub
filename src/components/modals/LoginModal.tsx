@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { authService } from '../../services/authService';
 import { useAuth } from '../../context/AuthContext';
@@ -8,6 +9,9 @@ import { useUI } from '../../context/UIContext';
 
 export const LoginModal = () => {
   const { isLoginModalOpen: isOpen, setIsLoginModalOpen, setIsSignupModalOpen, loginModalNotice, setLoginModalNotice } = useUI();
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const onClose = () => {
     setIsLoginModalOpen(false);
     setLoginModalNotice(null);
@@ -51,6 +55,20 @@ export const LoginModal = () => {
           refreshToken: data.refreshToken 
         });
         onClose();
+
+        // Safe redirect to correct page, preserving any claim/transfer parameters
+        const from = location.state?.from;
+        if (from) {
+          navigate(from.pathname + (from.search || '') + (from.hash || ''), { replace: true });
+        } else {
+          const params = new URLSearchParams(window.location.search);
+          const token = params.get('transferToken');
+          if (token) {
+            navigate(`/dashboard?tab=tickets&transferToken=${token}`, { replace: true });
+          } else {
+            navigate('/dashboard');
+          }
+        }
       }
     } catch (err: any) {
       setShake(true);

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, User, AlertCircle, Instagram, Phone, Calendar, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { CountryCodeSelector } from '../ui/CountryCodeSelector';
 import { authService } from '../../services/authService';
@@ -16,6 +17,9 @@ export const SignupModal = () => {
     loginModalNotice,
     setLoginModalNotice
   } = useUI();
+  
+  const location = useLocation();
+  const navigate = useNavigate();
   
   const [signupForm, setSignupForm] = useState({
     name: '',
@@ -89,6 +93,20 @@ export const SignupModal = () => {
   const handleSuccessClose = () => {
     setSignupSuccess(false);
     onClose();
+
+    // Safe redirect to correct page, preserving any claim/transfer parameters
+    const from = location.state?.from;
+    if (from) {
+      navigate(from.pathname + (from.search || '') + (from.hash || ''), { replace: true });
+    } else {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('transferToken');
+      if (token) {
+        navigate(`/dashboard?tab=tickets&transferToken=${token}`, { replace: true });
+      } else {
+        navigate('/dashboard');
+      }
+    }
   };
 
   if (signupSuccess) {
