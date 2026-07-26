@@ -23,8 +23,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/Button';
 import { 
   Order, 
-  PointsHistory, 
-  OrderTicket
+  PointsHistory
 } from '../types';
 import { authService } from '../services/authService';
 import { orderService } from '../services/orderService';
@@ -167,10 +166,7 @@ export const UserDashboard = () => {
       setDeleteLoading(false);
     }
   };
-  const [isResaleModalOpen, setIsResaleModalOpen] = useState(false);
-  const [selectedTicket, setSelectedTicket] = useState<OrderTicket | null>(null);
-  const [payoutMethod, setPayoutMethod] = useState<'instapay' | 'vodafone'>('instapay');
-  const [payoutAddress, setPayoutAddress] = useState('');
+
 
   // --- PRODUCTION RESALE MARKETPLACE SYSTEM STATES ---
   const [sellerListings, setSellerListings] = useState<any[]>([]);
@@ -432,26 +428,7 @@ export const UserDashboard = () => {
     return allItems;
   }, [tickets, orders, ticketFilter]);
 
-  const handleResaleRequest = async () => {
-    if (!selectedTicket || !payoutAddress) return;
-    try {
-      const data = await orderService.createResaleRequest({
-        order_ticket_id: selectedTicket.id,
-        payout_method: payoutMethod,
-        payout_address: payoutAddress,
-        amount: selectedTicket.price_each
-      });
-      if (data) {
-        alert('Resale request submitted successfully.');
-        setIsResaleModalOpen(false);
-        // Refresh orders
-        const updatedOrders = await orderService.getOrders();
-        if (updatedOrders) setOrders(updatedOrders);
-      }
-    } catch (err) {
-      alert('Error submitting resale request.');
-    }
-  };
+
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -1340,22 +1317,30 @@ export const UserDashboard = () => {
                       return null;
                     })()}
 
-                    {(freshOrder || viewingTicket).is_paid && (
-                      <Button 
-                        variant="ghost" 
-                        className="flex-1 py-6 rounded-card text-label font-bold text-status-error hover:bg-status-error/10"
-                        onClick={() => {
-                          const ticketToResell = (freshOrder || viewingTicket).items && (freshOrder || viewingTicket).items.length > 0 ? (freshOrder || viewingTicket).items[0] : null;
-                          if (ticketToResell) {
-                            setSelectedTicket(ticketToResell);
-                            setIsResaleModalOpen(true);
-                            setViewingTicket(null);
-                          }
-                        }}
-                      >
-                        Resell Ticket
-                      </Button>
-                    )}
+                    {(freshOrder || viewingTicket).is_paid && (() => {
+                      const orderData = freshOrder || viewingTicket;
+                      const ticketInst = orderData.ticket_instances?.[0] || tickets.find((t: any) => t.order_id === orderData.id);
+                      if (ticketInst && (ticketInst.status === 'VALID' || ticketInst.status === 'PENDING')) {
+                        const activeListing = sellerListings.find((l: any) => l.ticket_instance_id === ticketInst.id && l.status === 'LISTED');
+                        if (!activeListing) {
+                          return (
+                            <Button 
+                              variant="ghost" 
+                              className="flex-1 py-6 rounded-card text-label font-bold text-status-error hover:bg-status-error/10"
+                              onClick={() => {
+                                setMarketplaceResaleTicket(ticketInst);
+                                setResalePrice(ticketInst.ticket_type?.price || '');
+                                setIsMarketplaceResaleModalOpen(true);
+                                setViewingTicket(null);
+                              }}
+                            >
+                              Sell Ticket in Marketplace
+                            </Button>
+                          );
+                        }
+                      }
+                      return null;
+                    })()}
 
                     {!(freshOrder || viewingTicket).is_paid && (freshOrder || viewingTicket).displayStatus === 'approved' && (
                       <Button 
@@ -1663,72 +1648,7 @@ export const UserDashboard = () => {
           )}
         </AnimatePresence>
 
-        {/* Resale Modal */}
-        <AnimatePresence>
-          {isResaleModalOpen && (
-            <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-bg-page/80 backdrop-blur-md">
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="bg-bg-card w-full max-w-md rounded-card-2xl p-10 border border-bg-border shadow-2xl content-stack gap-8"
-              >
-                <div className="flex justify-between items-center">
-                  <h2 className="text-h2">Resell Ticket</h2>
-                  <button 
-                    onClick={() => setIsResaleModalOpen(false)} 
-                    className="p-2 hover:bg-bg-elevated rounded-pill transition-colors text-text-primary"
-                  >
-                    <X size={24} />
-                  </button>
-                </div>
 
-                <div className="content-stack gap-8">
-                  <div className="p-6 bg-teal/5 rounded-card border border-teal-border-faint content-stack gap-2">
-                    <p className="text-label text-text-muted uppercase tracking-widest font-black">Estimated Payout</p>
-                    <p className="text-h2 text-teal font-mono">{selectedTicket?.price_each} <span className="text-body-sm font-sans font-normal text-text-muted">EGP</span></p>
-                    <p className="text-body-xs text-text-muted mt-2 border-t border-teal/10 pt-2 italic">Note: Payout occurs after original tickets sell out.</p>
-                  </div>
-
-                  <div className="content-stack gap-4">
-                    <label className="text-label text-text-muted uppercase tracking-widest font-black">Payout Method</label>
-                    <div className="grid grid-cols-2 gap-4">
-                      <button 
-                        onClick={() => setPayoutMethod('instapay')}
-                        className={`p-5 rounded-card border-2 transition-all duration-base text-center content-stack gap-1 ${payoutMethod === 'instapay' ? 'border-teal bg-teal/5 text-teal shadow-card' : 'border-bg-border text-text-muted hover:border-text-muted/30 hover:bg-bg-elevated'}`}
-                      >
-                        <span className="text-body-sm font-bold">Instapay</span>
-                      </button>
-                      <button 
-                        onClick={() => setPayoutMethod('vodafone')}
-                        className={`p-5 rounded-card border-2 transition-all duration-base text-center content-stack gap-1 ${payoutMethod === 'vodafone' ? 'border-teal bg-teal/5 text-teal shadow-card' : 'border-bg-border text-text-muted hover:border-text-muted/30 hover:bg-bg-elevated'}`}
-                      >
-                        <span className="text-body-sm font-bold">Vodafone Cash</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="content-stack gap-3">
-                    <label className="text-label text-text-muted uppercase tracking-widest font-black">
-                      {payoutMethod === 'instapay' ? 'Instapay Address' : 'Wallet Number'}
-                    </label>
-                    <input 
-                      type="text" 
-                      value={payoutAddress}
-                      onChange={(e) => setPayoutAddress(e.target.value)}
-                      placeholder={payoutMethod === 'instapay' ? 'username@instapay' : '01xxxxxxxxx'}
-                      className="w-full bg-bg-page border border-bg-border rounded-card px-6 py-4 focus:ring-2 focus:ring-teal/20 focus:border-teal outline-none transition-all text-body-base text-text-primary text-center font-bold tracking-wide"
-                    />
-                  </div>
-
-                  <Button className="w-full py-6 rounded-card text-label font-black uppercase tracking-widest" onClick={handleResaleRequest}>
-                    Submit Request
-                  </Button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
 
         {/* Account Deletion Confirmation Modal */}
         <AnimatePresence>

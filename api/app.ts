@@ -1826,76 +1826,158 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEma
     }
   });
 
-  app.post('/api/marketplace/listings', authenticateToken, requireEmailVerification, async (req: any, res) => {
-    try {
-      const { ticket_instance_id, price } = req.body;
-      if (!ticket_instance_id || price === undefined) {
-        return res.status(400).json({ error: 'ticket_instance_id and price are required' });
+  async function createMarketplaceListingShared(userId: number, body: any) {
+    const rawIdentifier = body.ticket_instance_id ?? body.ticketInstanceId ?? body.ticketPublicId ?? body.ticket_public_id ?? body.ticket_id ?? body.order_ticket_id;
+    if (!rawIdentifier) {
+      const err: any = new Error('ticket identifier is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    return await prisma.$transaction(async (tx) => {
+      let ticket = null;
+      const idStr = String(rawIdentifier).trim();
+      const parsedId = parseInt(idStr, 10);
+
+      if (!isNaN(parsedId) && String(parsedId) === idStr) {
+        ticket = await tx.ticketInstance.findUnique({
+          where: { id: parsedId },
+          include: { ticket_type: true, order: { include: { event: true } } }
+        });
       }
 
-      const listingPrice = parseFloat(price);
-      if (isNaN(listingPrice) || listingPrice <= 0) {
-        return res.status(400).json({ error: 'Price must be a positive number' });
+      if (!ticket) {
+        ticket = await tx.ticketInstance.findUnique({
+          where: { public_id: idStr },
+          include: { ticket_type: true, order: { include: { event: true } } }
+        });
       }
 
-      const result = await prisma.$transaction(async (tx) => {
-        const ticket = await tx.ticketInstance.findUnique({
-          where: { id: parseInt(ticket_instance_id) },
-          include: { ticket_type: true }
-        });
+      if (!ticket) {
+        const err: any = new Error('Ticket not found');
+        err.statusCode = 404;
+        throw err;
+      }
 
-        if (!ticket) throw new Error('Ticket not found');
-        if (ticket.owner_id !== req.user.id) throw new Error('You do not own this ticket');
-        if (ticket.status !== 'VALID') throw new Error('Only VALID tickets can be listed for resale');
+      if (ticket.owner_id !== userId) {
+        const err: any = new Error('You do not own this ticket');
+        err.statusCode = 403;
+        throw err;
+      }
 
-        const activeListing = await tx.ticketResaleListing.findFirst({
-          where: {
-            ticket_instance_id: ticket.id,
-            status: { in: ['LISTED', 'RESERVED', 'PAYMENT_PENDING'] }
-          }
-        });
+      if (ticket.status === 'TRANSFER_PENDING') {
+        const err: any = new Error('Cannot list ticket for resale while a transfer is pending. Cancel the transfer first.');
+        err.statusCode = 400;
+        throw err;
+      }
 
-        if (activeListing) throw new Error('This ticket is already listed for resale');
+      if (ticket.status === 'CHECKED_IN') {
+        const err: any = new Error('Cannot list a checked-in ticket for resale.');
+        err.statusCode = 400;
+        throw err;
+      }
 
-        const originalPrice = ticket.ticket_type.price;
-        if (listingPrice > originalPrice * 1.5) {
-          throw new Error(`Resale price cannot exceed 150% of the original ticket price (${originalPrice} EGP)`);
+      if (ticket.status === 'CANCELLED') {
+        const err: any = new Error('Cannot list a cancelled ticket.');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      if (ticket.status === 'REFUNDED') {
+        const err: any = new Error('Cannot list a refunded ticket.');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      if (ticket.status !== 'VALID' && ticket.status !== 'PENDING') {
+        const err: any = new Error(`Only VALID tickets can be listed for resale. Current status: ${ticket.status}`);
+        err.statusCode = 400;
+        throw err;
+      }
+
+      if (ticket.order?.event?.date && new Date(ticket.order.event.date) < new Date()) {
+        const err: any = new Error('Cannot list ticket for resale for an event that has already ended');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const activeListing = await tx.ticketResaleListing.findFirst({
+        where: {
+          ticket_instance_id: ticket.id,
+          status: { in: ['LISTED', 'RESERVED', 'PAYMENT_PENDING'] }
         }
+      });
 
-        const settings = await tx.setting.findFirst() || { service_fee_percent: 10 };
-        const feePercent = settings.service_fee_percent ?? 10;
-        const marketplace_fee = Number((listingPrice * (feePercent / 100)).toFixed(2));
-        const seller_payout = Number((listingPrice - marketplace_fee).toFixed(2));
+      if (activeListing) {
+        const err: any = new Error('This ticket is already listed for resale');
+        err.statusCode = 400;
+        throw err;
+      }
 
-        return await tx.ticketResaleListing.create({
-          data: {
-            ticket_instance_id: ticket.id,
-            seller_id: req.user.id,
-            original_price: originalPrice,
-            price: listingPrice,
-            marketplace_fee,
-            seller_payout,
-            status: 'LISTED'
-          },
-          include: {
-            ticket_instance: {
-              include: {
-                ticket_type: true,
-                order: {
-                  include: {
-                    event: true
-                  }
+      const originalPrice = ticket.ticket_type?.price || 0;
+      let listingPrice = originalPrice;
+
+      if (body.price !== undefined && body.price !== null && body.price !== '') {
+        listingPrice = parseFloat(body.price);
+        if (isNaN(listingPrice) || listingPrice <= 0) {
+          const err: any = new Error('Price must be a positive number');
+          err.statusCode = 400;
+          throw err;
+        }
+      } else if (body.amount !== undefined && body.amount !== null && body.amount !== '') {
+        listingPrice = parseFloat(body.amount);
+        if (isNaN(listingPrice) || listingPrice <= 0) {
+          const err: any = new Error('Price must be a positive number');
+          err.statusCode = 400;
+          throw err;
+        }
+      }
+
+      if (originalPrice > 0 && listingPrice > originalPrice * 1.5) {
+        const err: any = new Error(`Resale price cannot exceed 150% of the original ticket price (${originalPrice} EGP)`);
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const settings = (await tx.setting.findFirst()) || { service_fee_percent: 10 };
+      const feePercent = settings.service_fee_percent ?? 10;
+      const marketplace_fee = Number((listingPrice * (feePercent / 100)).toFixed(2));
+      const seller_payout = Number((listingPrice - marketplace_fee).toFixed(2));
+
+      return await tx.ticketResaleListing.create({
+        data: {
+          ticket_instance_id: ticket.id,
+          seller_id: userId,
+          original_price: originalPrice,
+          price: listingPrice,
+          marketplace_fee,
+          seller_payout,
+          status: 'LISTED'
+        },
+        include: {
+          ticket_instance: {
+            include: {
+              ticket_type: true,
+              order: {
+                include: {
+                  event: true
                 }
               }
             }
           }
-        });
+        }
       });
+    });
+  }
 
+  app.post('/api/marketplace/listings', authenticateToken, requireEmailVerification, async (req: any, res) => {
+    try {
+      const result = await createMarketplaceListingShared(req.user.id, req.body);
       res.status(201).json(result);
     } catch (error: any) {
       console.error('[API ERROR] POST /api/marketplace/listings:', error);
-      res.status(400).json({ error: error.message });
+      const status = error.statusCode || 400;
+      res.status(status).json({ error: error.message });
     }
   });
 
@@ -3273,43 +3355,16 @@ app.post('/api/debug/test-email', async (req: any, res: any) => {
 });
 
 
-// --- TICKET RESALE API ---
+// --- TICKET RESALE API (COMPATIBILITY WRAPPER FOR MARKETPLACE) ---
 app.post('/api/tickets/resale', authenticateToken, requireEmailVerification, async (req: any, res) => {
   try {
-    const { ticket_id } = req.body;
-    const result = await prisma.$transaction(async (tx) => {
-      const tickets = await tx.$queryRaw<any[]>`SELECT * FROM "OrderTicket" WHERE id = ${parseInt(ticket_id)} FOR UPDATE`;
-      const ticket = tickets[0];
-      if (!ticket) throw new Error('Ticket not found.');
-      const order = await tx.order.findUnique({ where: { id: ticket.order_id } });
-      if (!order || order.user_id !== req.user.id) throw new Error('Unauthorized.');
-      if (order.order_status !== 'paid') throw new Error('Not paid.');
-      if (ticket.status === 'reselling' || ticket.status === 'resold') throw new Error('Already reselling.');
-
-      await tx.orderTicket.update({ where: { id: ticket.id }, data: { status: 'reselling' } });
-      const ttList = await tx.$queryRaw<any[]>`SELECT * FROM "TicketType" WHERE id = ${ticket.ticket_type_id} FOR UPDATE`;
-      const tt = ttList[0];
-      if (tt) {
-        await tx.ticketType.update({
-          where: { id: tt.id },
-          data: {
-            quantity_sold: Math.max(0, tt.quantity_sold - 1),
-            resale_queue: (tt.resale_queue || 0) + 1
-          }
-        });
-      }
-      return await tx.resellRequest.create({
-        data: {
-          user_id: req.user.id,
-          order_ticket_id: ticket.id,
-          ticket_type_id: ticket.ticket_type_id,
-          order_id: order.id,
-          status: 'pending'
-        }
-      });
-    });
-    res.json({ message: 'Submitted', resaleRequest: result });
-  } catch (error: any) { res.status(500).json({ error: error.message }); }
+    const listing = await createMarketplaceListingShared(req.user.id, req.body);
+    res.json({ message: 'Submitted', resaleRequest: listing, listing });
+  } catch (error: any) {
+    console.error('[API ERROR] POST /api/tickets/resale:', error);
+    const status = error.statusCode || 400;
+    res.status(status).json({ error: error.message });
+  }
 });
 
 app.get('/api/admin/resale', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {

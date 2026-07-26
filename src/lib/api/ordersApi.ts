@@ -26,9 +26,12 @@ export const getOrderQRStatus = async (orderId: OrderPublicId): Promise<any> => 
 };
 
 export const createResaleRequest = async (data: any): Promise<any> => {
-  return await fetchWithAuth('/api/tickets/resale', {
+  return await fetchWithAuth('/api/marketplace/listings', {
     method: 'POST',
-    body: JSON.stringify(data)
+    body: JSON.stringify({
+      ticketInstanceId: data.ticket_instance_id || data.ticketInstanceId || data.order_ticket_id || data.ticketPublicId || data.ticket_id,
+      price: data.price || data.amount
+    })
   });
 };
 
