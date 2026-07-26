@@ -22,6 +22,7 @@ import { TicketTemplate } from './pdf/TicketTemplate.js';
 import QRCode from 'qrcode';
 import { sendEmail, verifyEmailConfig, getPersonalizedName, sendWelcomeEmail, sendVerificationEmail, generateEmailHtml } from './lib/mailer.js';
 import { validatePassword as sharedValidatePassword } from './lib/passwordValidator.js';
+import { getEventTiming } from './lib/event-utils.js';
 
 dotenv.config();
 
@@ -1815,6 +1816,16 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEma
     }
   });
 
+  app.get('/api/marketplace/seller/listings', authenticateToken, async (req: any, res) => {
+    try {
+      const listings = await db.getResaleListingsBySellerId(req.user.id);
+      res.json({ listings, success: true });
+    } catch (error: any) {
+      console.error('[API ERROR] GET /api/marketplace/seller/listings:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get('/api/marketplace/listings/:publicId', async (req: any, res) => {
     try {
       const listing = await db.getResaleListingByPublicId(req.params.publicId);
@@ -1895,7 +1906,9 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEma
         throw err;
       }
 
-      if (ticket.order?.event?.date && new Date(ticket.order.event.date) < new Date()) {
+      const event = ticket.order?.event;
+      const { eventEnded } = getEventTiming(event);
+      if (eventEnded) {
         const err: any = new Error('Cannot list ticket for resale for an event that has already ended');
         err.statusCode = 400;
         throw err;
@@ -1914,42 +1927,41 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEma
         throw err;
       }
 
-      const originalPrice = ticket.ticket_type?.price || 0;
-      let listingPrice = originalPrice;
+      const originalPrice = Number(ticket.ticket_type?.price) || 0;
+      const maxAllowedPrice = originalPrice > 0 ? Number((originalPrice * 1.5).toFixed(2)) : 0;
 
-      if (body.price !== undefined && body.price !== null && body.price !== '') {
-        listingPrice = parseFloat(body.price);
-        if (isNaN(listingPrice) || listingPrice <= 0) {
-          const err: any = new Error('Price must be a positive number');
-          err.statusCode = 400;
-          throw err;
-        }
-      } else if (body.amount !== undefined && body.amount !== null && body.amount !== '') {
-        listingPrice = parseFloat(body.amount);
-        if (isNaN(listingPrice) || listingPrice <= 0) {
-          const err: any = new Error('Price must be a positive number');
-          err.statusCode = 400;
-          throw err;
-        }
+      let rawPrice = body.price ?? body.amount;
+      if (rawPrice === undefined || rawPrice === null || rawPrice === '') {
+        rawPrice = originalPrice;
       }
 
-      if (originalPrice > 0 && listingPrice > originalPrice * 1.5) {
-        const err: any = new Error(`Resale price cannot exceed 150% of the original ticket price (${originalPrice} EGP)`);
+      const listingPrice = parseFloat(rawPrice);
+      if (isNaN(listingPrice) || !isFinite(listingPrice) || listingPrice <= 0) {
+        const err: any = new Error('Resale price must be a valid positive number');
         err.statusCode = 400;
+        throw err;
+      }
+
+      const formattedListingPrice = Number(listingPrice.toFixed(2));
+
+      if (originalPrice > 0 && formattedListingPrice > maxAllowedPrice) {
+        const err: any = new Error(`Resale price cannot exceed 150% of the original ticket price (${maxAllowedPrice} EGP)`);
+        err.statusCode = 400;
+        err.maxPrice = maxAllowedPrice;
         throw err;
       }
 
       const settings = (await tx.setting.findFirst()) || { service_fee_percent: 10 };
       const feePercent = settings.service_fee_percent ?? 10;
-      const marketplace_fee = Number((listingPrice * (feePercent / 100)).toFixed(2));
-      const seller_payout = Number((listingPrice - marketplace_fee).toFixed(2));
+      const marketplace_fee = Number((formattedListingPrice * (feePercent / 100)).toFixed(2));
+      const seller_payout = Number((formattedListingPrice - marketplace_fee).toFixed(2));
 
       return await tx.ticketResaleListing.create({
         data: {
           ticket_instance_id: ticket.id,
           seller_id: userId,
           original_price: originalPrice,
-          price: listingPrice,
+          price: formattedListingPrice,
           marketplace_fee,
           seller_payout,
           status: 'LISTED'
@@ -2001,9 +2013,14 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEma
         if (listing.seller_id !== req.user.id) throw new Error('Unauthorized');
         if (listing.status !== 'LISTED') throw new Error('Only active listings can be modified');
 
-        const originalPrice = listing.original_price;
-        if (listingPrice > originalPrice * 1.5) {
-          throw new Error(`Resale price cannot exceed 150% of the original ticket price (${originalPrice} EGP)`);
+        const originalPrice = Number(listing.original_price) || 0;
+        const maxAllowedPrice = originalPrice > 0 ? Number((originalPrice * 1.5).toFixed(2)) : 0;
+
+        if (originalPrice > 0 && listingPrice > maxAllowedPrice) {
+          const err: any = new Error(`Resale price cannot exceed 150% of the original ticket price (${maxAllowedPrice} EGP)`);
+          err.statusCode = 400;
+          err.maxPrice = maxAllowedPrice;
+          throw err;
         }
 
         const settings = await tx.setting.findFirst() || { service_fee_percent: 10 };
@@ -3919,42 +3936,10 @@ app.post('/api/tickets/:publicId/transfer', authenticateToken, requireEmailVerif
     }
 
     // 4. Check if event has ended
-    const now = new Date();
     const event = ticket.order?.event;
-    let eventStart = event?.date ? new Date(event.date) : new Date();
-    
-    // Parse start time precisely if event_date and event_time exist
-    if (event?.event_date) {
-      const dateStr = event.event_date.split('T')[0];
-      if (event.event_time) {
-        let timeStr = event.event_time.trim();
-        const pm = timeStr.toLowerCase().includes('pm');
-        const am = timeStr.toLowerCase().includes('am');
-        timeStr = timeStr.replace(/(am|pm)/i, '').trim();
-        const parts = timeStr.split(':');
-        let hours = parseInt(parts[0], 10) || 0;
-        const minutes = parseInt(parts[1], 10) || 0;
-        if (pm && hours < 12) hours += 12;
-        if (am && hours === 12) hours = 0;
-        
-        const pad = (n: number) => n.toString().padStart(2, '0');
-        const parsedCombined = new Date(`${dateStr}T${pad(hours)}:${pad(minutes)}:00`);
-        if (!isNaN(parsedCombined.getTime())) {
-          eventStart = parsedCombined;
-        }
-      } else {
-        const parsedCombined = new Date(`${dateStr}T00:00:00`);
-        if (!isNaN(parsedCombined.getTime())) {
-          eventStart = parsedCombined;
-        }
-      }
-    }
+    const { eventStart, eventEnd, eventEnded } = getEventTiming(event);
 
-    // Compute event end datetime: assume 6 hours duration after start time
-    const eventEnd = new Date(eventStart.getTime() + 6 * 60 * 60 * 1000);
-    const eventEnded = now > eventEnd;
-
-    console.log('[DEBUG TRANSFER] Current Server Time:', now.toISOString());
+    console.log('[DEBUG TRANSFER] Current Server Time:', new Date().toISOString());
     console.log('[DEBUG TRANSFER] Event Start Datetime:', eventStart.toISOString());
     console.log('[DEBUG TRANSFER] Event End Datetime:', eventEnd.toISOString());
     console.log('[DEBUG TRANSFER] Computed eventEnded:', eventEnded);

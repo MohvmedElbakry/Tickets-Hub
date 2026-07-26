@@ -270,7 +270,8 @@ export const UserDashboard = () => {
         });
         if (resListings.ok) {
           const dataListings = await resListings.json();
-          setSellerListings(dataListings.listings || []);
+          const listingsArray = Array.isArray(dataListings) ? dataListings : (dataListings.listings || []);
+          setSellerListings(listingsArray);
         }
       } catch (err) {
         console.error('Failed to fetch seller resale listings:', err);
@@ -1542,7 +1543,14 @@ export const UserDashboard = () => {
                       Done
                     </Button>
                   </div>
-                ) : (
+                ) : (() => {
+                  const faceValue = Number(marketplaceResaleTicket.ticket_type?.price) || 0;
+                  const maxResalePrice = Math.round(faceValue * 1.5 * 100) / 100;
+                  const currentPriceNum = Number(resalePrice);
+                  const isPriceOverCap = faceValue > 0 && currentPriceNum > maxResalePrice;
+                  const isPriceInvalid = !resalePrice || isNaN(currentPriceNum) || currentPriceNum <= 0 || !isFinite(currentPriceNum);
+
+                  return (
                   <div className="content-stack gap-6">
                     {/* Ticket Summary card */}
                     <div className="p-5 bg-bg-elevated/50 border border-bg-border rounded-card flex justify-between items-center">
@@ -1555,41 +1563,59 @@ export const UserDashboard = () => {
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[9px] font-black uppercase tracking-wider text-text-muted">Face Value</p>
+                        <p className="text-[9px] font-black uppercase tracking-wider text-text-muted">Face Value / Max Allowed</p>
                         <p className="text-body-xs font-black font-mono text-text-primary">
-                          {marketplaceResaleTicket.ticket_type?.price || 0} EGP
+                          {faceValue} EGP <span className="text-teal font-normal">(Max: {maxResalePrice} EGP)</span>
                         </p>
                       </div>
                     </div>
 
                     {/* Price Input */}
                     <div className="content-stack gap-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-text-muted">Resale Selling Price (EGP)</label>
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-text-muted">Resale Selling Price (EGP)</label>
+                        {faceValue > 0 && (
+                          <span className="text-[10px] font-mono text-teal font-bold">Max 150%: {maxResalePrice} EGP</span>
+                        )}
+                      </div>
                       <div className="relative">
                         <input 
                           type="number"
+                          min={1}
+                          max={maxResalePrice || 1000000}
+                          step="any"
                           value={resalePrice}
-                          onChange={(e) => setResalePrice(e.target.value)}
-                          placeholder="e.g. 500"
-                          className="w-full bg-bg-elevated border border-bg-border rounded-card pl-6 pr-16 py-4 focus:ring-2 focus:ring-teal/20 focus:border-teal outline-none transition-all text-body-md font-black text-text-primary text-center"
+                          onChange={(e) => {
+                            setResalePrice(e.target.value);
+                            setResaleError('');
+                          }}
+                          placeholder={`e.g. ${faceValue || 500}`}
+                          className={`w-full bg-bg-elevated border rounded-card pl-6 pr-16 py-4 focus:ring-2 focus:ring-teal/20 outline-none transition-all text-body-md font-black text-text-primary text-center ${
+                            isPriceOverCap ? 'border-status-error focus:border-status-error' : 'border-bg-border focus:border-teal'
+                          }`}
                         />
                         <span className="absolute right-6 top-1/2 -translate-y-1/2 text-body-xs font-bold text-text-muted font-mono">EGP</span>
                       </div>
+                      {isPriceOverCap && (
+                        <p className="text-[11px] font-bold text-status-error mt-1 flex items-center gap-1">
+                          <AlertCircle size={13} /> Resale price cannot exceed 150% of face value ({maxResalePrice} EGP max).
+                        </p>
+                      )}
                     </div>
 
                     {/* Calculations Display */}
                     <div className="p-5 bg-teal/5 rounded-card border border-teal-border-faint content-stack gap-3 text-body-xs">
                       <div className="flex justify-between text-text-muted font-bold">
                         <span>Resale List Price</span>
-                        <span className="font-mono">{Number(resalePrice) || 0} EGP</span>
+                        <span className="font-mono">{currentPriceNum || 0} EGP</span>
                       </div>
                       <div className="flex justify-between text-text-muted font-bold">
-                        <span>Marketplace Platform Fee (5%)</span>
-                        <span className="font-mono">-{(Math.round((Number(resalePrice) || 0) * 0.05 * 100) / 100).toFixed(2)} EGP</span>
+                        <span>Marketplace Platform Fee (10%)</span>
+                        <span className="font-mono">-{(Math.round((currentPriceNum || 0) * 0.10 * 100) / 100).toFixed(2)} EGP</span>
                       </div>
                       <div className="flex justify-between text-teal font-black border-t border-teal/10 pt-2 text-body-sm">
                         <span>Your Estimated Payout</span>
-                        <span className="font-mono">{(Math.round((Number(resalePrice) || 0) * 0.95 * 100) / 100).toFixed(2)} EGP</span>
+                        <span className="font-mono">{(Math.round((currentPriceNum || 0) * 0.90 * 100) / 100).toFixed(2)} EGP</span>
                       </div>
                     </div>
 
@@ -1605,8 +1631,12 @@ export const UserDashboard = () => {
                       <Button 
                         variant="accent" 
                         className="flex-1 py-4 font-bold" 
-                        disabled={resaleLoading || !resalePrice || Number(resalePrice) <= 0}
+                        disabled={resaleLoading || isPriceInvalid || isPriceOverCap}
                         onClick={async () => {
+                          if (isPriceOverCap) {
+                            setResaleError(`Resale price cannot exceed 150% of the original ticket price (${maxResalePrice} EGP)`);
+                            return;
+                          }
                           setResaleLoading(true);
                           setResaleError('');
                           try {
@@ -1618,7 +1648,7 @@ export const UserDashboard = () => {
                               },
                               body: JSON.stringify({
                                 ticketInstanceId: marketplaceResaleTicket.id,
-                                price: Number(resalePrice)
+                                price: currentPriceNum
                               })
                             });
                             const data = await response.json();
@@ -1642,7 +1672,8 @@ export const UserDashboard = () => {
                       </Button>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
               </motion.div>
             </div>
           )}
