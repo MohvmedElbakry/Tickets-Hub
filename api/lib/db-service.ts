@@ -1,5 +1,8 @@
 import prisma from './prisma.js';
 import crypto from 'crypto';
+import { getEventTiming } from './event-utils.js';
+import { sendResaleListingConfirmationEmail } from './mailer.js';
+import { toNumber, FinancialService } from './financial-service.js';
 
 export const parseSafeDate = (input: any, required: boolean = false) => {
   if (!input) {
@@ -772,14 +775,24 @@ class PrismaDB {
             const newPublicId = 'TKT_' + crypto.randomBytes(4).toString('hex').toUpperCase();
             const newQrToken = crypto.randomBytes(16).toString('hex');
 
+            // Mark seller's ticket instance as RESOLD (preserving original id, public_id, qr_token, owner_id)
             await tx.ticketInstance.update({
               where: { id: ticketInstance.id },
               data: {
-                owner_id: updatedOrder.user_id,
-                attendee_name: userRecord?.name || 'Guest',
-                attendee_email: userRecord?.email || null,
+                status: 'RESOLD'
+              }
+            });
+
+            // Create a NEW TicketInstance record for the buyer
+            await tx.ticketInstance.create({
+              data: {
                 public_id: newPublicId,
                 qr_token: newQrToken,
+                owner_id: updatedOrder.user_id,
+                order_id: updatedOrder.id,
+                ticket_type_id: ticketInstance.ticket_type_id,
+                attendee_name: userRecord?.name || 'Guest',
+                attendee_email: userRecord?.email || null,
                 status: 'VALID'
               }
             });
@@ -851,7 +864,7 @@ class PrismaDB {
 
         if (!updatedOrder.points_awarded) {
           try {
-            const points = Math.floor(updatedOrder.total_price * 0.1);
+            const points = Math.floor(toNumber(updatedOrder.total_price) * 0.1);
             const user = await tx.user.findUnique({ where: { id: updatedOrder.user_id! } });
             if (user) {
               await tx.user.update({ where: { id: user.id }, data: { points: { increment: points } } });
@@ -1130,8 +1143,12 @@ class PrismaDB {
       }
 
       where.visibility = true;
+      where.seller = { is_deleted: false };
 
       const ticketInstanceWhere: any = {};
+      if (!status || status === 'LISTED') {
+        ticketInstanceWhere.status = 'RESALE_LISTED';
+      }
 
       if (ticket_type_id) {
         ticketInstanceWhere.ticket_type_id = ticket_type_id;
@@ -1222,7 +1239,14 @@ class PrismaDB {
         prisma.ticketResaleListing.count({ where })
       ]);
 
-      return { listings, totalCount, page, totalPages: Math.ceil(totalCount / limit) };
+      const validListings = listings.filter(l => {
+        const event = l.ticket_instance?.order?.event;
+        if (!event) return false;
+        const { eventEnded } = getEventTiming(event);
+        return !eventEnded;
+      });
+
+      return { listings: validListings, totalCount: validListings.length, page, totalPages: Math.ceil(validListings.length / limit) };
     } catch (err) {
       console.error('[DB ERROR] getResaleListings:', err);
       throw err;
@@ -1277,6 +1301,237 @@ class PrismaDB {
       console.error(`[DB ERROR] getResaleListingsBySellerId(${sellerId}):`, err);
       throw err;
     }
+  }
+
+  async createMarketplaceListing(userId: number, body: any) {
+    const rawIdentifier = body.ticket_instance_id ?? body.ticketInstanceId ?? body.ticketPublicId ?? body.ticket_public_id ?? body.ticket_id ?? body.order_ticket_id;
+    if (!rawIdentifier) {
+      const err: any = new Error('ticket identifier is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const listing = await prisma.$transaction(async (tx) => {
+      let ticket = null;
+      const idStr = String(rawIdentifier).trim();
+      const parsedId = parseInt(idStr, 10);
+
+      if (!isNaN(parsedId) && String(parsedId) === idStr) {
+        ticket = await tx.ticketInstance.findUnique({
+          where: { id: parsedId },
+          include: { ticket_type: true, order: { include: { event: true } } }
+        });
+      }
+
+      if (!ticket) {
+        ticket = await tx.ticketInstance.findUnique({
+          where: { public_id: idStr },
+          include: { ticket_type: true, order: { include: { event: true } } }
+        });
+      }
+
+      if (!ticket) {
+        const err: any = new Error('Ticket not found');
+        err.statusCode = 404;
+        throw err;
+      }
+
+      if (ticket.owner_id !== userId) {
+        const err: any = new Error('You do not own this ticket');
+        err.statusCode = 403;
+        throw err;
+      }
+
+      if (ticket.status === 'TRANSFER_PENDING') {
+        const err: any = new Error('Cannot list ticket for resale while a transfer is pending. Cancel the transfer first.');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      if (ticket.status === 'CHECKED_IN') {
+        const err: any = new Error('Cannot list a checked-in ticket for resale.');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      if (ticket.status === 'CANCELLED') {
+        const err: any = new Error('Cannot list a cancelled ticket.');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      if (ticket.status === 'REFUNDED') {
+        const err: any = new Error('Cannot list a refunded ticket.');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      if (ticket.status === 'RESALE_LISTED') {
+        const err: any = new Error('This ticket is already listed for resale');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      if (ticket.status !== 'VALID' && ticket.status !== 'PENDING') {
+        const err: any = new Error(`Only VALID tickets can be listed for resale. Current status: ${ticket.status}`);
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const event = ticket.order?.event;
+      const { eventEnded } = getEventTiming(event);
+      if (eventEnded) {
+        const err: any = new Error('Cannot list ticket for resale for an event that has already ended');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const originalPrice = Number(ticket.ticket_type?.price) || 0;
+      const maxAllowedPrice = originalPrice > 0 ? Number((originalPrice * 1.5).toFixed(2)) : 0;
+
+      let rawPrice = body.price ?? body.amount;
+      if (rawPrice === undefined || rawPrice === null || rawPrice === '') {
+        rawPrice = originalPrice;
+      }
+
+      const listingPrice = parseFloat(rawPrice);
+      if (isNaN(listingPrice) || !isFinite(listingPrice) || listingPrice <= 0) {
+        const err: any = new Error('Resale price must be a valid positive number');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const formattedListingPrice = Number(listingPrice.toFixed(2));
+
+      if (originalPrice > 0 && formattedListingPrice > maxAllowedPrice) {
+        const err: any = new Error(`Resale price cannot exceed 150% of the original ticket price (${maxAllowedPrice} EGP)`);
+        err.statusCode = 400;
+        err.maxPrice = maxAllowedPrice;
+        throw err;
+      }
+
+      const settings = (await tx.setting.findFirst()) || { service_fee_percent: 10 };
+      const feePercent = toNumber(settings.service_fee_percent ?? 10);
+      const marketplace_fee = Number((formattedListingPrice * (feePercent / 100)).toFixed(2));
+      const seller_payout = Number((formattedListingPrice - marketplace_fee).toFixed(2));
+
+      const existingListing = await tx.ticketResaleListing.findFirst({
+        where: {
+          ticket_instance_id: ticket.id
+        }
+      });
+
+      if (existingListing) {
+        if (['LISTED', 'RESERVED', 'PAYMENT_PENDING'].includes(existingListing.status)) {
+          const err: any = new Error('This ticket is already listed for resale');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        await tx.ticketInstance.update({
+          where: { id: ticket.id },
+          data: { status: 'RESALE_LISTED' }
+        });
+
+        await tx.notification.create({
+          data: {
+            user_id: userId,
+            title: 'Ticket Listed for Resale',
+            message: `Your ticket for "${ticket.order?.event?.title || 'Event'}" has been successfully listed on the resale marketplace for ${formattedListingPrice} EGP.`,
+            type: 'resale_listed'
+          }
+        });
+
+        return await tx.ticketResaleListing.update({
+          where: { id: existingListing.id },
+          data: {
+            price: formattedListingPrice,
+            original_price: originalPrice,
+            marketplace_fee,
+            seller_payout,
+            status: 'LISTED',
+            cancelled_at: null,
+            sold_at: null,
+            order_id: null,
+            buyer_id: null,
+            visibility: true
+          },
+          include: {
+            ticket_instance: {
+              include: {
+                ticket_type: true,
+                order: {
+                  include: {
+                    event: true
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+
+      await tx.ticketInstance.update({
+        where: { id: ticket.id },
+        data: { status: 'RESALE_LISTED' }
+      });
+
+      await tx.notification.create({
+        data: {
+          user_id: userId,
+          title: 'Ticket Listed for Resale',
+          message: `Your ticket for "${ticket.order?.event?.title || 'Event'}" has been successfully listed on the resale marketplace for ${formattedListingPrice} EGP.`,
+          type: 'resale_listed'
+        }
+      });
+
+      return await tx.ticketResaleListing.create({
+        data: {
+          ticket_instance_id: ticket.id,
+          seller_id: userId,
+          original_price: originalPrice,
+          price: formattedListingPrice,
+          marketplace_fee,
+          seller_payout,
+          status: 'LISTED'
+        },
+        include: {
+          ticket_instance: {
+            include: {
+              ticket_type: true,
+              order: {
+                include: {
+                  event: true
+                }
+              }
+            }
+          }
+        }
+      });
+    });
+
+    // Send confirmation email AFTER successful transaction commit
+    try {
+      const seller = await prisma.user.findUnique({ where: { id: userId } });
+      if (seller && seller.email) {
+        const eventTitle = listing.ticket_instance?.order?.event?.title || 'Event';
+        const ticketTypeName = listing.ticket_instance?.ticket_type?.name || 'Ticket';
+        
+        await sendResaleListingConfirmationEmail(
+          seller.email,
+          seller.name || 'Valued Customer',
+          eventTitle,
+          ticketTypeName,
+          Number(listing.price),
+          listing.public_id
+        );
+      }
+    } catch (emailErr: any) {
+      console.error('[RESALE EMAIL FAILURE] Failed to send resale listing confirmation email:', emailErr.message);
+      // DO NOT throw email error to prevent rolling back successful listing
+    }
+
+    return listing;
   }
 
   async init() {}

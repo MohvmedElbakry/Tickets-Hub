@@ -542,4 +542,63 @@ The TicketsHub Team
   }
 }
 
+export async function sendResaleListingConfirmationEmail(
+  recipientEmail: string,
+  sellerName: string,
+  eventTitle: string,
+  ticketTypeName: string,
+  listingPrice: number,
+  listingPublicId: string
+): Promise<{ success: boolean; messageId?: string }> {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] 📨 Resale listing confirmation email queued | Email: ${recipientEmail} | Listing Public ID: ${listingPublicId}`);
+
+  const recipientName = getPersonalizedName(sellerName, recipientEmail);
+
+  const htmlText = generateEmailHtml({
+    recipientName,
+    title: 'Ticket Listed for Resale 🎟️',
+    bodyHtml: `
+      <p>Your ticket has been successfully listed on the TicketsHub Resale Marketplace.</p>
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+        <p style="margin: 4px 0; font-size: 14px;"><strong>Event:</strong> ${eventTitle}</p>
+        <p style="margin: 4px 0; font-size: 14px;"><strong>Ticket Type:</strong> ${ticketTypeName}</p>
+        <p style="margin: 4px 0; font-size: 14px;"><strong>Listing Price:</strong> ${listingPrice} EGP</p>
+        <p style="margin: 4px 0; font-size: 14px;"><strong>Listing Reference:</strong> ${listingPublicId}</p>
+      </div>
+      <p>Your ticket will now be visible to potential buyers in the marketplace. Once a buyer purchases your ticket, you will be notified immediately and funds will be processed according to our payout schedule.</p>
+      <p>You can manage or cancel your listing anytime from your TicketsHub Dashboard.</p>
+    `,
+    ctaText: 'View My Dashboard',
+    ctaUrl: process.env.APP_URL ? `${process.env.APP_URL}/dashboard` : 'https://ticketshub.com/dashboard'
+  });
+
+  const plainText = `
+Hi ${recipientName},
+
+Your ticket for "${eventTitle}" (${ticketTypeName}) has been successfully listed on the TicketsHub Resale Marketplace for ${listingPrice} EGP.
+
+Listing Reference: ${listingPublicId}
+
+Once a buyer purchases your ticket, you will be notified immediately.
+
+Best regards,
+The TicketsHub Team
+  `.trim();
+
+  try {
+    const res = await sendEmail({
+      to: recipientEmail,
+      subject: `[TicketsHub] Ticket Listed for Resale - ${eventTitle}`,
+      html: htmlText,
+      text: plainText
+    });
+    console.log(`[${new Date().toISOString()}] ✅ Resale listing confirmation email sent | Email: ${recipientEmail} | Message ID: ${res.messageId || 'n/a'}`);
+    return res;
+  } catch (err: any) {
+    console.error(`[${new Date().toISOString()}] ⚠️ Resale listing confirmation email failed | Email: ${recipientEmail} | Error: ${err.message}`);
+    return { success: false };
+  }
+}
+
 

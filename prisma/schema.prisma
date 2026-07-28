@@ -44,6 +44,10 @@ model User {
   received_transfers TicketTransfer[]  @relation("ReceivedTransfers")
   resale_listings    TicketResaleListing[] @relation("SellerListings")
   purchased_resales  TicketResaleListing[] @relation("BuyerPurchases")
+  seller_balance     SellerBalance?
+  payout_destinations PayoutDestination[]
+  payout_requests    PayoutRequest[]
+  ledger_entries     LedgerEntry[]
 }
 
 model Event {
@@ -81,7 +85,7 @@ model TicketType {
   event          Event           @relation(fields: [event_id], references: [id], onDelete: Cascade)
   name           String
   description    String?
-  price          Float
+  price          Decimal         @db.Decimal(12, 2)
   quantity_total Int
   quantity_sold  Int             @default(0)
   resale_queue   Int             @default(0)
@@ -116,7 +120,7 @@ model Order {
   user                   User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
   event_id               Int
   event                  Event           @relation(fields: [event_id], references: [id], onDelete: Cascade)
-  total_price            Float
+  total_price            Decimal         @db.Decimal(12, 2)
   order_status           String          @default("pending")
   payment_method         String?
   is_paid                Boolean         @default(false)
@@ -141,6 +145,9 @@ model Order {
   points_history         PointsHistory[]
   ticket_instances       TicketInstance[]
   resale_listings        TicketResaleListing[]
+  payment_transactions   PaymentTransaction[]
+  ledger_entries         LedgerEntry[]
+  refund_records         RefundRecord[]
 
   @@index([user_id])
   @@index([event_id])
@@ -155,8 +162,8 @@ model OrderTicket {
   quantity          Int        @default(1)
   qty_original      Int?
   qty_resale        Int?
-  price_at_purchase Float?
-  price_each        Float?
+  price_at_purchase Decimal?   @db.Decimal(12, 2)
+  price_each        Decimal?   @db.Decimal(12, 2)
   holder_name       String?
   scanned_count     Int        @default(0)
   is_used           Boolean    @default(false)
@@ -174,7 +181,7 @@ model ResellRequest {
   user           User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
   status         String     @default("pending")
   reason         String?
-  price          Float?
+  price          Decimal?   @db.Decimal(12, 2)
   paid_at        DateTime?
   created_at     DateTime   @default(now())
 
@@ -227,10 +234,12 @@ model Notification {
 }
 
 model Setting {
-  id                      Int   @id @default(autoincrement())
-  service_fee_percent     Float @default(10)
-  processing_fee_percent  Float @default(2.75)
-  fixed_fee_egp           Float @default(3)
+  id                      Int     @id @default(autoincrement())
+  service_fee_percent     Decimal @default(10) @db.Decimal(12, 2)
+  processing_fee_percent  Decimal @default(2.75) @db.Decimal(12, 2)
+  fixed_fee_egp           Decimal @default(3) @db.Decimal(12, 2)
+  settlement_hold_hours   Int     @default(24)
+  min_payout_amount_egp   Decimal @default(100) @db.Decimal(12, 2)
 }
 
 enum TicketStatus {
@@ -239,6 +248,7 @@ enum TicketStatus {
   CHECKED_IN
   TRANSFER_PENDING
   TRANSFERRED
+  RESALE_LISTED
   RESOLD
   CANCELLED
   REFUNDED
@@ -297,34 +307,199 @@ model TicketTransfer {
 }
 
 model TicketResaleListing {
-  id                 Int            @id @default(autoincrement())
-  public_id          String         @unique @default(uuid())
-  ticket_instance_id Int            @unique
-  ticket_instance    TicketInstance @relation(fields: [ticket_instance_id], references: [id], onDelete: Cascade)
-  seller_id          Int
-  seller             User           @relation("SellerListings", fields: [seller_id], references: [id], onDelete: Cascade)
-  buyer_id           Int?
-  buyer              User?          @relation("BuyerPurchases", fields: [buyer_id], references: [id], onDelete: SetNull)
-  status             String         @default("LISTED") // DRAFT, LISTED, RESERVED, PAYMENT_PENDING, SOLD, CANCELLED, EXPIRED, HIDDEN, REJECTED
-  original_price     Float
-  price              Float
-  marketplace_fee    Float          @default(0)
-  seller_payout      Float
-  currency           String         @default("EGP")
-  created_at         DateTime       @default(now())
-  updated_at         DateTime       @updatedAt
-  expires_at         DateTime?
-  sold_at            DateTime?
-  cancelled_at       DateTime?
-  reason             String?
-  payment_reference  String?
-  visibility         Boolean        @default(true)
-  order_id           Int?
-  order              Order?         @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  id                     Int            @id @default(autoincrement())
+  public_id              String         @unique @default(uuid())
+  ticket_instance_id     Int            @unique
+  ticket_instance        TicketInstance @relation(fields: [ticket_instance_id], references: [id], onDelete: Cascade)
+  seller_id              Int
+  seller                 User           @relation("SellerListings", fields: [seller_id], references: [id], onDelete: Cascade)
+  buyer_id               Int?
+  buyer                  User?          @relation("BuyerPurchases", fields: [buyer_id], references: [id], onDelete: SetNull)
+  status                 String         @default("LISTED") // DRAFT, LISTED, RESERVED, PAYMENT_PENDING, SOLD, CANCELLED, EXPIRED, HIDDEN, REJECTED
+  original_price         Decimal        @db.Decimal(12, 2)
+  price                  Decimal        @db.Decimal(12, 2)
+  marketplace_fee        Decimal        @default(0) @db.Decimal(12, 2)
+  seller_payout          Decimal        @db.Decimal(12, 2)
+  currency               String         @default("EGP")
+  created_at             DateTime       @default(now())
+  updated_at             DateTime       @updatedAt
+  expires_at             DateTime?
+  sold_at                DateTime?
+  cancelled_at           DateTime?
+  reason                 String?
+  payment_reference      String?
+  visibility             Boolean        @default(true)
+  order_id               Int?
+  order                  Order?         @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  reservation_expires_at DateTime?
+  reserved_by_user_id    Int?
+  payment_transactions   PaymentTransaction[]
+  ledger_entries         LedgerEntry[]
 
   @@index([status])
   @@index([seller_id])
   @@index([buyer_id])
+  @@index([reservation_expires_at])
+}
+
+model PaymentTransaction {
+  id                      Int      @id @default(autoincrement())
+  public_id               String   @unique @default(uuid())
+  order_id                Int?
+  order                   Order?   @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  resale_listing_id       Int?
+  resale_listing          TicketResaleListing? @relation(fields: [resale_listing_id], references: [id], onDelete: SetNull)
+  provider                String   @default("KASHIER")
+  provider_transaction_id String?  @unique
+  merchant_order_id       String?
+  amount                  Decimal  @db.Decimal(12, 2)
+  currency                String   @default("EGP")
+  status                  String   // INITIATED, PENDING, CAPTURED, FAILED, REFUNDED, DISPUTED
+  payment_method          String?
+  raw_response            String?
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+  ledger_entries          LedgerEntry[]
+  refund_records          RefundRecord[]
+
+  @@index([order_id])
+  @@index([resale_listing_id])
+  @@index([status])
+  @@index([provider_transaction_id])
+}
+
+model WebhookEvent {
+  id                Int      @id @default(autoincrement())
+  event_id          String   @unique
+  provider          String   @default("KASHIER")
+  event_type        String
+  payload_hash      String?
+  processing_status String   @default("PENDING") // PENDING, PROCESSED, FAILED, DUPLICATE
+  received_at       DateTime @default(now())
+  processed_at      DateTime?
+  failure_reason    String?
+  retry_count       Int      @default(0)
+
+  @@index([processing_status])
+}
+
+model LedgerEntry {
+  id                     Int                 @id @default(autoincrement())
+  public_id              String              @unique @default(uuid())
+  transaction_ref        String
+  account_type           String              // CASH_CLEARING, SELLER_PENDING, SELLER_AVAILABLE, PLATFORM_REVENUE, PAYOUT_CLEARING, REFUND_CLEARING
+  entry_type             String              // DEBIT or CREDIT
+  amount                 Decimal             @db.Decimal(12, 2)
+  currency               String              @default("EGP")
+  description            String?
+  user_id                Int?
+  user                   User?               @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  order_id               Int?
+  order                  Order?              @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  resale_listing_id      Int?
+  resale_listing         TicketResaleListing? @relation(fields: [resale_listing_id], references: [id], onDelete: SetNull)
+  payment_transaction_id Int?
+  payment_transaction    PaymentTransaction? @relation(fields: [payment_transaction_id], references: [id], onDelete: SetNull)
+  created_at             DateTime            @default(now())
+
+  @@index([transaction_ref])
+  @@index([account_type])
+  @@index([user_id])
+  @@index([created_at])
+}
+
+model SellerBalance {
+  id                Int      @id @default(autoincrement())
+  user_id           Int      @unique
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  pending_amount    Decimal  @default(0) @db.Decimal(12, 2)
+  available_amount  Decimal  @default(0) @db.Decimal(12, 2)
+  withdrawn_amount  Decimal  @default(0) @db.Decimal(12, 2)
+  held_amount       Decimal  @default(0) @db.Decimal(12, 2)
+  currency          String   @default("EGP")
+  updated_at        DateTime @updatedAt
+
+  @@index([user_id])
+}
+
+model PayoutDestination {
+  id                Int      @id @default(autoincrement())
+  public_id         String   @unique @default(uuid())
+  user_id           Int
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  type              String   // BANK_ACCOUNT, INSTAPAY, VODAFONE_CASH
+  account_name      String
+  masked_details    String
+  encrypted_details String
+  is_active         Boolean  @default(true)
+  is_verified       Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+  payout_requests   PayoutRequest[]
+
+  @@index([user_id])
+}
+
+model PayoutRequest {
+  id                   Int               @id @default(autoincrement())
+  public_id            String            @unique @default(uuid())
+  idempotency_key      String            @unique @default(uuid())
+  user_id              Int
+  user                 User              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  destination_id       Int
+  destination          PayoutDestination @relation(fields: [destination_id], references: [id])
+  amount               Decimal           @db.Decimal(12, 2)
+  currency             String            @default("EGP")
+  status               String            @default("REQUESTED") // REQUESTED, PENDING_REVIEW, APPROVED, PROCESSING, PAID, FAILED, CANCELLED, REVERSED
+  failure_reason       String?
+  provider_ref         String?
+  approved_by_admin_id Int?
+  requested_at         DateTime          @default(now())
+  approved_at          DateTime?
+  processed_at         DateTime?
+  paid_at              DateTime?
+  updated_at           DateTime          @updatedAt
+
+  @@index([user_id])
+  @@index([status])
+}
+
+model RefundRecord {
+  id                     Int                @id @default(autoincrement())
+  public_id              String             @unique @default(uuid())
+  payment_transaction_id Int
+  payment_transaction    PaymentTransaction @relation(fields: [payment_transaction_id], references: [id], onDelete: Cascade)
+  order_id               Int?
+  order                  Order?             @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  amount                 Decimal            @db.Decimal(12, 2)
+  currency               String             @default("EGP")
+  reason                 String
+  status                 String             @default("REQUESTED") // REQUESTED, PROCESSING, COMPLETED, FAILED, REVERSED
+  provider_ref           String?
+  is_automated           Boolean            @default(false)
+  created_by_admin_id    Int?
+  created_at             DateTime           @default(now())
+  updated_at             DateTime           @updatedAt
+
+  @@index([payment_transaction_id])
+  @@index([status])
+}
+
+model FinancialAuditLog {
+  id            Int      @id @default(autoincrement())
+  public_id     String   @unique @default(uuid())
+  actor_id      Int?
+  actor_role    String?
+  action        String
+  entity_type   String
+  entity_id     String
+  amount        Decimal? @db.Decimal(12, 2)
+  reason        String?
+  metadata_json String?
+  created_at    DateTime @default(now())
+
+  @@index([entity_type, entity_id])
+  @@index([actor_id])
 }
 
 
