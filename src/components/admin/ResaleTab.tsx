@@ -3,6 +3,7 @@ import { RefreshCw, Eye, EyeOff, Check, AlertCircle, ShoppingCart } from 'lucide
 import { ResellRequest, TicketResaleListing } from '../../types';
 import { orderService } from '../../services/orderService';
 import { useAuth } from '../../context/AuthContext';
+import { formatMoneyWithCurrency } from '../../lib/utils';
 
 interface ResaleTabProps {
   allResellRequests: ResellRequest[];
@@ -173,10 +174,10 @@ export const ResaleTab: React.FC<ResaleTabProps> = ({
                             </div>
                           </td>
                           <td className="px-6 py-4 font-mono text-body-xs font-bold text-text-primary">
-                            {listing.price} EGP
+                            {formatMoneyWithCurrency(listing.price)}
                           </td>
                           <td className="px-6 py-4 font-mono text-body-xs font-bold text-text-muted">
-                            {listing.marketplace_fee} EGP
+                            {formatMoneyWithCurrency(listing.marketplace_fee)}
                           </td>
                           <td className="px-6 py-4">
                             <span className={`px-2.5 py-1 rounded-tag text-[9px] font-black uppercase tracking-wider border ${
@@ -271,7 +272,7 @@ export const ResaleTab: React.FC<ResaleTabProps> = ({
                         <td className="px-6 py-4 text-body-sm font-medium text-text-primary">{r.userName}</td>
                         <td className="px-6 py-4 text-body-xs uppercase text-text-muted">{r.payout_method}</td>
                         <td className="px-6 py-4 text-body-xs text-text-muted">{r.payout_address}</td>
-                        <td className="px-6 py-4 text-body-sm font-bold text-teal">{r.amount} EGP</td>
+                        <td className="px-6 py-4 text-body-sm font-bold text-teal">{formatMoneyWithCurrency(r.amount)}</td>
                         <td className="px-6 py-4">
                           <span className={`px-2.5 py-1 rounded-tag text-[9px] font-black uppercase tracking-wider border ${
                             r.status === 'paid' ? 'bg-status-success/10 text-status-success border-status-success/20' : 

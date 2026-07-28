@@ -6,6 +6,7 @@ import { Button } from '../ui/Button';
 import { eventService } from '../../services/eventService';
 import { useEvents } from '../../context/EventsContext';
 import { formatDate } from '../../lib/dateFormat';
+import { formatMoneyWithCurrency, toSafeNumber } from '../../lib/utils';
 
 interface EventsTabProps {
   handleEditEvent: (event: Event) => void;
@@ -44,7 +45,7 @@ export const EventsTab: React.FC<EventsTabProps> = ({
     <>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         {[
-          { label: 'Total Revenue', value: `${events.reduce((sum, e) => sum + (e.ticket_types?.reduce((s, tt) => s + tt.price * tt.quantity_sold, 0) || 0), 0)} EGP`, icon: <TrendingUp className="text-status-success" />, trend: '0%' },
+          { label: 'Total Revenue', value: formatMoneyWithCurrency(events.reduce((sum, e) => sum + (e.ticket_types?.reduce((s, tt) => s + toSafeNumber(tt.price) * tt.quantity_sold, 0) || 0), 0)), icon: <TrendingUp className="text-status-success" />, trend: '0%' },
           { label: 'Tickets Sold', value: events.reduce((sum, e) => sum + (e.ticket_types?.reduce((s, tt) => s + tt.quantity_sold, 0) || 0), 0).toString(), icon: <Ticket className="text-teal" />, trend: '0%' },
           { label: 'Active Events', value: myEvents.length.toString(), icon: <Calendar className="text-status-info" />, trend: '0%' }
         ].map((stat) => (

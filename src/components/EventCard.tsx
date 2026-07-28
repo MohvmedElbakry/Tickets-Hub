@@ -2,7 +2,7 @@ import React from 'react';
 import { Calendar, MapPin, Ticket, ChevronRight, Clock } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Event } from '../types';
-import { formatEventTime } from '../lib/utils';
+import { formatEventTime, formatMoneyWithCurrency } from '../lib/utils';
 import { formatDate } from '../lib/dateFormat';
 
 interface EventCardProps {
@@ -28,7 +28,7 @@ export const EventCard: React.FC<EventCardProps> = React.memo(({ event, onClick 
         <div className="absolute inset-0 bg-gradient-to-t from-bg-card via-transparent to-transparent opacity-60"></div>
         <div className="absolute top-4 right-4">
           <div className="bg-bg-card/60 backdrop-blur-md px-3 py-1.5 rounded-tag border border-teal-border-faint text-teal text-label font-bold shadow-card">
-            {event.status === 'upcoming' ? 'Soon' : event.price + ' EGP'}
+            {event.status === 'upcoming' ? 'Soon' : formatMoneyWithCurrency(event.price)}
           </div>
         </div>
       </div>

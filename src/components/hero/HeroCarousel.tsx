@@ -4,7 +4,7 @@ import { Calendar, MapPin, Clock, ChevronRight } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useNavigate } from 'react-router-dom';
 import { formatDate } from '../../lib/dateFormat';
-import { formatEventTime } from '../../lib/utils';
+import { formatEventTime, formatMoneyWithCurrency, toSafeNumber } from '../../lib/utils';
 
 import { useEvents } from '../../context/EventsContext';
 
@@ -224,9 +224,9 @@ export const HeroCarousel: React.FC = () => {
                 <MapPin size={16} className="text-teal" />
                 <span>{currentSlide?.venue}</span>
               </div>
-              {currentSlide?.price > 0 && (
+              {toSafeNumber(currentSlide?.price) > 0 && (
                 <div className="flex items-center gap-2 text-body-sm font-bold text-teal">
-                  <span>From {currentSlide.price} EGP</span>
+                  <span>From {formatMoneyWithCurrency(currentSlide.price)}</span>
                 </div>
               )}
             </div>

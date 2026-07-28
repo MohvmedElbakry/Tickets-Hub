@@ -3,7 +3,7 @@ import { X, Calendar, MapPin, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui/Button';
 import { Event } from '../../types';
-import { formatEventTime } from '../../lib/utils';
+import { formatEventTime, formatMoneyWithCurrency } from '../../lib/utils';
 import { formatDate } from '../../lib/dateFormat';
 
 interface EventQuickViewModalProps {
@@ -55,7 +55,7 @@ export const EventQuickViewModal = ({ event, onClose, onBook }: EventQuickViewMo
               </div>
               <div className="md:text-right content-stack gap-1">
                 <p className="text-label text-text-muted font-black uppercase tracking-widest">Starting from</p>
-                <p className="text-h2 text-teal">{event.price || (event.ticket_types?.[0]?.price)} EGP</p>
+                <p className="text-h2 text-teal">{formatMoneyWithCurrency(event.price || event.ticket_types?.[0]?.price)}</p>
               </div>
             </div>
 

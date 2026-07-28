@@ -19,6 +19,7 @@ import { useUI } from '../context/UIContext';
 import { Button } from './ui/Button';
 import { TicketResaleListing } from '../types';
 import { formatDateTime } from '../lib/dateFormat';
+import { formatMoney, formatMoneyWithCurrency, toSafeNumber } from '../lib/utils';
 
 export const MarketplacePage = () => {
   const navigate = useNavigate();
@@ -240,8 +241,8 @@ export const MarketplacePage = () => {
             const event = ticket?.order?.event;
             const ticketTypeName = ticket?.ticket_type?.name || 'General Admission';
             const eventImage = event?.image_url || '/placeholder_event.jpg';
-            const originalPrice = listing.original_price;
-            const listedPrice = listing.price;
+            const originalPrice = toSafeNumber(listing.original_price);
+            const listedPrice = toSafeNumber(listing.price);
             const discountPercent = originalPrice > listedPrice ? Math.round(((originalPrice - listedPrice) / originalPrice) * 100) : 0;
 
             return (
@@ -318,15 +319,15 @@ export const MarketplacePage = () => {
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-wider text-text-muted/60 mb-0.5">Resale Price</p>
                         <div className="flex items-baseline gap-2">
-                          <span className="text-body-md font-black text-teal leading-none">{listedPrice}</span>
+                          <span className="text-body-md font-black text-teal leading-none">{formatMoney(listedPrice)}</span>
                           <span className="text-[10px] font-black text-text-primary uppercase tracking-wider">EGP</span>
                         </div>
                       </div>
                       
-                      {originalPrice && (
+                      {originalPrice > 0 && (
                         <div className="text-right">
                           <p className="text-[10px] font-black uppercase tracking-wider text-text-muted/60 mb-0.5">Face Value</p>
-                          <span className="text-label font-bold text-text-muted line-through">{originalPrice} EGP</span>
+                          <span className="text-label font-bold text-text-muted line-through">{formatMoneyWithCurrency(originalPrice)}</span>
                         </div>
                       )}
                     </div>

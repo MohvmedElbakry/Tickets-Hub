@@ -22,7 +22,7 @@ export interface TicketType {
   id?: string | number;
   event_id?: string | number;
   name: string;
-  price: number;
+  price: number | any;
   quantity_total: number;
   quantity_sold: number;
   description: string;
@@ -38,7 +38,7 @@ export interface Order {
   public_id: OrderPublicId;
   user_id: number;
   event_id: number;
-  total_price: number;
+  total_price: number | any;
   order_status: 'pending' | 'paid' | 'cancelled' | 'requested' | 'approved' | 'rejected' | 'expired' | 'invited' | 'pending_approval';
   created_at: string;
   items?: OrderTicket[];
@@ -62,7 +62,7 @@ export interface OrderTicket {
   order_id: number;
   ticket_type_id: number;
   quantity: number;
-  price_each: number;
+  price_each: number | any;
   name?: string;
   is_used?: boolean;
   scanned_count?: number;
@@ -155,7 +155,7 @@ export interface ResellRequest {
   order_ticket_id: number;
   payout_method: 'instapay' | 'vodafone';
   payout_address: string;
-  amount: number;
+  amount: number | any;
   status: 'pending' | 'resold' | 'paid';
   created_at: string;
   userName?: string;
@@ -169,10 +169,10 @@ export interface TicketResaleListing {
   seller_id: number;
   buyer_id?: number | null;
   status: 'DRAFT' | 'LISTED' | 'RESERVED' | 'PAYMENT_PENDING' | 'SOLD' | 'CANCELLED' | 'EXPIRED' | 'HIDDEN' | 'REJECTED';
-  original_price: number;
-  price: number;
-  marketplace_fee: number;
-  seller_payout: number;
+  original_price: number | any;
+  price: number | any;
+  marketplace_fee: number | any;
+  seller_payout: number | any;
   currency: string;
   created_at: string;
   updated_at: string;

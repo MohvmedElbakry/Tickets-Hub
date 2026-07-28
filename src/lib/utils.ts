@@ -8,6 +8,51 @@ export function cn(...inputs: ClassValue[]) {
 
 export const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=2000';
 
+/**
+ * Safely converts any monetary value (number, string, Prisma Decimal, serialized Decimal object, null, undefined)
+ * into a valid JavaScript number.
+ */
+export const toSafeNumber = (value: any): number => {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === 'number') return isNaN(value) ? 0 : value;
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  if (typeof value === 'object') {
+    if (typeof value.toNumber === 'function') {
+      try {
+        return value.toNumber();
+      } catch {
+        // Fallback
+      }
+    }
+    if (typeof value.value !== 'undefined') {
+      const parsed = parseFloat(String(value.value));
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    const str = String(value);
+    const parsed = parseFloat(str);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+};
+
+/**
+ * Formats any monetary value safely into a 2-decimal string (e.g. "150.00").
+ */
+export const formatMoney = (value: any, decimals = 2): string => {
+  const num = toSafeNumber(value);
+  return num.toFixed(decimals);
+};
+
+/**
+ * Formats any monetary value safely with a currency suffix (e.g. "150.00 EGP").
+ */
+export const formatMoneyWithCurrency = (value: any, currency = 'EGP', decimals = 2): string => {
+  return `${formatMoney(value, decimals)} ${currency}`;
+};
+
 export const normalizeEvent = (e: any): any => {
   if (!e) return null;
   
@@ -41,7 +86,7 @@ export const normalizeEvent = (e: any): any => {
     ...tt,
     id: tt.id || `tt-${Math.random().toString(36).substr(2, 5)}`,
     name: cleanStr(tt.name) || 'Standard Entry',
-    price: Number(tt.price) || 0,
+    price: toSafeNumber(tt.price),
     quantity_total: Number(tt.quantity_total) || 0,
     quantity_sold: Number(tt.quantity_sold) || 0,
     sale_start: cleanStr(tt.sale_start) || event.event_date,
@@ -50,7 +95,7 @@ export const normalizeEvent = (e: any): any => {
 
   // Calculate min price
   event.price = event.ticket_types.length > 0
-    ? Math.min(...event.ticket_types.map((tt: any) => tt.price))
+    ? Math.min(...event.ticket_types.map((tt: any) => toSafeNumber(tt.price)))
     : 0;
 
   return event;

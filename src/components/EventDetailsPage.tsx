@@ -18,7 +18,7 @@ import { useAuth } from '../context/AuthContext';
 import { useEvents, useSettings } from '../context/EventsContext';
 import { useUI } from '../context/UIContext';
 import { eventService } from '../services/eventService';
-import { formatEventTime } from '../lib/utils';
+import { formatEventTime, formatMoney, formatMoneyWithCurrency, toSafeNumber } from '../lib/utils';
 import { formatDate } from '../lib/dateFormat';
 
 export const EventDetailsPage = () => {
@@ -134,7 +134,7 @@ export const EventDetailsPage = () => {
 
   const totalPrice = selectedTickets.reduce((sum, item) => {
     const tt = selectedEvent.ticket_types?.find(t => t.id?.toString() === item.ticket_type_id);
-    return sum + (Number(tt?.price) || 0) * (item.quantity as number);
+    return sum + (toSafeNumber(tt?.price)) * (item.quantity as number);
   }, 0);
 
   return (
@@ -215,7 +215,7 @@ export const EventDetailsPage = () => {
                         <p className="text-body-sm text-text-muted italic">{ticket.description}</p>
                       </div>
                       <div className="md:text-right content-stack gap-1">
-                        <div className="text-price text-teal text-h3 transform group-hover:scale-110 transition-transform origin-right">{ticket.price} <span className="text-body-xs font-normal opacity-60">EGP</span></div>
+                        <div className="text-price text-teal text-h3 transform group-hover:scale-110 transition-transform origin-right">{formatMoney(ticket.price)} <span className="text-body-xs font-normal opacity-60">EGP</span></div>
                         <div className="text-label text-text-muted font-black uppercase tracking-widest">PER TICKET HOLDER</div>
                       </div>
                     </div>
@@ -354,19 +354,32 @@ export const EventDetailsPage = () => {
                             return (
                               <div key={item.ticket_type_id} className="flex justify-between items-center text-body-sm">
                                 <span className="text-text-primary font-bold uppercase tracking-tight">{tt?.name} <span className="text-text-muted lowercase font-normal ml-1">× {item.quantity}</span></span>
-                                <span className="text-data font-mono">{(tt?.price || 0) * item.quantity} EGP</span>
+                                <span className="text-data font-mono">{formatMoneyWithCurrency(toSafeNumber(tt?.price) * item.quantity)}</span>
                               </div>
                             );
                           })}
                           <div className="flex flex-col gap-2 pt-4 border-t border-bg-border/30 italic">
-                            <div className="flex justify-between items-center text-body-xs text-text-muted">
-                              <span>Platform Service Fee ({settings.service_fee_percent}%)</span>
-                              <span className="font-mono">{(totalPrice * (settings.service_fee_percent / 100)).toFixed(2)} EGP</span>
-                            </div>
-                            <div className="flex justify-between items-center text-body-xs text-text-muted">
-                              <span>Processing Fee ({settings.processing_fee_percent}% + {settings.fixed_fee_egp} EGP)</span>
-                              <span className="font-mono">{(totalPrice * (settings.processing_fee_percent / 100) + settings.fixed_fee_egp).toFixed(2)} EGP</span>
-                            </div>
+                            {(() => {
+                              const serviceFeePct = toSafeNumber(settings.service_fee_percent);
+                              const processingFeePct = toSafeNumber(settings.processing_fee_percent);
+                              const fixedFee = toSafeNumber(settings.fixed_fee_egp);
+
+                              const serviceFee = totalPrice * (serviceFeePct / 100);
+                              const processingFee = (totalPrice * (processingFeePct / 100)) + fixedFee;
+
+                              return (
+                                <>
+                                  <div className="flex justify-between items-center text-body-xs text-text-muted">
+                                    <span>Platform Service Fee ({serviceFeePct}%)</span>
+                                    <span className="font-mono">{formatMoneyWithCurrency(serviceFee)}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-body-xs text-text-muted">
+                                    <span>Processing Fee ({processingFeePct}% + {fixedFee} EGP)</span>
+                                    <span className="font-mono">{formatMoneyWithCurrency(processingFee)}</span>
+                                  </div>
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
                       ) : (
@@ -379,7 +392,19 @@ export const EventDetailsPage = () => {
                     <div className="pt-8 border-t border-bg-border content-stack gap-8">
                       <div className="flex justify-between items-center bg-bg-elevated/50 p-4 rounded-card border border-bg-border/30">
                         <span className="text-label font-black text-text-muted tracking-widest">Total Price</span>
-                        <span className="text-h2 text-teal drop-shadow-teal">{(totalPrice > 0 ? (totalPrice + (totalPrice * (settings.service_fee_percent / 100)) + (totalPrice * (settings.processing_fee_percent / 100) + settings.fixed_fee_egp)) : 0).toFixed(2)} <span className="text-body-xs font-normal text-text-muted">EGP</span></span>
+                        {(() => {
+                          const serviceFeePct = toSafeNumber(settings.service_fee_percent);
+                          const processingFeePct = toSafeNumber(settings.processing_fee_percent);
+                          const fixedFee = toSafeNumber(settings.fixed_fee_egp);
+
+                          const serviceFee = totalPrice * (serviceFeePct / 100);
+                          const processingFee = (totalPrice * (processingFeePct / 100)) + fixedFee;
+                          const grandTotal = totalPrice > 0 ? (totalPrice + serviceFee + processingFee) : 0;
+
+                          return (
+                            <span className="text-h2 text-teal drop-shadow-teal">{formatMoney(grandTotal)} <span className="text-body-xs font-normal text-text-muted">EGP</span></span>
+                          );
+                        })()}
                       </div>
                       
                       <Button 

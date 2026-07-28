@@ -15,6 +15,7 @@ import { orderService } from '../services/orderService';
 import { useUI } from '../context/UIContext';
 import { useEvents, useSettings } from '../context/EventsContext';
 import { Order } from '../types';
+import { formatMoney, formatMoneyWithCurrency, toSafeNumber } from '../lib/utils';
 
 export const CheckoutPage = () => {
   const { publicId } = useParams<{ publicId: string }>();
@@ -143,29 +144,44 @@ export const CheckoutPage = () => {
                     <p className="text-body-base font-black text-text-primary uppercase tracking-tight">{item.ticket_type?.name || item.name}</p>
                     <p className="text-label text-text-muted font-bold tracking-widest">{item.quantity}× {item.ticket_type?.name || item.name || 'UNIT PASS'}</p>
                   </div>
-                  <p className="text-h4 text-text-primary">{(item.price_each * item.quantity).toFixed(2)} <span className="text-body-xs font-normal opacity-40">EGP</span></p>
+                  <p className="text-h4 text-text-primary">{formatMoney(toSafeNumber(item.price_each) * (item.quantity || 1))} <span className="text-body-xs font-normal opacity-40">EGP</span></p>
                 </div>
               ))}
             </div>
           </div>
 
           <div className="pt-10 border-t border-bg-border layout-stack gap-4">
-            <div className="flex justify-between items-center text-text-muted">
-              <span className="text-label font-bold tracking-widest">SUBTOTAL</span>
-              <span className="text-body-base font-mono">{order.total_price.toFixed(2)} EGP</span>
-            </div>
-            <div className="flex justify-between items-center text-text-muted">
-              <span className="text-label font-bold tracking-widest">Platform Service Fee ({settings.service_fee_percent}%)</span>
-              <span className="text-body-base font-mono">{(order.total_price * (settings.service_fee_percent / 100)).toFixed(2)} EGP</span>
-            </div>
-            <div className="flex justify-between items-center text-text-muted">
-              <span className="text-label font-bold tracking-widest">Processing Fee ({settings.processing_fee_percent}% + {settings.fixed_fee_egp} EGP)</span>
-              <span className="text-body-base font-mono">{(order.total_price * (settings.processing_fee_percent / 100) + settings.fixed_fee_egp).toFixed(2)} EGP</span>
-            </div>
-            <div className="flex justify-between items-center pt-6 mt-4 border-t border-bg-border/30">
-              <span className="text-h3">Total Price</span>
-              <span className="text-h2 text-teal shadow-teal/5">{(order.total_price + (order.total_price * (settings.service_fee_percent / 100)) + (order.total_price * (settings.processing_fee_percent / 100) + settings.fixed_fee_egp)).toFixed(2)} <span className="text-body-sm font-normal text-text-muted">EGP</span></span>
-            </div>
+            {(() => {
+              const basePrice = toSafeNumber(order.total_price);
+              const serviceFeePct = toSafeNumber(settings.service_fee_percent);
+              const processingFeePct = toSafeNumber(settings.processing_fee_percent);
+              const fixedFee = toSafeNumber(settings.fixed_fee_egp);
+
+              const serviceFee = basePrice * (serviceFeePct / 100);
+              const processingFee = (basePrice * (processingFeePct / 100)) + fixedFee;
+              const grandTotal = basePrice + serviceFee + processingFee;
+
+              return (
+                <>
+                  <div className="flex justify-between items-center text-text-muted">
+                    <span className="text-label font-bold tracking-widest">SUBTOTAL</span>
+                    <span className="text-body-base font-mono">{formatMoneyWithCurrency(basePrice)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-text-muted">
+                    <span className="text-label font-bold tracking-widest">Platform Service Fee ({serviceFeePct}%)</span>
+                    <span className="text-body-base font-mono">{formatMoneyWithCurrency(serviceFee)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-text-muted">
+                    <span className="text-label font-bold tracking-widest">Processing Fee ({processingFeePct}% + {fixedFee} EGP)</span>
+                    <span className="text-body-base font-mono">{formatMoneyWithCurrency(processingFee)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-6 mt-4 border-t border-bg-border/30">
+                    <span className="text-h3">Total Price</span>
+                    <span className="text-h2 text-teal shadow-teal/5">{formatMoney(grandTotal)} <span className="text-body-sm font-normal text-text-muted">EGP</span></span>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           <div className="pt-10">

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { RefreshCw, Instagram } from 'lucide-react';
 import { Order } from '../../types';
-import { calculateAge } from '../../lib/utils';
+import { calculateAge, formatMoneyWithCurrency } from '../../lib/utils';
 import { orderService } from '../../services/orderService';
 import { formatDateTime } from '../../lib/dateFormat';
 
@@ -178,7 +178,7 @@ export const OrdersTab: React.FC<OrdersTabProps> = ({
                     <div className="text-body-xs text-text-muted">{order.phone || order.user?.phone || '-'}</div>
                   </td>
                   <td className="px-6 py-4 text-body-sm text-text-primary">{order.event?.title}</td>
-                  <td className="px-6 py-4 text-body-sm font-bold text-teal">{order.total_price.toFixed(2)} EGP</td>
+                  <td className="px-6 py-4 text-body-sm font-bold text-teal">{formatMoneyWithCurrency(order.total_price)}</td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 rounded-lg text-label font-bold uppercase tracking-wider ${
                       order.order_status === 'paid' ? 'bg-status-success/10 text-status-success' : 

@@ -34,7 +34,7 @@ import { handleDownloadPDF } from '../lib/ticketUtils';
 import { TicketCard } from './tickets';
 import { useQRStatus, useTicketQRStatus } from '../hooks/useQRStatus';
 import { useOrder } from '../hooks/useOrder';
-import { formatEventTime } from '../lib/utils';
+import { formatEventTime, formatMoney, formatMoneyWithCurrency, toSafeNumber } from '../lib/utils';
 import { formatDateTime, formatDate } from '../lib/dateFormat';
 import { PasswordChecklist } from './ui/PasswordChecklist';
 
@@ -534,7 +534,7 @@ export const UserDashboard = () => {
                         <div className="p-5 pt-0 flex justify-between items-center border-t border-bg-border mt-auto h-16 bg-bg-elevated/20 group-hover:bg-bg-elevated transition-colors">
                           <div className="content-stack gap-0">
                             <p className="text-label text-text-muted">Order #{order.public_id?.split('-')[0] || order.id}</p>
-                            <p className="text-body-sm text-text-primary font-black uppercase tracking-tight">{order.total_price.toFixed(2)} EGP</p>
+                            <p className="text-body-sm text-text-primary font-black uppercase tracking-tight">{formatMoneyWithCurrency(order.total_price)}</p>
                           </div>
                           <Button variant="outline" size="sm">Details</Button>
                         </div>
@@ -686,7 +686,7 @@ export const UserDashboard = () => {
                         <div className="content-stack gap-0">
                           <p className="text-label text-text-muted">{item.type === 'ticket' ? `Ticket #${item.public_id}` : `Order #${item.public_id?.split('-')[0] || item.id}`}</p>
                           <p className="text-body-sm font-bold text-text-primary">
-                            {item.type === 'ticket' ? `${item.attendee_name || item.owner?.name || 'Attendee'} (${item.ticket_type?.name})` : `${item.total_price ? item.total_price.toFixed(2) : 'TBA'} EGP`}
+                            {item.type === 'ticket' ? `${item.attendee_name || item.owner?.name || 'Attendee'} (${item.ticket_type?.name})` : `${item.total_price ? formatMoneyWithCurrency(item.total_price) : 'TBA'}`}
                           </p>
                         </div>
                         <div className="flex gap-2">
@@ -1176,7 +1176,7 @@ export const UserDashboard = () => {
                           <tr key={order.id} className="hover:bg-bg-elevated/50 transition-colors duration-base">
                             <td className="px-6 py-5 font-mono text-body-xs text-text-muted tracking-tighter">#{order.public_id?.split('-')[0] || order.id}</td>
                             <td className="px-6 py-5 text-body-sm font-bold text-text-primary">{order.event?.title}</td>
-                            <td className="px-6 py-5 text-body-sm font-bold text-teal">{order.total_price.toFixed(2)} <span className="text-body-xs font-normal opacity-60">EGP</span></td>
+                            <td className="px-6 py-5 text-body-sm font-bold text-teal">{formatMoney(order.total_price)} <span className="text-body-xs font-normal opacity-60">EGP</span></td>
                             <td className="px-6 py-5 text-body-xs text-text-muted">{formatDateTime(order.created_at)}</td>
                             <td className="px-6 py-5">
                               <span className={`px-2 py-0.5 rounded-tag text-label font-bold uppercase border ${
@@ -1544,7 +1544,7 @@ export const UserDashboard = () => {
                     </Button>
                   </div>
                 ) : (() => {
-                  const faceValue = Number(marketplaceResaleTicket.ticket_type?.price) || 0;
+                  const faceValue = toSafeNumber(marketplaceResaleTicket.ticket_type?.price);
                   const maxResalePrice = Math.round(faceValue * 1.5 * 100) / 100;
                   const currentPriceNum = Number(resalePrice);
                   const isPriceOverCap = faceValue > 0 && currentPriceNum > maxResalePrice;
@@ -1611,11 +1611,11 @@ export const UserDashboard = () => {
                       </div>
                       <div className="flex justify-between text-text-muted font-bold">
                         <span>Marketplace Platform Fee (10%)</span>
-                        <span className="font-mono">-{(Math.round((currentPriceNum || 0) * 0.10 * 100) / 100).toFixed(2)} EGP</span>
+                        <span className="font-mono">-{formatMoneyWithCurrency(Math.round((currentPriceNum || 0) * 0.10 * 100) / 100)}</span>
                       </div>
                       <div className="flex justify-between text-teal font-black border-t border-teal/10 pt-2 text-body-sm">
                         <span>Your Estimated Payout</span>
-                        <span className="font-mono">{(Math.round((currentPriceNum || 0) * 0.90 * 100) / 100).toFixed(2)} EGP</span>
+                        <span className="font-mono">{formatMoneyWithCurrency(Math.round((currentPriceNum || 0) * 0.90 * 100) / 100)}</span>
                       </div>
                     </div>
 
