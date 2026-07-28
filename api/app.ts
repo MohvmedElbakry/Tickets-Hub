@@ -4547,6 +4547,252 @@ app.post('/api/admin/transfers/cancel', authenticateToken, authorizeRole(['admin
   }
 });
 
+// ============================================================================
+// FINANCIAL & PAYOUT ROUTE LAYER (SELLER & ADMIN)
+// ============================================================================
+
+// --- SELLER PAYOUT DESTINATIONS ---
+
+// POST /api/seller/payout-destinations - Add bank account / mobile wallet
+app.post('/api/seller/payout-destinations', authenticateToken, async (req: any, res: any) => {
+  try {
+    const { type, accountName, accountDetails } = req.body;
+    if (!type || !accountName || !accountDetails) {
+      return res.status(400).json({ error: 'type, accountName, and accountDetails are required fields.' });
+    }
+
+    if (!['BANK_ACCOUNT', 'INSTAPAY', 'VODAFONE_CASH'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid payout destination type. Must be BANK_ACCOUNT, INSTAPAY, or VODAFONE_CASH.' });
+    }
+
+    const destination = await FinancialService.addPayoutDestination(req.user.id, {
+      type: type as 'BANK_ACCOUNT' | 'INSTAPAY' | 'VODAFONE_CASH',
+      accountName,
+      accountDetails
+    });
+
+    res.status(201).json({ message: 'Payout destination added successfully.', destination });
+  } catch (error: any) {
+    console.error('[API ERROR] POST /api/seller/payout-destinations:', error);
+    res.status(400).json({ error: error.message || 'Failed to add payout destination.' });
+  }
+});
+
+// GET /api/seller/payout-destinations - List seller's saved payout destinations
+app.get('/api/seller/payout-destinations', authenticateToken, async (req: any, res: any) => {
+  try {
+    const destinations = await prisma.payoutDestination.findMany({
+      where: { user_id: req.user.id, is_active: true },
+      orderBy: { created_at: 'desc' }
+    });
+    res.json({ destinations });
+  } catch (error: any) {
+    console.error('[API ERROR] GET /api/seller/payout-destinations:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch payout destinations.' });
+  }
+});
+
+// DELETE /api/seller/payout-destinations/:id - Delete a payout destination
+app.delete('/api/seller/payout-destinations/:id', authenticateToken, async (req: any, res: any) => {
+  try {
+    const destinationId = parseInt(req.params.id, 10);
+    if (isNaN(destinationId)) {
+      return res.status(400).json({ error: 'Invalid destination ID.' });
+    }
+
+    await prisma.payoutDestination.updateMany({
+      where: { id: destinationId, user_id: req.user.id },
+      data: { is_active: false }
+    });
+
+    res.json({ message: 'Payout destination deleted successfully.' });
+  } catch (error: any) {
+    console.error('[API ERROR] DELETE /api/seller/payout-destinations/:id:', error);
+    res.status(400).json({ error: error.message || 'Failed to delete payout destination.' });
+  }
+});
+
+// --- SELLER PAYOUT REQUESTS & BALANCE ---
+
+// POST /api/seller/payouts - Request a withdrawal
+app.post('/api/seller/payouts', authenticateToken, async (req: any, res: any) => {
+  try {
+    const { destinationId, amount } = req.body;
+    const parsedDestId = parseInt(destinationId, 10);
+    const parsedAmount = parseFloat(amount);
+
+    if (isNaN(parsedDestId) || isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ error: 'Valid destinationId and positive amount are required.' });
+    }
+
+    const payoutRequest = await FinancialService.requestPayout(req.user.id, parsedDestId, parsedAmount);
+    res.status(201).json({ message: 'Payout request submitted successfully.', payoutRequest });
+  } catch (error: any) {
+    console.error('[API ERROR] POST /api/seller/payouts:', error);
+    res.status(400).json({ error: error.message || 'Failed to submit payout request.' });
+  }
+});
+
+// GET /api/seller/payouts - List seller's payout request history and current balance
+app.get('/api/seller/payouts', authenticateToken, async (req: any, res: any) => {
+  try {
+    const payouts = await prisma.payoutRequest.findMany({
+      where: { user_id: req.user.id },
+      include: { destination: true },
+      orderBy: { requested_at: 'desc' }
+    });
+    const balance = await FinancialService.getOrCreateSellerBalance(req.user.id);
+    res.json({ payouts, balance });
+  } catch (error: any) {
+    console.error('[API ERROR] GET /api/seller/payouts:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch payouts.' });
+  }
+});
+
+// GET /api/seller/balance - Get current seller balance details
+app.get('/api/seller/balance', authenticateToken, async (req: any, res: any) => {
+  try {
+    const balance = await FinancialService.getOrCreateSellerBalance(req.user.id);
+    res.json({ balance });
+  } catch (error: any) {
+    console.error('[API ERROR] GET /api/seller/balance:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch seller balance.' });
+  }
+});
+
+// --- ADMIN FINANCIAL CONTROLS ---
+
+// GET /api/admin/payouts - List all payout requests across platform
+app.get('/api/admin/payouts', authenticateToken, authorizeRole(['ADMIN']), async (req: any, res: any) => {
+  try {
+    const status = req.query.status as string | undefined;
+    const payouts = await prisma.payoutRequest.findMany({
+      where: status ? { status } : undefined,
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        destination: true
+      },
+      orderBy: { requested_at: 'desc' }
+    });
+    res.json({ payouts });
+  } catch (error: any) {
+    console.error('[API ERROR] GET /api/admin/payouts:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch admin payout requests.' });
+  }
+});
+
+// POST /api/admin/payouts/:id/review - Approve, reject, or mark a payout as paid
+app.post('/api/admin/payouts/:id/review', authenticateToken, authorizeRole(['ADMIN']), async (req: any, res: any) => {
+  try {
+    const payoutRequestId = parseInt(req.params.id, 10);
+    const { action, reason } = req.body;
+
+    if (isNaN(payoutRequestId)) {
+      return res.status(400).json({ error: 'Invalid payout request ID.' });
+    }
+
+    if (!['APPROVE', 'REJECT', 'MARK_PAID'].includes(action)) {
+      return res.status(400).json({ error: 'Action must be one of: APPROVE, REJECT, MARK_PAID.' });
+    }
+
+    const updatedRequest = await FinancialService.reviewPayout(req.user.id, payoutRequestId, action, reason);
+    res.json({ message: `Payout request ${action.toLowerCase()}ed successfully.`, payoutRequest: updatedRequest });
+  } catch (error: any) {
+    console.error('[API ERROR] POST /api/admin/payouts/:id/review:', error);
+    res.status(400).json({ error: error.message || 'Failed to review payout request.' });
+  }
+});
+
+// POST /api/admin/orders/:id/refund - Process an order refund
+app.post('/api/admin/orders/:id/refund', authenticateToken, authorizeRole(['ADMIN']), async (req: any, res: any) => {
+  try {
+    const orderId = parseInt(req.params.id, 10);
+    const { amount, reason } = req.body;
+
+    if (isNaN(orderId)) {
+      return res.status(400).json({ error: 'Invalid order ID.' });
+    }
+
+    if (!reason) {
+      return res.status(400).json({ error: 'Refund reason is required.' });
+    }
+
+    const paymentTx = await prisma.paymentTransaction.findFirst({
+      where: { order_id: orderId, status: 'CAPTURED' }
+    }) || await prisma.paymentTransaction.findFirst({
+      where: { order_id: orderId }
+    });
+
+    if (!paymentTx) {
+      return res.status(404).json({ error: 'No payment transaction found for this order.' });
+    }
+
+    const refundAmount = amount ? parseFloat(amount) : paymentTx.amount;
+
+    const refund = await FinancialService.processRefundRecord({
+      paymentTransactionId: paymentTx.id,
+      orderId,
+      amount: refundAmount,
+      reason,
+      isAutomated: false,
+      adminId: req.user.id
+    });
+
+    res.json({ message: 'Refund processed successfully.', refund });
+  } catch (error: any) {
+    console.error('[API ERROR] POST /api/admin/orders/:id/refund:', error);
+    res.status(400).json({ error: error.message || 'Failed to process refund.' });
+  }
+});
+
+// GET /api/admin/financial/report - Generate platform reconciliation report
+app.get('/api/admin/financial/report', authenticateToken, authorizeRole(['ADMIN']), async (req: any, res: any) => {
+  try {
+    const report = await FinancialService.generateReconciliationReport();
+    res.json({ report });
+  } catch (error: any) {
+    console.error('[API ERROR] GET /api/admin/financial/report:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate financial report.' });
+  }
+});
+
+// ============================================================================
+// PERIODIC SETTLEMENT & RESERVATION CLEANUP JOBS
+// ============================================================================
+
+let isSettlementJobRunning = false;
+let isReservationCleanupRunning = false;
+
+const runFinancialBackgroundJobs = async () => {
+  // 1. Release expired reservations
+  if (!isReservationCleanupRunning) {
+    isReservationCleanupRunning = true;
+    try {
+      await FinancialService.releaseExpiredReservations();
+    } catch (err: any) {
+      console.error('[BACKGROUND JOB] releaseExpiredReservations failed:', err.message);
+    } finally {
+      isReservationCleanupRunning = false;
+    }
+  }
+
+  // 2. Process settlement queue
+  if (!isSettlementJobRunning) {
+    isSettlementJobRunning = true;
+    try {
+      await FinancialService.processSettlementQueue();
+    } catch (err: any) {
+      console.error('[BACKGROUND JOB] processSettlementQueue failed:', err.message);
+    } finally {
+      isSettlementJobRunning = false;
+    }
+  }
+};
+
+// Schedule background job ticker every 60 seconds
+setInterval(runFinancialBackgroundJobs, 60_000);
+
+
 
 // --- FINALIZATION ---
 console.log('[App] All routes registered synchronously.');
