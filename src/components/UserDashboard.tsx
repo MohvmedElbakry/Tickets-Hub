@@ -17,10 +17,12 @@ import {
   History,
   AlertCircle,
   CheckCircle,
-  Trash2
+  Trash2,
+  Wallet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/Button';
+import { SellerWallet } from './wallet/SellerWallet';
 import { 
   Order, 
   PointsHistory
@@ -37,6 +39,7 @@ import { useOrder } from '../hooks/useOrder';
 import { formatEventTime, formatMoney, formatMoneyWithCurrency, toSafeNumber } from '../lib/utils';
 import { formatDateTime, formatDate } from '../lib/dateFormat';
 import { PasswordChecklist } from './ui/PasswordChecklist';
+import { NotificationPreferences } from './NotificationPreferences';
 
 export const UserDashboard = () => {
   const navigate = useNavigate();
@@ -177,7 +180,7 @@ export const UserDashboard = () => {
   const [resaleError, setResaleError] = useState('');
   const [resaleSuccess, setResaleSuccess] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'info' | 'tickets' | 'rewards' | 'profile' | 'payments' | 'dashboard'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'info' | 'tickets' | 'rewards' | 'profile' | 'payments' | 'dashboard' | 'wallet'>('dashboard');
   const [ticketFilter, setTicketFilter] = useState<'all' | 'pending' | 'paid' | 'invited'>('all');
   const [viewingTicket, setViewingTicket] = useState<Order | null>(null);
   const [viewingTicketInstance, setViewingTicketInstance] = useState<any | null>(null);
@@ -453,6 +456,12 @@ export const UserDashboard = () => {
               className={`w-full flex items-center gap-3 px-6 py-4 rounded-card font-bold transition-all duration-base group active:scale-95 ${activeTab === 'rewards' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated hover:text-text-primary'}`}
             >
               <Star size={20} className="group-hover:scale-110 transition-transform" /> <span className="text-body-sm">Rewards</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('wallet')}
+              className={`w-full flex items-center gap-3 px-6 py-4 rounded-card font-bold transition-all duration-base group active:scale-95 ${activeTab === 'wallet' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated hover:text-text-primary'}`}
+            >
+              <Wallet size={20} className="group-hover:scale-110 transition-transform" /> <span className="text-body-sm">Seller Wallet</span>
             </button>
             <button 
               onClick={() => setActiveTab('payments')}
@@ -1116,6 +1125,9 @@ export const UserDashboard = () => {
                   </form>
                 </div>
 
+                {/* Notification Preferences */}
+                <NotificationPreferences />
+
                 {/* Danger Zone */}
                 <div className="pt-8 border-t border-status-error/20 content-stack gap-6">
                   <div>
@@ -1210,6 +1222,8 @@ export const UserDashboard = () => {
               </div>
             </div>
           )}
+
+          {activeTab === 'wallet' && <SellerWallet />}
         </main>
 
         {/* Viewing Ticket Modal */}

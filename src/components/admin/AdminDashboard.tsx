@@ -10,7 +10,10 @@ import {
   Search, 
   PlusCircle, 
   Settings, 
-  Trash2
+  Trash2,
+  DollarSign,
+  ShieldCheck,
+  Bell
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile, Event, Order, Voucher, ResellRequest } from '../../types';
@@ -20,9 +23,12 @@ import { OrdersTab } from './OrdersTab';
 import { UsersTab } from './UsersTab';
 import { VouchersTab } from './VouchersTab';
 import { ResaleTab } from './ResaleTab';
+import { PayoutsTab } from './PayoutsTab';
+import { FinanceTab } from './FinanceTab';
 import { InvitationsTab } from './InvitationsTab';
 import { SettingsTab } from './SettingsTab';
 import { QRScannerTab } from './QRScannerTab';
+import { NotificationsTab } from './NotificationsTab';
 import { VoucherModal } from './VoucherModal';
 import { authService } from '../../services/authService';
 import { eventService } from '../../services/eventService';
@@ -37,7 +43,7 @@ export const AdminDashboard: React.FC = React.memo(() => {
   const { events, setEvents, settings, setSettings } = useEvents();
   const [searchParams, setSearchParams] = useSearchParams();
   
-  const activeTab = (searchParams.get('tab') || 'events') as 'events' | 'orders' | 'users' | 'vouchers' | 'resale' | 'scanner' | 'settings' | 'invitations';
+  const activeTab = (searchParams.get('tab') || 'events') as 'events' | 'orders' | 'users' | 'vouchers' | 'resale' | 'payouts' | 'finance' | 'scanner' | 'settings' | 'invitations' | 'notifications';
 
   const setActiveTab = (tab: string) => {
     setSearchParams({ tab });
@@ -207,10 +213,28 @@ export const AdminDashboard: React.FC = React.memo(() => {
             <ArrowLeft size={20} /> Resale
           </button>
           <button 
+            onClick={() => setActiveTab('payouts')}
+            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'payouts' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated'}`}
+          >
+            <DollarSign size={20} /> Seller Payouts
+          </button>
+          <button 
+            onClick={() => setActiveTab('finance')}
+            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'finance' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated'}`}
+          >
+            <ShieldCheck size={20} /> Financial Accounting
+          </button>
+          <button 
             onClick={() => setActiveTab('invitations')}
             className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'invitations' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated'}`}
           >
             <Mail size={20} /> Invitations
+          </button>
+          <button 
+            onClick={() => setActiveTab('notifications')}
+            className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all ${activeTab === 'notifications' ? 'bg-teal text-onteal shadow-card-glow' : 'text-text-muted hover:bg-bg-elevated'}`}
+          >
+            <Bell size={20} /> Notifications & Email
           </button>
           <button 
             onClick={() => setActiveTab('scanner')}
@@ -238,7 +262,9 @@ export const AdminDashboard: React.FC = React.memo(() => {
                 {activeTab === 'orders' && 'View and manage all ticket orders.'}
                 {activeTab === 'users' && 'Manage user roles and permissions.'}
                 {activeTab === 'vouchers' && 'Create and manage discount vouchers.'}
-                {activeTab === 'resale' && 'Process ticket resale requests and payouts.'}
+                {activeTab === 'resale' && 'Process ticket resale requests.'}
+                {activeTab === 'payouts' && 'Manage seller wallet payout requests, approvals, and manual transfers.'}
+                {activeTab === 'finance' && 'Platform financial reconciliation, double-entry general ledger, and revenue auditing.'}
                 {activeTab === 'scanner' && 'Scan ticket QR codes for event entry.'}
                 {activeTab === 'invitations' && 'Manage and send event invitations.'}
                 {activeTab === 'settings' && 'Configure global application settings.'}
@@ -294,6 +320,14 @@ export const AdminDashboard: React.FC = React.memo(() => {
             />
           )}
 
+          {activeTab === 'payouts' && (
+            <PayoutsTab />
+          )}
+
+          {activeTab === 'finance' && (
+            <FinanceTab />
+          )}
+
           {activeTab === 'invitations' && (
             <InvitationsTab 
               allInvitations={allInvitations}
@@ -303,6 +337,10 @@ export const AdminDashboard: React.FC = React.memo(() => {
               fetchInvitations={fetchInvitations}
               setDeleteConfirm={setDeleteConfirm}
             />
+          )}
+
+          {activeTab === 'notifications' && (
+            <NotificationsTab />
           )}
 
           {activeTab === 'scanner' && (

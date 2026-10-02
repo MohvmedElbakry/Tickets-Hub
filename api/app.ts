@@ -9,7 +9,7 @@ import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import { globalLimiter, authLimiter, forgotPasswordLimiter, checkoutLimiter, scannerLimiter } from './lib/rate-limiter.js';
 import crypto from 'crypto';
 import prisma from './lib/prisma.js';
 import { db } from './lib/db-service.js';
@@ -20,10 +20,12 @@ import React from 'react';
 import ReactDOMServer from 'react-dom/server';
 import { TicketTemplate } from './pdf/TicketTemplate.js';
 import QRCode from 'qrcode';
-import { sendEmail, verifyEmailConfig, getPersonalizedName, sendWelcomeEmail, sendVerificationEmail, generateEmailHtml } from './lib/mailer.js';
+import { sendEmail, verifyEmailConfig, getPersonalizedName, sendWelcomeEmail, sendVerificationEmail, generateEmailHtml, sendPayoutStatusEmail } from './lib/mailer.js';
+import { NotificationService, NotificationEventType } from './lib/notification-service.js';
 import { validatePassword as sharedValidatePassword } from './lib/passwordValidator.js';
 import { getEventTiming } from './lib/event-utils.js';
 import { toNumber, FinancialService } from './lib/financial-service.js';
+import { env } from './lib/env.js';
 
 dotenv.config();
 
@@ -96,8 +98,8 @@ async function getSharedBrowser(): Promise<{ browser: Browser, reused: boolean }
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_fallback_123';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || (JWT_SECRET + '_refresh');
+const JWT_SECRET = env.JWT_SECRET;
+const JWT_REFRESH_SECRET = env.JWT_REFRESH_SECRET;
 
 const generateTokens = (user: any) => {
   const payload = { 
@@ -250,8 +252,7 @@ app.use((req, res, next) => {
 app.options('*', cors());
 app.use(cors());
 
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests, please try again later.' }, skip: (req) => process.env.NODE_ENV !== 'production' || !!process.env.AIS_PREVIEW, });
-app.use('/api/', limiter);
+app.use('/api/', globalLimiter);
 app.use(express.json({ limit: '50mb' }));
 
 // Start tracing
@@ -324,7 +325,7 @@ const authorizeRole = (roles: string[]) => {
 
 // --- AUTH ROUTES ---
 console.log('[App] Registering Auth Routes...');
-app.post('/api/auth/signup', async (req, res) => {
+app.post('/api/auth/signup', authLimiter, async (req, res) => {
   try {
     const { name, email, password, phone, role, birthdate, gender } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'Required fields missing.' });
@@ -403,14 +404,28 @@ app.post('/api/auth/signup', async (req, res) => {
       ctaUrl: process.env.FRONTEND_URL || 'http://localhost:3000'
     };
 
-    sendWelcomeEmail(newUser.email, newUser.name, 'Welcome to TicketsHub 🎉', welcomeData, newUser.id).catch(err => {
-      console.error(`🚨 [WELCOME EMAIL DISPATCH EXCEPTION] Async welcome email delivery crashed:`, err);
+    NotificationService.dispatch({
+      eventType: NotificationEventType.AUTH_WELCOME,
+      recipientId: newUser.id,
+      recipientEmail: newUser.email,
+      recipientName: newUser.name,
+      data: { loginUrl: process.env.FRONTEND_URL || 'http://localhost:3000' },
+      channels: 'BOTH'
+    }).catch(err => {
+      console.error(`🚨 [WELCOME NOTIFICATION EXCEPTION] Async welcome notification delivery failed:`, err);
     });
 
     if (!isAdmin) {
       const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${rawVerificationToken}`;
-      sendVerificationEmail(newUser.email, newUser.name, verificationUrl, newUser.id).catch(err => {
-        console.error(`🚨 [VERIFICATION EMAIL DISPATCH EXCEPTION] Async verification email delivery failed:`, err);
+      NotificationService.dispatch({
+        eventType: NotificationEventType.AUTH_EMAIL_VERIFICATION,
+        recipientId: newUser.id,
+        recipientEmail: newUser.email,
+        recipientName: newUser.name,
+        data: { verificationUrl },
+        channels: 'EMAIL'
+      }).catch(err => {
+        console.error(`🚨 [VERIFICATION NOTIFICATION EXCEPTION] Async verification notification failed:`, err);
       });
     }
 
@@ -423,7 +438,7 @@ app.post('/api/auth/signup', async (req, res) => {
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   console.log('[API] Login hit! Email:', email, 'Method:', req.method, 'Path:', req.path);
   try {
@@ -448,28 +463,21 @@ app.get('/api/auth/me', authenticateToken, async (req: any, res) => {
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/auth/refresh', async (req, res) => {
+app.post('/api/auth/refresh', authLimiter, async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken) return res.status(400).json({ error: 'Refresh token is required.' });
   jwt.verify(refreshToken, JWT_REFRESH_SECRET, async (err: any, decoded: any) => {
     if (err) return res.status(401).json({ error: 'Invalid token.' });
     const user = await db.getUserById(decoded.id);
     if (!user) return res.status(404).json({ error: 'User not found.' });
+    if (user.is_deleted || (decoded.tokenVersion !== undefined && (user.token_version ?? 0) !== decoded.tokenVersion)) {
+      return res.status(401).json({ error: 'Session expired or invalidated. Please login again.' });
+    }
     res.json(generateTokens(user));
   });
 });
 
 // --- PASSWORD RECOVERY & CHANGE SYSTEM ---
-
-// Rate limit for forgot password requests (5 per hour per IP)
-const forgotPasswordLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many password reset requests from this IP. Please try again after an hour.' },
-  skip: (req) => process.env.NODE_ENV !== 'production' || !!process.env.AIS_PREVIEW,
-});
 
 // Account-based throttling (3 per hour per account)
 const accountResetRequestTracker = new Map<string, { count: number; firstRequestTime: number }>();
@@ -586,14 +594,19 @@ The TicketsHub Team
     `.trim();
 
     try {
-      await sendEmail({
-        to: user.email,
-        subject: 'Reset Your TicketsHub Password 🔒',
-        html: forgotPasswordHtml,
-        text: forgotPasswordPlain
+      await NotificationService.dispatch({
+        eventType: NotificationEventType.AUTH_PASSWORD_RESET,
+        recipientId: user.id,
+        recipientEmail: user.email,
+        recipientName: user.name,
+        data: { resetUrl },
+        customSubject: 'Reset Your TicketsHub Password 🔒',
+        customHtml: forgotPasswordHtml,
+        customText: forgotPasswordPlain,
+        channels: 'EMAIL'
       });
     } catch (err: any) {
-      console.error('🚨 [FORGOT PASSWORD EMAIL EXCEPTION]', err);
+      console.error('🚨 [FORGOT PASSWORD NOTIFICATION EXCEPTION]', err);
     }
 
     return res.json(successResponse);
@@ -709,13 +722,17 @@ Best regards,
 The TicketsHub Team
     `.trim();
 
-    sendEmail({
-      to: updatedUser.email,
-      subject: 'TicketsHub Password Reset Confirmed 🎟️',
-      html: confirmationHtml,
-      text: confirmationPlain
+    NotificationService.dispatch({
+      eventType: NotificationEventType.AUTH_PASSWORD_CHANGED,
+      recipientId: updatedUser.id,
+      recipientEmail: updatedUser.email,
+      recipientName: updatedUser.name,
+      customSubject: 'TicketsHub Password Reset Confirmed 🎟️',
+      customHtml: confirmationHtml,
+      customText: confirmationPlain,
+      channels: 'BOTH'
     }).catch(err => {
-      console.error('🚨 [RESET CONFIRMATION EMAIL EXCEPTION]', err);
+      console.error('🚨 [RESET CONFIRMATION NOTIFICATION EXCEPTION]', err);
     });
 
     return res.json({ message: 'Password has been reset successfully.' });
@@ -816,13 +833,17 @@ Best regards,
 The TicketsHub Team
     `.trim();
 
-    sendEmail({
-      to: updatedUser.email,
-      subject: 'TicketsHub Password Change Notification 🎟️',
-      html: changeHtml,
-      text: changePlain
+    NotificationService.dispatch({
+      eventType: NotificationEventType.AUTH_PASSWORD_CHANGED,
+      recipientId: updatedUser.id,
+      recipientEmail: updatedUser.email,
+      recipientName: updatedUser.name,
+      customSubject: 'TicketsHub Password Change Notification 🎟️',
+      customHtml: changeHtml,
+      customText: changePlain,
+      channels: 'BOTH'
     }).catch(err => {
-      console.error('🚨 [PASSWORD CHANGE EMAIL EXCEPTION]', err);
+      console.error('🚨 [PASSWORD CHANGE NOTIFICATION EXCEPTION]', err);
     });
 
     return res.json({
@@ -948,8 +969,15 @@ app.post('/api/auth/resend-verification', authenticateToken, async (req: any, re
 
     const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${rawToken}`;
     
-    sendVerificationEmail(user.email, user.name, verificationUrl, user.id).catch(err => {
-      console.error(`🚨 [RESEND VERIFICATION EMAIL EXCEPTION] Async delivery failed:`, err);
+    NotificationService.dispatch({
+      eventType: NotificationEventType.AUTH_EMAIL_VERIFICATION,
+      recipientId: user.id,
+      recipientEmail: user.email,
+      recipientName: user.name,
+      data: { verificationUrl },
+      channels: 'EMAIL'
+    }).catch(err => {
+      console.error(`🚨 [RESEND VERIFICATION NOTIFICATION EXCEPTION] Async delivery failed:`, err);
     });
 
     res.json({ message: 'Verification email has been sent successfully. Please check your inbox.' });
@@ -1109,10 +1137,14 @@ app.post('/api/auth/request-account-deletion', authenticateToken, async (req: an
       ctaUrl: deletionUrl
     });
 
-    await sendEmail({
-      to: user.email,
-      subject: 'Authorize Account Deletion Request - TicketsHub 🎟️',
-      html: emailHtml
+    await NotificationService.dispatch({
+      eventType: NotificationEventType.AUTH_ACCOUNT_DELETED,
+      recipientId: user.id,
+      recipientEmail: user.email,
+      recipientName: recipientName,
+      customSubject: 'Authorize Account Deletion Request - TicketsHub 🎟️',
+      customHtml: emailHtml,
+      channels: 'EMAIL'
     });
 
     res.json({ message: 'A verification link has been sent to your email. Please check your inbox within 15 minutes.' });
@@ -1267,12 +1299,15 @@ app.post('/api/auth/confirm-account-deletion', async (req, res) => {
       `
     });
 
-    await sendEmail({
-      to: user.email,
-      subject: 'Account Successfully Deleted - TicketsHub 🎟️',
-      html: emailHtml
+    await NotificationService.dispatch({
+      eventType: NotificationEventType.AUTH_ACCOUNT_DELETED,
+      recipientEmail: user.email,
+      recipientName: recipientName,
+      customSubject: 'Account Successfully Deleted - TicketsHub 🎟️',
+      customHtml: emailHtml,
+      channels: 'EMAIL'
     }).catch(err => {
-      console.error(`🚨 [DELETION CONFIRMATION EMAIL EXCEPTION] Delivery failed:`, err);
+      console.error(`🚨 [DELETION CONFIRMATION NOTIFICATION EXCEPTION] Delivery failed:`, err);
     });
 
     res.json({ message: 'Your account has been deleted successfully.' });
@@ -1283,14 +1318,130 @@ app.post('/api/auth/confirm-account-deletion', async (req, res) => {
 
 // --- NOTIFICATION ROUTES ---
 console.log('[App] Registering Notification Routes...');
+
 app.get('/api/notifications', authenticateToken, async (req: any, res) => {
-  try { res.json(await db.getNotificationsByUserId(parseInt(req.user.id))); }
-  catch (error: any) { res.status(500).json({ error: error.message }); }
+  try {
+    res.json(await db.getNotificationsByUserId(parseInt(req.user.id)));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.put('/api/notifications/:id/read', authenticateToken, async (req: any, res) => {
-  try { res.json(await db.markNotificationAsRead(parseInt(req.params.id))); }
-  catch (error: any) { res.status(500).json({ error: error.message }); }
+  try {
+    res.json(await db.markNotificationAsRead(parseInt(req.params.id)));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// User Preferences Routes
+app.get('/api/notifications/preferences', authenticateToken, async (req: any, res) => {
+  try {
+    const preferences = await NotificationService.getUserPreferences(parseInt(req.user.id));
+    res.json(preferences);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/notifications/preferences', authenticateToken, async (req: any, res) => {
+  try {
+    const userId = parseInt(req.user.id);
+    const { email_notifications, db_notifications, marketplace_alerts, wallet_alerts, payout_alerts, event_reminders, marketing, admin_announcements } = req.body;
+    
+    const updated = await NotificationService.updateUserPreferences(userId, {
+      email_notifications: email_notifications ?? true,
+      db_notifications: db_notifications ?? true,
+      marketplace_alerts: marketplace_alerts ?? true,
+      wallet_alerts: wallet_alerts ?? true,
+      payout_alerts: payout_alerts ?? true,
+      event_reminders: event_reminders ?? true,
+      marketing: marketing ?? false,
+      admin_announcements: admin_announcements ?? true
+    });
+    
+    res.json({ message: 'Notification preferences updated successfully.', preferences: updated });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin Notification Infrastructure Routes
+app.get('/api/admin/notifications/logs', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const page = req.query.page ? parseInt(req.query.page) : 1;
+    const limit = req.query.limit ? parseInt(req.query.limit) : 20;
+    const status = req.query.status as string;
+    const eventType = req.query.eventType as string;
+    const search = req.query.search as string;
+
+    const result = await NotificationService.getNotificationLogs({ page, limit, status, eventType, search });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/notifications/stats', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const stats = await NotificationService.getNotificationStats();
+    res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/notifications/retry/:id', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const logId = parseInt(req.params.id);
+    const result = await NotificationService.retryFailedLog(logId);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/notifications/announcement', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+  try {
+    const { subject, message, targetRole = 'all', sendEmail = true, sendInApp = true } = req.body;
+    if (!subject || !message) {
+      return res.status(400).json({ error: 'Subject and message are required for announcements.' });
+    }
+
+    const where: any = { is_deleted: false };
+    if (targetRole !== 'all') {
+      where.role = targetRole;
+    }
+
+    const users = await prisma.user.findMany({
+      where,
+      select: { id: true, email: true, name: true }
+    });
+
+    const channels = sendEmail && sendInApp ? 'BOTH' : sendEmail ? 'EMAIL' : 'DATABASE';
+    let dispatchedCount = 0;
+
+    for (const u of users) {
+      await NotificationService.dispatch({
+        eventType: NotificationEventType.ADMIN_ANNOUNCEMENT,
+        recipientEmail: u.email,
+        recipientId: u.id,
+        recipientName: u.name,
+        channels,
+        idempotencyKey: `announcement:${Date.now()}:${u.id}`,
+        customSubject: subject,
+        dbTitle: subject,
+        dbMessage: message,
+        data: { subject, messageHtml: `<p>${message.replace(/\n/g, '<br/>')}</p>` }
+      });
+      dispatchedCount++;
+    }
+
+    res.json({ message: `Announcement queued for ${dispatchedCount} users successfully.`, count: dispatchedCount });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // --- EVENT ROUTES ---
@@ -1635,7 +1786,7 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEma
   catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-  app.post('/api/payments/create-session', authenticateToken, requireEmailVerification, async (req: any, res) => {
+  app.post('/api/payments/create-session', checkoutLimiter, authenticateToken, requireEmailVerification, async (req: any, res) => {
     const { order_id } = req.body;
     
     if (!order_id) {
@@ -2178,19 +2329,37 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEma
     console.log('[Webhook] Receive trigger');
     try {
       const rawBody = req.body;
-      if (!rawBody || rawBody.length === 0) return res.status(200).send();
-
-      const payload = JSON.parse(rawBody.toString());
-      const signature = req.headers['x-kashier-signature'] as string;
-      const KASHIER_API_KEY = process.env.KASHIER_API_KEY;
-
-      if (!KASHIER_API_KEY) return res.status(200).send(); // Always 200 to Kashier unless strictly auth/sig fail
-
-      if (signature) {
-        const expectedSignature = crypto.createHmac('sha256', KASHIER_API_KEY).update(rawBody).digest('hex');
-        if (signature !== expectedSignature) return res.status(200).send();
+      if (!rawBody || !Buffer.isBuffer(rawBody) || rawBody.length === 0) {
+        console.warn('[Webhook Security] Missing or empty raw request body.');
+        return res.status(400).json({ error: 'Invalid webhook payload' });
       }
 
+      // 1. Webhook Secret Configuration Check (Fail-closed)
+      const kashierApiKey = env.KASHIER_API_KEY || process.env.KASHIER_API_KEY;
+      if (!kashierApiKey) {
+        console.error('[Webhook Security] Kashier API Key / Webhook secret is missing.');
+        return res.status(401).json({ error: 'Webhook authentication failed' });
+      }
+
+      // 2. Webhook Signature Header Check (Fail-closed)
+      const signatureHeader = req.headers['x-kashier-signature'] as string;
+      if (!signatureHeader || typeof signatureHeader !== 'string') {
+        console.warn('[Webhook Security] Missing x-kashier-signature header.');
+        return res.status(401).json({ error: 'Webhook authentication failed' });
+      }
+
+      // 3. HMAC-SHA256 Signature Verification with Constant-Time Comparison
+      const expectedSignature = crypto.createHmac('sha256', kashierApiKey).update(rawBody).digest('hex');
+      const sigBuffer = Buffer.from(signatureHeader.trim(), 'utf8');
+      const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
+
+      if (sigBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
+        console.warn('[Webhook Security] Kashier webhook signature mismatch.');
+        return res.status(401).json({ error: 'Webhook authentication failed' });
+      }
+
+      // 4. ONLY AFTER SUCCESSFUL SIGNATURE VERIFICATION: Parse & Process Payload
+      const payload = JSON.parse(rawBody.toString());
       const transactionId = payload.transactionId || payload.referenceNumber;
       const orderIdStr = payload.orderId || payload.merchantOrderId;
       const status = payload.status || (payload.response && payload.response.status);
@@ -2221,9 +2390,9 @@ app.put('/api/settings', authenticateToken, authorizeRole(['admin']), requireEma
       }
 
       return res.status(200).send();
-    } catch (error) {
-      console.error('[Webhook] Error:', error);
-      return res.status(200).send(); // Always converge to 200 for webhooks
+    } catch (error: any) {
+      console.error('[Webhook] Processing error:', error);
+      return res.status(400).json({ error: 'Invalid webhook request format' });
     }
   });
 
@@ -2346,11 +2515,15 @@ app.post('/api/events/:id/pre-register', authenticateToken, requireEmailVerifica
         const eventTitle = event ? event.title : `Event #${eventId}`;
         
         // 1. Notify current user
-        await db.addNotification({
-          user_id: userId,
-          title: 'Waitlist Joined',
-          message: `You joined the waitlist for ${eventTitle}. We will notify you when tickets become available.`,
-          type: 'info'
+        await NotificationService.dispatch({
+          eventType: NotificationEventType.WAITLIST_JOINED,
+          recipientId: userId,
+          recipientEmail: req.user.email,
+          dbTitle: 'Waitlist Joined',
+          dbMessage: `You joined the waitlist for ${eventTitle}. We will notify you when tickets become available.`,
+          relatedEntityType: 'event',
+          relatedEntityId: String(eventId),
+          channels: 'BOTH'
         });
         
         // 2. Notify admins
@@ -2359,11 +2532,15 @@ app.post('/api/events/:id/pre-register', authenticateToken, requireEmailVerifica
         const userName = req.user.name || req.user.email || 'A user';
         
         for (const admin of admins) {
-          await db.addNotification({
-            user_id: admin.id,
-            title: 'New Waitlist Registration',
-            message: `${userName} joined the waitlist for ${eventTitle}.`,
-            type: 'info'
+          await NotificationService.dispatch({
+            eventType: NotificationEventType.ADMIN_WAITLIST_ALERT,
+            recipientId: admin.id,
+            recipientEmail: admin.email,
+            dbTitle: 'New Waitlist Registration',
+            dbMessage: `${userName} joined the waitlist for ${eventTitle}.`,
+            relatedEntityType: 'event',
+            relatedEntityId: String(eventId),
+            channels: 'DATABASE'
           });
         }
       } catch (notifErr) {
@@ -2392,11 +2569,15 @@ app.delete('/api/events/:id/pre-register', authenticateToken, requireEmailVerifi
     (async () => {
       try {
         // 1. Notify current user
-        await db.addNotification({
-          user_id: userId,
-          title: 'Waitlist Left',
-          message: `You have successfully left the waitlist for ${eventTitle}.`,
-          type: 'info'
+        await NotificationService.dispatch({
+          eventType: NotificationEventType.WAITLIST_LEFT,
+          recipientId: userId,
+          recipientEmail: req.user.email,
+          dbTitle: 'Waitlist Left',
+          dbMessage: `You have successfully left the waitlist for ${eventTitle}.`,
+          relatedEntityType: 'event',
+          relatedEntityId: String(eventId),
+          channels: 'BOTH'
         });
 
         // 2. Notify admins
@@ -2405,11 +2586,15 @@ app.delete('/api/events/:id/pre-register', authenticateToken, requireEmailVerifi
         const userName = req.user.name || req.user.email || 'A user';
 
         for (const admin of admins) {
-          await db.addNotification({
-            user_id: admin.id,
-            title: 'Waitlist Removal',
-            message: `${userName} removed themselves from the waitlist for ${eventTitle}.`,
-            type: 'info'
+          await NotificationService.dispatch({
+            eventType: NotificationEventType.ADMIN_WAITLIST_ALERT,
+            recipientId: admin.id,
+            recipientEmail: admin.email,
+            dbTitle: 'Waitlist Removal',
+            dbMessage: `${userName} removed themselves from the waitlist for ${eventTitle}.`,
+            relatedEntityType: 'event',
+            relatedEntityId: String(eventId),
+            channels: 'DATABASE'
           });
         }
       } catch (notifErr) {
@@ -2898,26 +3083,34 @@ Best regards,
 The TicketsHub Team
     `;
 
-    // 4. Send email
-    console.log(`[EMAIL STEP 6] Calling sendEmail()`);
+    // 4. Dispatch via NotificationService
+    console.log(`[EMAIL STEP 6] Calling NotificationService.dispatch()`);
     console.log(`[SENDING EMAIL] Dispatching ticket email to ${user.email} with ${attachments.length} attachments.`);
     try {
-      const mailResult = await sendEmail({
-        to: user.email,
-        subject: `🎟️ Your Event Tickets: ${eventTitle} (#${orderNum})`,
-        html: htmlText,
-        text: plainText,
-        attachments
+      const dispatchResult = await NotificationService.dispatch({
+        eventType: NotificationEventType.ORDER_CREATED,
+        recipientId: user.id,
+        recipientEmail: user.email,
+        recipientName: recipientName,
+        customSubject: `🎟️ Your Event Tickets: ${eventTitle} (#${orderNum})`,
+        customHtml: htmlText,
+        customText: plainText,
+        attachments,
+        data: {
+          eventTitle,
+          orderNumber: orderNum,
+          totalPrice: order.total_price,
+          ticketCount: ticketInstances.length
+        },
+        relatedEntityType: 'order',
+        relatedEntityId: String(order.id),
+        channels: 'BOTH'
       });
 
-      if (mailResult && mailResult.success) {
-        console.log(`[EMAIL SUCCESS] Email sent successfully for Order #${orderNum} (Message ID: ${mailResult.messageId || 'N/A'})`);
-      } else {
-        console.error(`[EMAIL FAILURE] Email dispatch returned success=false for Order #${orderNum}`);
-      }
-      return mailResult;
+      console.log(`[NOTIFICATION SUCCESS] Order notification dispatched for Order #${orderNum} (Log ID: ${dispatchResult.logId || 'N/A'})`);
+      return { success: dispatchResult.success };
     } catch (mailErr: any) {
-      console.error(`[EMAIL FAILURE] Email dispatch threw exception for Order #${orderNum}: ${mailErr.message}`);
+      console.error(`[EMAIL FAILURE] Order notification threw exception for Order #${orderNum}: ${mailErr.message}`);
       console.error(`[FULL STACK TRACE] ${mailErr.stack}`);
       throw mailErr;
     }
@@ -3021,13 +3214,18 @@ export async function sendInvitationEmail(email: string, eventId: number): Promi
       </html>
     `;
 
-    // Send the email
-    await sendEmail({
-      to: email,
-      subject: `🎟️ Personal Invitation: ${eventTitle}`,
-      html: htmlText
+    // Dispatch via NotificationService
+    await NotificationService.dispatch({
+      eventType: NotificationEventType.EVENT_INVITATION,
+      recipientEmail: email,
+      recipientName: recipientName,
+      customSubject: `🎟️ Personal Invitation: ${eventTitle}`,
+      customHtml: htmlText,
+      relatedEntityType: 'event',
+      relatedEntityId: String(eventId),
+      channels: 'EMAIL'
     });
-    console.log(`✨ [EMAIL DISPATCH SUCCESS] Invitation email dispatched to ${email} for event #${eventId}`);
+    console.log(`✨ [NOTIFICATION DISPATCH SUCCESS] Invitation notification dispatched to ${email} for event #${eventId}`);
 
   } catch (error: any) {
     console.error(`🚨 [EMAIL DISPATCH ERROR] Failed to send invitation email to ${email}. Error: ${error.stack || error.message}`);
@@ -3035,17 +3233,24 @@ export async function sendInvitationEmail(email: string, eventId: number): Promi
 }
 
 // --- TICKET PRINT & PDF API ---
-app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
+app.get('/api/tickets/:publicId/pdf', authenticateToken, async (req: any, res: any) => {
   const publicId = req.params.publicId;
   const requestStart = Date.now();
-  console.log(`[PDF DOWNLOAD] Starting export for order public ID ${publicId}`);
+  console.log(`[PDF DOWNLOAD] Starting export for public ID ${publicId} by user #${req.user?.id} (role: ${req.user?.role})`);
   
   try {
-    // Audit check: block PDF if ticket is not valid for download
+    // 1. Resolve TicketInstance by public ID
     const ticket = await prisma.ticketInstance.findUnique({
       where: { public_id: publicId }
     });
+
     if (ticket) {
+      // Explicit Authorization: Current Ticket Owner or Admin
+      if (ticket.owner_id !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Lifecycle Status Guards: block PDF if ticket is not valid for download
       if (ticket.status === 'TRANSFER_PENDING') {
         return res.status(400).json({ error: 'This ticket has a pending transfer and cannot be downloaded as PDF.' });
       }
@@ -3058,15 +3263,25 @@ app.get('/api/tickets/:publicId/pdf', async (req: any, res: any) => {
       if (ticket.status === 'CANCELLED' || ticket.status === 'REFUNDED') {
         return res.status(400).json({ error: 'This ticket is no longer valid for download.' });
       }
-    }
+    } else {
+      // 2. Fallback check for Order public ID (legacy order export)
+      const order = await prisma.order.findUnique({
+        where: { public_id: publicId },
+        include: { ticket_instances: true }
+      });
 
-    // Check if it's an order public ID
-    const order = await prisma.order.findUnique({
-      where: { public_id: publicId },
-      include: { ticket_instances: true }
-    });
-    if (order && order.ticket_instances.some((t: any) => ['TRANSFER_PENDING', 'RESALE_LISTED', 'RESOLD', 'CANCELLED'].includes(t.status))) {
-      return res.status(400).json({ error: 'One or more tickets in this order are no longer active/valid for PDF download.' });
+      if (!order) {
+        return res.status(404).json({ error: 'Ticket not found' });
+      }
+
+      // Explicit Authorization: Order Owner or Admin
+      if (order.user_id !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      if (order.ticket_instances.some((t: any) => ['TRANSFER_PENDING', 'RESALE_LISTED', 'RESOLD', 'CANCELLED', 'REFUNDED'].includes(t.status))) {
+        return res.status(400).json({ error: 'One or more tickets in this order are no longer active/valid for PDF download.' });
+      }
     }
 
     const { pdfBuffer } = await generateTicketPdfBuffer(publicId);
@@ -3100,7 +3315,7 @@ app.post('/api/debug/test-email', async (req: any, res: any) => {
       const authHeader = req.headers['authorization'];
       const token = authHeader && authHeader.split(' ')[1];
       if (token) {
-        const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+        const decoded: any = jwt.verify(token, JWT_SECRET);
         if (decoded && decoded.role === 'admin') {
           isAuthorized = true;
         }
@@ -3210,10 +3425,7 @@ app.post('/api/debug/test-email', async (req: any, res: any) => {
       }
     ] : [];
 
-    const mailResult = await sendEmail({
-      to: email,
-      subject: `🧪 TicketsHub Production Email Test System`,
-      html: `
+    const testHtml = `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
           <h2 style="color: #10B981; border-bottom: 2px solid #10B981; padding-bottom: 10px;">🧪 Test Email Delivery Audit</h2>
           <p>This is a real-time production email delivery test from your **TicketsHub App**.</p>
@@ -3234,14 +3446,22 @@ app.post('/api/debug/test-email', async (req: any, res: any) => {
           <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
           <p style="font-size: 12px; color: #777;">Admin Delivery Diagnosis Panel &copy; 2026 TicketsHub.</p>
         </div>
-      `,
-      text: `Production Delivery Test: Real-time SMTP/Resend checks completed successfully. Attachment presence: ${!!pdfBuffer}`,
-      attachments
+      `;
+    const testText = `Production Delivery Test: Real-time SMTP/Resend checks completed successfully. Attachment presence: ${!!pdfBuffer}`;
+
+    const dispatchResult = await NotificationService.dispatch({
+      eventType: NotificationEventType.TEST_EMAIL,
+      recipientEmail: email,
+      customSubject: `🧪 TicketsHub Production Email Test System`,
+      customHtml: testHtml,
+      customText: testText,
+      attachments,
+      channels: 'EMAIL'
     });
 
-    report.deliveryResult = mailResult;
+    report.deliveryResult = { success: dispatchResult.success, logId: dispatchResult.logId };
 
-    if (mailResult.success) {
+    if (dispatchResult.success) {
       console.log(`✨ [DEBUG API SUCCESS] Delivery audit completed successfully for recipient ${email}`);
       return res.status(200).json({
         success: true,
@@ -3482,41 +3702,119 @@ app.put('/api/orders/:publicId/pay', authenticateToken, requireEmailVerification
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/api/admin/scan', authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
+app.post('/api/admin/scan', scannerLimiter, authenticateToken, authorizeRole(['admin']), async (req: any, res) => {
   try {
     const { ticket_id, event_id } = req.body;
-    if (!ticket_id || !event_id) {
+    const rawInput = String(ticket_id || '').trim();
+    if (!rawInput || !event_id) {
       return res.status(400).json({ error: 'Ticket ID and Event ID are required.' });
     }
 
+    const eventIdNum = parseInt(String(event_id).trim(), 10);
+    if (isNaN(eventIdNum)) {
+      return res.status(400).json({ error: 'Invalid Event ID.' });
+    }
+
+    // Extract token if wrapped or prefixed
+    let cleanToken = rawInput;
+    let isExplicitOrder = false;
+
+    // 1. Strip URL wrapper if present: e.g. https://domain.com/tickets/TKT_123
+    if (cleanToken.startsWith('http://') || cleanToken.startsWith('https://')) {
+      try {
+        const urlObj = new URL(cleanToken);
+        const segments = urlObj.pathname.split('/').filter(Boolean);
+        if (segments.length > 0) {
+          cleanToken = decodeURIComponent(segments[segments.length - 1]).trim();
+        }
+      } catch (e) {
+        // keep cleanToken
+      }
+    }
+
+    // 2. Parse TicketsHub prefixes (case-insensitive): TicketsHub-Ticket-<token> or TicketsHub-Order-<token>
+    const ticketPrefixMatch = cleanToken.match(/^TicketsHub-Ticket-([a-zA-Z0-9_\-]+)$/i);
+    const orderPrefixMatch = cleanToken.match(/^TicketsHub-Order-([a-zA-Z0-9_\-]+)$/i);
+
+    if (ticketPrefixMatch) {
+      cleanToken = ticketPrefixMatch[1].trim();
+    } else if (orderPrefixMatch) {
+      isExplicitOrder = true;
+      cleanToken = orderPrefixMatch[1].trim();
+    }
+
     // 1. Try finding by TicketInstance qr_token or public_id
-    let ticketInstance = await db.getTicketInstanceByQrToken(ticket_id);
-    if (!ticketInstance) {
-      ticketInstance = await db.getTicketInstanceByPublicId(ticket_id);
+    let ticketInstance: any = null;
+
+    if (!isExplicitOrder) {
+      ticketInstance = await db.getTicketInstanceByQrToken(cleanToken);
+      if (!ticketInstance) {
+        ticketInstance = await db.getTicketInstanceByPublicId(cleanToken);
+      }
+      if (!ticketInstance && cleanToken !== rawInput) {
+        ticketInstance = await db.getTicketInstanceByQrToken(rawInput);
+        if (!ticketInstance) {
+          ticketInstance = await db.getTicketInstanceByPublicId(rawInput);
+        }
+      }
+      if (!ticketInstance && !isNaN(parseInt(cleanToken, 10))) {
+        try {
+          ticketInstance = await prisma.ticketInstance.findUnique({
+            where: { id: parseInt(cleanToken, 10) },
+            include: { order: { include: { event: true } }, ticket_type: true }
+          });
+        } catch (e) {
+          // ignore
+        }
+      }
     }
 
     if (ticketInstance) {
       const order = ticketInstance.order;
-      if (!order || order.event_id !== parseInt(event_id)) {
+      const ticketEventId = ticketInstance.ticket_type?.event_id ?? order?.event_id;
+      if (ticketEventId !== eventIdNum) {
         return res.status(400).json({ error: 'Mismatch event' });
       }
-      if (order.order_status !== 'paid') {
+
+      const isPaid = order ? (order.is_paid || order.order_status === 'paid') : true;
+      if (!isPaid) {
         return res.status(400).json({ error: 'Order not paid' });
       }
+
       if (ticketInstance.status === 'CHECKED_IN') {
         return res.status(400).json({ error: 'Already scanned', scanned_count: 1 });
       }
       if (ticketInstance.status === 'TRANSFER_PENDING') {
         return res.status(400).json({ error: 'This ticket is currently pending transfer and cannot be checked in.' });
       }
+      if (ticketInstance.status === 'RESALE_LISTED') {
+        return res.status(400).json({ error: 'This ticket is currently listed for resale and cannot be checked in.' });
+      }
+      if (ticketInstance.status === 'RESOLD') {
+        return res.status(400).json({ error: 'This ticket has been resold and is no longer valid.' });
+      }
+      if (ticketInstance.status === 'CANCELLED' || ticketInstance.status === 'REFUNDED') {
+        return res.status(400).json({ error: 'This ticket is no longer valid for entry.' });
+      }
       if (ticketInstance.status !== 'VALID') {
         return res.status(400).json({ error: `Invalid ticket status: ${ticketInstance.status}` });
       }
 
-      await db.updateTicketInstance(ticketInstance.id, {
-        status: 'CHECKED_IN',
-        checked_in_at: new Date()
+      // Atomic conditional update to prevent concurrent double-scans (Replay Protection)
+      const updateResult = await prisma.ticketInstance.updateMany({
+        where: {
+          id: ticketInstance.id,
+          status: 'VALID'
+        },
+        data: {
+          status: 'CHECKED_IN',
+          checked_in_at: new Date()
+        }
       });
+
+      if (updateResult.count === 0) {
+        return res.status(400).json({ error: 'Already scanned', scanned_count: 1 });
+      }
 
       return res.json({ 
         message: 'Approved', 
@@ -3524,28 +3822,36 @@ app.post('/api/admin/scan', authenticateToken, authorizeRole(['admin']), async (
           id: ticketInstance.id,
           public_id: ticketInstance.public_id,
           name: ticketInstance.ticket_type.name,
-          attendee_name: ticketInstance.attendee_name,
+          attendee_name: ticketInstance.attendee_name || 'Guest',
           status: 'CHECKED_IN'
         } 
       });
     }
 
-    // 2. Try finding by legacy Order qr_code_token
+    // 2. Try finding by legacy Order qr_code_token or public_id
     const legacyOrder = await prisma.order.findFirst({
-      where: { qr_code_token: ticket_id, event_id: parseInt(event_id) },
+      where: {
+        OR: [
+          { qr_code_token: cleanToken },
+          { qr_code_token: rawInput },
+          { public_id: cleanToken },
+          { public_id: rawInput }
+        ],
+        event_id: eventIdNum
+      },
       include: { order_tickets: { include: { ticket_type: true } } }
     });
 
     if (legacyOrder) {
-      if (legacyOrder.order_status !== 'paid') {
-        return res.status(400).json({ error: 'Not paid' });
+      if (!legacyOrder.is_paid && legacyOrder.order_status !== 'paid') {
+        return res.status(400).json({ error: 'Order not paid' });
       }
       
       const unusedOrderTicket = legacyOrder.order_tickets.find(ot => !ot.is_used);
       if (!unusedOrderTicket) {
         return res.status(400).json({ 
           error: 'Already scanned', 
-          scanned_count: legacyOrder.order_tickets.reduce((acc, t) => acc + t.scanned_count, 0) 
+          scanned_count: legacyOrder.order_tickets.reduce((acc, t) => acc + (t.scanned_count || 1), 0) || 1
         });
       }
 
@@ -3555,7 +3861,10 @@ app.post('/api/admin/scan', authenticateToken, authorizeRole(['admin']), async (
       const instances = await db.ensureTicketInstancesForOrder(legacyOrder.id);
       const unusedInstance = instances.find(inst => inst.status === 'VALID');
       if (unusedInstance) {
-        await db.updateTicketInstance(unusedInstance.id, { status: 'CHECKED_IN', checked_in_at: new Date() });
+        await prisma.ticketInstance.updateMany({
+          where: { id: unusedInstance.id, status: 'VALID' },
+          data: { status: 'CHECKED_IN', checked_in_at: new Date() }
+        });
       }
 
       return res.json({
@@ -3569,18 +3878,18 @@ app.post('/api/admin/scan', authenticateToken, authorizeRole(['admin']), async (
     }
 
     // 3. Fallback to legacy numeric OrderTicket ID
-    if (!isNaN(parseInt(ticket_id))) {
-      const ticket = await db.getOrderTicketById(parseInt(ticket_id));
+    if (!isNaN(parseInt(cleanToken, 10))) {
+      const ticket = await db.getOrderTicketById(parseInt(cleanToken, 10));
       if (ticket) {
         const order = await db.getOrderById(ticket.order_id);
-        if (!order || order.event_id !== parseInt(event_id)) {
+        if (!order || order.event_id !== eventIdNum) {
           return res.status(400).json({ error: 'Mismatch event' });
         }
-        if (order.order_status !== 'paid') {
-          return res.status(400).json({ error: 'Not paid' });
+        if (!order.is_paid && order.order_status !== 'paid') {
+          return res.status(400).json({ error: 'Order not paid' });
         }
         if (ticket.is_used) {
-          return res.status(400).json({ error: 'Already scanned', scanned_count: ticket.scanned_count });
+          return res.status(400).json({ error: 'Already scanned', scanned_count: ticket.scanned_count || 1 });
         }
         
         await db.updateOrderTicket(ticket.id, { is_used: true, scanned_count: 1 });
@@ -3589,7 +3898,10 @@ app.post('/api/admin/scan', authenticateToken, authorizeRole(['admin']), async (
         const instances = await db.ensureTicketInstancesForOrder(order.id);
         const unusedInstance = instances.find(inst => inst.status === 'VALID');
         if (unusedInstance) {
-          await db.updateTicketInstance(unusedInstance.id, { status: 'CHECKED_IN', checked_in_at: new Date() });
+          await prisma.ticketInstance.updateMany({
+            where: { id: unusedInstance.id, status: 'VALID' },
+            data: { status: 'CHECKED_IN', checked_in_at: new Date() }
+          });
         }
 
         return res.json({ message: 'Approved', ticket });
@@ -4626,6 +4938,11 @@ app.post('/api/seller/payouts', authenticateToken, async (req: any, res: any) =>
     }
 
     const payoutRequest = await FinancialService.requestPayout(req.user.id, parsedDestId, parsedAmount);
+
+    // Dispatch email notification asynchronously
+    sendPayoutStatusEmail(req.user.email, req.user.name, payoutRequest.public_id, parsedAmount, 'REQUESTED')
+      .catch(err => console.error('[MAIL ERROR] Failed to send payout request email:', err));
+
     res.status(201).json({ message: 'Payout request submitted successfully.', payoutRequest });
   } catch (error: any) {
     console.error('[API ERROR] POST /api/seller/payouts:', error);
@@ -4685,7 +5002,8 @@ app.get('/api/admin/payouts', authenticateToken, authorizeRole(['ADMIN']), async
 app.post('/api/admin/payouts/:id/review', authenticateToken, authorizeRole(['ADMIN']), async (req: any, res: any) => {
   try {
     const payoutRequestId = parseInt(req.params.id, 10);
-    const { action, reason } = req.body;
+    const { action, reason, providerRef, transferReference } = req.body;
+    const refToSave = providerRef || transferReference;
 
     if (isNaN(payoutRequestId)) {
       return res.status(400).json({ error: 'Invalid payout request ID.' });
@@ -4695,7 +5013,20 @@ app.post('/api/admin/payouts/:id/review', authenticateToken, authorizeRole(['ADM
       return res.status(400).json({ error: 'Action must be one of: APPROVE, REJECT, MARK_PAID.' });
     }
 
-    const updatedRequest = await FinancialService.reviewPayout(req.user.id, payoutRequestId, action, reason);
+    const updatedRequest = await FinancialService.reviewPayout(req.user.id, payoutRequestId, action, reason, refToSave);
+
+    // Fetch seller for email notification
+    const seller = await prisma.user.findUnique({
+      where: { id: updatedRequest.user_id },
+      select: { name: true, email: true }
+    });
+
+    if (seller?.email) {
+      const emailStatus = action === 'APPROVE' ? 'APPROVED' : action === 'REJECT' ? 'REJECTED' : 'PAID';
+      sendPayoutStatusEmail(seller.email, seller.name, updatedRequest.public_id, Number(updatedRequest.amount), emailStatus, reason)
+        .catch(err => console.error('[MAIL ERROR] Failed to send payout review email:', err));
+    }
+
     res.json({ message: `Payout request ${action.toLowerCase()}ed successfully.`, payoutRequest: updatedRequest });
   } catch (error: any) {
     console.error('[API ERROR] POST /api/admin/payouts/:id/review:', error);
@@ -4755,6 +5086,76 @@ app.get('/api/admin/financial/report', authenticateToken, authorizeRole(['ADMIN'
     res.status(500).json({ error: error.message || 'Failed to generate financial report.' });
   }
 });
+
+// GET /api/admin/financial/dashboard - Advanced accounting dashboard metrics
+app.get('/api/admin/financial/dashboard', authenticateToken, authorizeRole(['ADMIN']), async (req: any, res: any) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const metrics = await FinancialService.generateAccountingDashboardMetrics(
+      startDate as string | undefined,
+      endDate as string | undefined
+    );
+    res.json(metrics);
+  } catch (error: any) {
+    console.error('[API ERROR] GET /api/admin/financial/dashboard:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate accounting dashboard metrics.' });
+  }
+});
+
+// GET /api/admin/financial/reconciliation - Automated ledger & drift reconciliation engine
+app.get('/api/admin/financial/reconciliation', authenticateToken, authorizeRole(['ADMIN']), async (req: any, res: any) => {
+  try {
+    const reconciliation = await FinancialService.performFullReconciliation();
+    res.json(reconciliation);
+  } catch (error: any) {
+    console.error('[API ERROR] GET /api/admin/financial/reconciliation:', error);
+    res.status(500).json({ error: error.message || 'Failed to run ledger reconciliation.' });
+  }
+});
+
+// GET /api/admin/financial/ledger - Paginated double-entry ledger query
+app.get('/api/admin/financial/ledger', authenticateToken, authorizeRole(['ADMIN']), async (req: any, res: any) => {
+  try {
+    const { page, limit, accountType, entryType, transactionRef, userId, search, startDate, endDate } = req.query;
+    const result = await FinancialService.getLedgerEntries({
+      page: page ? parseInt(page as string, 10) : undefined,
+      limit: limit ? parseInt(limit as string, 10) : undefined,
+      accountType: accountType as string | undefined,
+      entryType: entryType as string | undefined,
+      transactionRef: transactionRef as string | undefined,
+      userId: userId ? parseInt(userId as string, 10) : undefined,
+      search: search as string | undefined,
+      startDate: startDate as string | undefined,
+      endDate: endDate as string | undefined
+    });
+    res.json(result);
+  } catch (error: any) {
+    console.error('[API ERROR] GET /api/admin/financial/ledger:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch ledger entries.' });
+  }
+});
+
+// GET /api/admin/financial/export - CSV export of ledger entries
+app.get('/api/admin/financial/export', authenticateToken, authorizeRole(['ADMIN']), async (req: any, res: any) => {
+  try {
+    const { accountType, entryType, startDate, endDate, search } = req.query;
+    const csvContent = await FinancialService.exportLedgerCsv({
+      accountType: accountType as string | undefined,
+      entryType: entryType as string | undefined,
+      startDate: startDate as string | undefined,
+      endDate: endDate as string | undefined,
+      search: search as string | undefined
+    });
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="tickets_hub_ledger_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.status(200).send(csvContent);
+  } catch (error: any) {
+    console.error('[API ERROR] GET /api/admin/financial/export:', error);
+    res.status(500).json({ error: error.message || 'Failed to export ledger CSV.' });
+  }
+});
+
 
 // ============================================================================
 // PERIODIC SETTLEMENT & RESERVATION CLEANUP JOBS

@@ -15,6 +15,7 @@
     "postinstall": "prisma generate",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist",
+    "test": "tsx scripts/run-all-tests.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -30,6 +31,7 @@
     "express-rate-limit": "^8.4.1",
     "helmet": "^8.1.0",
     "html5-qrcode": "^2.3.8",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
@@ -37,6 +39,7 @@
     "puppeteer-core": "^25.0.4",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",
+    "rate-limit-redis": "^6.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.14.0",

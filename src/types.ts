@@ -200,3 +200,44 @@ export interface TicketResaleListing {
     }
   };
 }
+
+export interface SellerBalance {
+  id?: number;
+  user_id: number;
+  available_amount: number | any;
+  pending_amount: number | any;
+  withdrawn_amount: number | any;
+  held_amount: number | any;
+  currency: string;
+  updated_at?: string;
+}
+
+export interface PayoutDestination {
+  id: number;
+  public_id?: string;
+  user_id?: number;
+  type: 'BANK_ACCOUNT' | 'INSTAPAY' | 'VODAFONE_CASH';
+  account_name: string;
+  masked_details: string;
+  is_active?: boolean;
+  is_verified?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PayoutRequest {
+  id: number;
+  public_id?: string;
+  user_id?: number;
+  destination_id?: number;
+  destination?: PayoutDestination;
+  amount: number | any;
+  currency: string;
+  status: 'REQUESTED' | 'PENDING_REVIEW' | 'APPROVED' | 'PROCESSING' | 'PAID' | 'FAILED' | 'REJECTED' | 'CANCELLED' | 'REVERSED';
+  failure_reason?: string | null;
+  requested_at: string;
+  approved_at?: string | null;
+  processed_at?: string | null;
+  paid_at?: string | null;
+  updated_at?: string;
+}

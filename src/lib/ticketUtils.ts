@@ -29,13 +29,22 @@ export const isQRCodeVisible = (eventDate: string, eventTime: string, qrEnabledM
 export const handleDownloadPDF = async (order: Order) => {
   if (!order) return;
 
-  const orderIdentifier = order.public_id || order.id.toString();
+  const orderIdentifier = order.public_id || (order as any).id?.toString();
 
   try {
-    const response = await fetch(`/api/tickets/${orderIdentifier}/pdf`);
+    const token = localStorage.getItem('accessToken');
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`/api/tickets/${orderIdentifier}/pdf`, {
+      headers
+    });
     
     if (!response.ok) {
-      throw new Error(`Failed to generate PDF: ${response.statusText}`);
+      const errData = await response.json().catch(() => null);
+      throw new Error(errData?.error || `Failed to generate PDF: ${response.statusText}`);
     }
 
     const blob = await response.blob();
@@ -47,9 +56,9 @@ export const handleDownloadPDF = async (order: Order) => {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
-  } catch (error) {
+  } catch (error: any) {
     console.error('PDF Export Failed:', error);
-    alert('Failed to download PDF ticket. Please try again later.');
+    alert(error.message || 'Failed to download PDF ticket. Please try again later.');
   }
 };
 

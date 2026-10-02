@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { getEventTiming } from './event-utils.js';
 import { sendResaleListingConfirmationEmail } from './mailer.js';
 import { toNumber, FinancialService } from './financial-service.js';
+import { NotificationService, NotificationEventType } from './notification-service.js';
 
 export const parseSafeDate = (input: any, required: boolean = false) => {
   if (!input) {
@@ -1510,25 +1511,32 @@ class PrismaDB {
       });
     });
 
-    // Send confirmation email AFTER successful transaction commit
+    // Send confirmation notification & email AFTER successful transaction commit
     try {
       const seller = await prisma.user.findUnique({ where: { id: userId } });
       if (seller && seller.email) {
         const eventTitle = listing.ticket_instance?.order?.event?.title || 'Event';
         const ticketTypeName = listing.ticket_instance?.ticket_type?.name || 'Ticket';
         
-        await sendResaleListingConfirmationEmail(
-          seller.email,
-          seller.name || 'Valued Customer',
-          eventTitle,
-          ticketTypeName,
-          Number(listing.price),
-          listing.public_id
-        );
+        await NotificationService.dispatch({
+          eventType: NotificationEventType.MARKETPLACE_LISTING_CREATED,
+          recipientId: seller.id,
+          recipientEmail: seller.email,
+          recipientName: seller.name || 'Valued Customer',
+          data: {
+            eventTitle,
+            ticketTypeName,
+            listingPrice: Number(listing.price),
+            publicId: listing.public_id
+          },
+          relatedEntityType: 'listing',
+          relatedEntityId: listing.public_id,
+          channels: 'BOTH'
+        });
       }
     } catch (emailErr: any) {
-      console.error('[RESALE EMAIL FAILURE] Failed to send resale listing confirmation email:', emailErr.message);
-      // DO NOT throw email error to prevent rolling back successful listing
+      console.error('[RESALE EMAIL FAILURE] Failed to send resale listing confirmation:', emailErr.message);
+      // DO NOT throw notification error to prevent rolling back successful listing
     }
 
     return listing;

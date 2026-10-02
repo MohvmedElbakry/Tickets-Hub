@@ -48,6 +48,8 @@ model User {
   payout_destinations PayoutDestination[]
   payout_requests    PayoutRequest[]
   ledger_entries     LedgerEntry[]
+  notification_preferences NotificationPreference?
+  notification_logs        NotificationLog[]
 }
 
 model Event {
@@ -501,5 +503,50 @@ model FinancialAuditLog {
   @@index([entity_type, entity_id])
   @@index([actor_id])
 }
+
+model NotificationPreference {
+  id                    Int      @id @default(autoincrement())
+  user_id               Int      @unique
+  user                  User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  email_notifications   Boolean  @default(true)
+  db_notifications      Boolean  @default(true)
+  marketplace_alerts    Boolean  @default(true)
+  wallet_alerts         Boolean  @default(true)
+  payout_alerts         Boolean  @default(true)
+  event_reminders       Boolean  @default(true)
+  marketing             Boolean  @default(false)
+  admin_announcements  Boolean  @default(true)
+  updated_at            DateTime @updatedAt
+}
+
+model NotificationLog {
+  id                  Int       @id @default(autoincrement())
+  public_id           String    @unique @default(uuid())
+  event_type          String
+  recipient_email     String
+  recipient_id        Int?
+  user                User?     @relation(fields: [recipient_id], references: [id], onDelete: SetNull)
+  idempotency_key     String?   @unique
+  channel             String    @default("EMAIL") // EMAIL, DATABASE, SMS, PUSH
+  status              String    @default("QUEUED") // QUEUED, PROCESSING, DELIVERED, FAILED, CANCELLED
+  attempts            Int       @default(0)
+  max_attempts        Int       @default(3)
+  last_error          String?
+  last_attempt_at     DateTime?
+  sent_at             DateTime?
+  subject             String?
+  template_name       String?
+  payload_json        String?   // Sanitized JSON payload
+  related_entity_type String?   // order, ticket, listing, payout, event, refund
+  related_entity_id   String?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+
+  @@index([recipient_email])
+  @@index([status])
+  @@index([event_type])
+  @@index([created_at])
+}
+
 
 

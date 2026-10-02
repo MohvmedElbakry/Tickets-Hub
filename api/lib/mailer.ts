@@ -601,4 +601,77 @@ The TicketsHub Team
   }
 }
 
+export async function sendPayoutStatusEmail(
+  recipientEmail: string,
+  sellerName: string,
+  payoutPublicId: string,
+  amount: number,
+  status: 'REQUESTED' | 'APPROVED' | 'PAID' | 'REJECTED',
+  reason?: string
+): Promise<{ success: boolean; messageId?: string }> {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] 📨 Payout status email queued | Email: ${recipientEmail} | Payout Public ID: ${payoutPublicId} | Status: ${status}`);
+
+  const recipientName = getPersonalizedName(sellerName, recipientEmail);
+  let statusTitle = 'Payout Request Update';
+  let statusText = '';
+
+  if (status === 'REQUESTED') {
+    statusTitle = 'Payout Request Received 💸';
+    statusText = `We have received your withdrawal request for <strong>${amount} EGP</strong> (Ref: ${payoutPublicId}). It is currently under review by our financial team.`;
+  } else if (status === 'APPROVED') {
+    statusTitle = 'Payout Request Approved ✅';
+    statusText = `Your withdrawal request for <strong>${amount} EGP</strong> (Ref: ${payoutPublicId}) has been approved and is being processed for transfer.`;
+  } else if (status === 'PAID') {
+    statusTitle = 'Payout Transferred 💰';
+    statusText = `Great news! Your payout of <strong>${amount} EGP</strong> (Ref: ${payoutPublicId}) has been successfully transferred to your destination account.`;
+  } else if (status === 'REJECTED') {
+    statusTitle = 'Payout Request Update ❌';
+    statusText = `Your payout request for <strong>${amount} EGP</strong> (Ref: ${payoutPublicId}) could not be processed.${reason ? ` Reason: ${reason}` : ''} Funds have been released back to your available wallet balance.`;
+  }
+
+  const htmlText = generateEmailHtml({
+    recipientName,
+    title: statusTitle,
+    bodyHtml: `
+      <p>Here is an update regarding your TicketsHub Seller Wallet payout:</p>
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+        <p style="margin: 4px 0; font-size: 14px;"><strong>Payout Reference:</strong> ${payoutPublicId}</p>
+        <p style="margin: 4px 0; font-size: 14px;"><strong>Amount:</strong> ${amount} EGP</p>
+        <p style="margin: 4px 0; font-size: 14px;"><strong>Status:</strong> ${status}</p>
+      </div>
+      <p>${statusText}</p>
+      <p>You can check your wallet status anytime from your TicketsHub Dashboard.</p>
+    `,
+    ctaText: 'View Seller Wallet',
+    ctaUrl: process.env.APP_URL ? `${process.env.APP_URL}/dashboard` : 'https://ticketshub.com/dashboard'
+  });
+
+  const plainText = `
+Hi ${recipientName},
+
+Update regarding your payout request (${payoutPublicId}):
+Amount: ${amount} EGP
+Status: ${status}
+
+${statusText.replace(/<[^>]+>/g, '')}
+
+Best regards,
+The TicketsHub Team
+  `.trim();
+
+  try {
+    const res = await sendEmail({
+      to: recipientEmail,
+      subject: `[TicketsHub] ${statusTitle} - ${payoutPublicId}`,
+      html: htmlText,
+      text: plainText
+    });
+    return res;
+  } catch (err: any) {
+    console.error(`[${new Date().toISOString()}] ⚠️ Payout status email failed | Email: ${recipientEmail} | Error: ${err.message}`);
+    return { success: false };
+  }
+}
+
 

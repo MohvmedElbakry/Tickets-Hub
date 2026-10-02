@@ -6,6 +6,16 @@ import { fileURLToPath } from 'url';
 import prisma from './lib/prisma.js';
 import bcrypt from 'bcryptjs';
 
+// Handle fatal startup/configuration errors cleanly
+process.on('uncaughtException', (err: any) => {
+  if (err.message && err.message.includes('FATAL CONFIGURATION ERROR')) {
+    console.error(err.message);
+    process.exit(1);
+  }
+  console.error('[Uncaught Exception]', err);
+  process.exit(1);
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
